@@ -1,0 +1,137 @@
+# Devtool ACTIONS-05 dispatch contract; matches devtool.actions_android._WORKFLOW.
+# Source is selected by GitHub workflow_dispatch ref and later verified by Devtool.
+# This workflow intentionally supports only debug APKs: no release credentials.
+name: Devtool Android Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_dir:
+        description: 'Repository-relative Gradle root; Cinderbox uses .'
+        type: string
+        required: true
+        default: '.'
+      module:
+        description: 'Android application module; Cinderbox uses app'
+        type: string
+        required: true
+        default: 'app'
+      variant:
+        description: 'Debug build only (no release signing)'
+        type: choice
+        required: true
+        options: ['debug']
+      format:
+        description: 'Android package format'
+        type: choice
+        required: true
+        options: ['apk']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cinderbox-devtool-android-${{ github.ref }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  build-debug-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout requested commit
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify source identity and restrict task parameters
+        shell: bash
+        env:
+          DT_PROJECT: ${{ inputs.project_dir }}
+          DT_MODULE: ${{ inputs.module }}
+          DT_VARIANT: ${{ inputs.variant }}
+          DT_FORMAT: ${{ inputs.format }}
+        run: |
+          set -euo pipefail
+          test "$DT_PROJECT" = '.'
+          test "$DT_MODULE" = 'app'
+          test "$DT_VARIANT" = 'debug'
+          test "$DT_FORMAT" = 'apk'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -f ./gradlew && test ! -L ./gradlew
+          test -f app/build.gradle.kts && test ! -L app/build.gradle.kts
+          test -f scripts/devtool/check_security_contract.py
+          test -f scripts/devtool/verify_debug_apk.py
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install pinned compile SDK and build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Configure Gradle caching
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Check M0/M1 security invariants
+        run: python3 scripts/devtool/check_security_contract.py
+
+      - name: Unit tests, Android lint, assemble debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --max-workers=2 --build-cache --console=plain \
+            :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+
+      - name: Verify assembled APK structure
+        run: python3 scripts/devtool/verify_debug_apk.py
+
+      - name: Stage exactly one APK with SHA-256 and source evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apks=(app/build/outputs/apk/debug/*.apk)
+          if (( ${#apks[@]} != 1 )); then
+            echo 'Expected exactly one debug APK' >&2
+            exit 2
+          fi
+          test -f "${apks[0]}" && test ! -L "${apks[0]}"
+          stage="$RUNNER_TEMP/cinderbox-devtool-debug"
+          mkdir -p -- "$stage"
+          cp -- "${apks[0]}" "$stage/debug.apk"
+          (
+            cd "$stage"
+            sha256sum debug.apk > SHA256SUMS
+          )
+          {
+            printf 'repository=%s\n' "$GITHUB_REPOSITORY"
+            printf 'commit=%s\n' "$GITHUB_SHA"
+            printf 'ref=%s\n' "$GITHUB_REF"
+            printf 'workflow_run=%s\n' "$GITHUB_RUN_ID"
+            printf 'variant=debug\nformat=apk\nmodule=app\n'
+          } > "$stage/BUILD_INFO.txt"
+          test -s "$stage/debug.apk"
+          cat "$stage/SHA256SUMS"
+
+      - name: Upload debug APK for Devtool Actions collection
+        uses: actions/upload-artifact@v4
+        with:
+          name: devtool-android-debug-apk
+          path: |
+            ${{ runner.temp }}/cinderbox-devtool-debug/debug.apk
+            ${{ runner.temp }}/cinderbox-devtool-debug/SHA256SUMS
+            ${{ runner.temp }}/cinderbox-devtool-debug/BUILD_INFO.txt
+          if-no-files-found: error
+          retention-days: 14
