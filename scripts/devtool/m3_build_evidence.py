@@ -19,15 +19,13 @@ import sys
 import tempfile
 import zipfile
 
+from m3_apk_signing import SigningBlockError, certificate_sha256, is_android_debug_certificate
+
 EXPECTED_REPO = "Mikeyphw/Cinderbox-Companion"
 EXPECTED_PACKAGE = "com.sdvsync"
 # Some Android Build Tools versions separate certificate digests with colons
 # or wrap a digest onto the following line. Never confuse certificate hashes
 # with the separate public-key digest field.
-CERT_FIELD = re.compile(
-    r"(?im)^[ \t]*Signer[ \t]*#([0-9]+)[ \t]+certificate[ \t]+SHA-?256[ \t]+digest:[ \t\r\n]*"
-    r"((?:[0-9a-fA-F]{2}:){31}[0-9a-fA-F]{2}|[0-9a-fA-F]{64})"
-)
 PACKAGE_FIELD = re.compile(r"(?m)^package:\s+name='([^']+)'\s+versionCode='([0-9]+)'\s+versionName='([^']*)'")
 SHA40 = re.compile(r"[a-f0-9]{40}\Z")
 SHA64 = re.compile(r"[a-f0-9]{64}\Z")
@@ -125,14 +123,12 @@ def _run(args: list[str]) -> str:
 
 
 def inspect_android(apk: Path) -> dict:
-    signatures = _run([_tool("apksigner"), "verify", "--print-certs", str(apk)])
-    signed = [(int(number), raw.replace(":", "").lower()) for number, raw in CERT_FIELD.findall(signatures)]
-    fingerprints = {digest for _, digest in signed}
-    if not signed or {number for number, _ in signed} != {1} or len(fingerprints) != 1:
-        raise QualificationError("Could not establish exactly one Android APK signing identity")
-    # Distinguished-name fields are not necessarily in CN-first order.
-    dn = re.search(r"(?im)^[ \t]*Signer[ \t]*#1[ \t]+certificate[ \t]+DN:[ \t]*(.+)$", signatures)
-    if not dn or not re.search(r"(?i)(?:^|,[ \t]*)CN=Android Debug(?:,|$)", dn.group(1).strip()):
+    _run([_tool("apksigner"), "verify", "--print-certs", str(apk)])
+    # apksigner verified the cryptographic signature; parse the *APK v2/v3 block*
+    # for certificate identity instead of its version/locale-sensitive stdout.
+    # The certificate subject is decoded from DER via OpenSSL, not from log text.
+    fingerprint = certificate_sha256(apk)
+    if not is_android_debug_certificate(apk):
         raise QualificationError("CI artifact is not signed with the expected debug certificate")
     try:
         package_data = _run([_tool("aapt"), "dump", "badging", str(apk)])
@@ -142,7 +138,7 @@ def inspect_android(apk: Path) -> dict:
     if pkg is None or pkg.group(1) != EXPECTED_PACKAGE or int(pkg.group(2)) < 1:
         raise QualificationError("APK package metadata is missing or mismatched")
     return {"package_name": pkg.group(1), "version_code": int(pkg.group(2)),
-            "version_name": pkg.group(3), "signing_certificate_sha256": next(iter(fingerprints)).lower(),
+            "version_name": pkg.group(3), "signing_certificate_sha256": fingerprint,
             "signature_verified": True, "debug_signed": True}
 
 
@@ -245,7 +241,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise QualificationError("verify requires --apk and --evidence")
             doc = verify(args.apk, args.evidence, args.source_sha)
             print(f"M3 debug evidence verified for {doc['source_commit']}")
-    except (QualificationError, OSError, ValueError, KeyError, json.JSONDecodeError, zipfile.BadZipFile, subprocess.TimeoutExpired) as exc:
+    except (QualificationError, OSError, ValueError, KeyError, json.JSONDecodeError, zipfile.BadZipFile, subprocess.TimeoutExpired, SigningBlockError) as exc:
         print(f"M3 QUALIFICATION FAILED: {exc}", file=sys.stderr)
         return 1
     return 0

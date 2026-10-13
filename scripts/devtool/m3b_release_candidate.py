@@ -19,12 +19,13 @@ import sys
 import tempfile
 import zipfile
 
+from m3_apk_signing import SigningBlockError, certificate_sha256
+
 REPO = 'Mikeyphw/Cinderbox-Companion'
 PACKAGE = 'com.sdvsync'
 POLICY = 'docs/security/M3B_CANDIDATE_POLICY.json'
 SHA256 = re.compile(r'[a-f0-9]{64}\Z')
 SHA40 = re.compile(r'[a-f0-9]{40}\Z')
-CERT = re.compile(r'(?im)^[ \t]*Signer[ \t]*#([0-9]+)[ \t]+certificate[ \t]+SHA-?256[ \t]+digest:[ \t\r\n]*((?:[0-9a-fA-F]{2}:){31}[0-9a-fA-F]{2}|[0-9a-fA-F]{64})')
 PKG = re.compile(r"(?m)^package:\s+name='([^']+)'\s+versionCode='(\d+)'\s+versionName='([^']*)'")
 MAX_BYTES = 256 * 1024 * 1024
 
@@ -100,10 +101,11 @@ def inspect_apk(apk: Path) -> dict:
                 raise GateError('APK ZIP integrity failed')
     except zipfile.BadZipFile as exc:
         raise GateError('APK is not a valid ZIP') from exc
-    output = _run([_tool('apksigner'), 'verify', '--print-certs', str(apk)])
-    signers = [(int(number), digest.replace(':', '').lower()) for number, digest in CERT.findall(output)]
-    if not signers or {number for number, _ in signers} != {1} or len({digest for _, digest in signers}) != 1:
-        raise GateError('Expected exactly one verifiable APK signing identity')
+    _run([_tool('apksigner'), 'verify', '--print-certs', str(apk)])
+    # Avoid interpreting apksigner's human-readable output as a source of
+    # certificate identity; its successful exit code authenticates the APK,
+    # and the DER leaf comes from the checked v2/v3 APK signing block.
+    fingerprint = certificate_sha256(apk)
     try:
         aapt = _run([_tool('aapt'), 'dump', 'badging', str(apk)])
     except GateError:
@@ -112,7 +114,7 @@ def inspect_apk(apk: Path) -> dict:
     if not pkg or pkg.group(1) != PACKAGE or int(pkg.group(2)) < 1:
         raise GateError('APK package identity mismatch')
     return {'package_name': pkg.group(1), 'version_code': int(pkg.group(2)),
-            'version_name': pkg.group(3), 'certificate_sha256': signers[0][1],
+            'version_name': pkg.group(3), 'certificate_sha256': fingerprint,
             'sha256': sha256(apk), 'size_bytes': apk.stat().st_size}
 
 
@@ -161,7 +163,7 @@ def main() -> int:
                 raise GateError('--apk and --output required')
             d = generate(args.root, args.apk, args.output, args.source_sha, args.run_id)
             print('M3B signed candidate verified:', d['artifact']['sha256'])
-    except (GateError, OSError, KeyError, json.JSONDecodeError) as e:
+    except (GateError, OSError, KeyError, json.JSONDecodeError, SigningBlockError) as e:
         print(f'M3B GATE FAILED: {e}', file=sys.stderr)
         return 1
     return 0

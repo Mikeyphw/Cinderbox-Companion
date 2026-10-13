@@ -105,7 +105,9 @@ class CertificateOutputCompatibilityTests(unittest.TestCase):
         certs = ('Signer #1 certificate DN: C=US, O=Android, CN=Android Debug\n'
                  'Signer #1 certificate SHA-256 digest:\n' + separated + '\n')
         badging = "package: name='com.sdvsync' versionCode='14' versionName='0.1.1'"
-        with patch.object(debug, '_tool', side_effect=lambda name: name), \
+        with patch.object(debug, 'certificate_sha256', return_value=digest), \
+             patch.object(debug, 'is_android_debug_certificate', return_value=True), \
+             patch.object(debug, '_tool', side_effect=lambda name: name), \
              patch.object(debug, '_run', side_effect=[certs, badging]):
             self.assertEqual(debug.inspect_android(Path('fixture.apk'))['signing_certificate_sha256'], digest)
 
@@ -114,9 +116,10 @@ class CertificateOutputCompatibilityTests(unittest.TestCase):
         certs = ('Signer #1 certificate DN: CN=Android Debug, O=Android\n'
                  'Signer #1 certificate SHA-256 digest: ' + 'ab'*32 + '\n'
                  'Signer #2 certificate SHA-256 digest: ' + 'cd'*32 + '\n')
-        with patch.object(debug, '_tool', return_value='apksigner'), \
+        with patch.object(debug, 'certificate_sha256', side_effect=debug.SigningBlockError('APK signing schemes disagree')), \
+             patch.object(debug, '_tool', return_value='apksigner'), \
              patch.object(debug, '_run', return_value=certs):
-            with self.assertRaises(debug.QualificationError):
+            with self.assertRaises(debug.SigningBlockError):
                 debug.inspect_android(Path('fixture.apk'))
 
     def test_release_candidate_parses_linewrapped_hex_fingerprint(self):
@@ -128,7 +131,8 @@ class CertificateOutputCompatibilityTests(unittest.TestCase):
                 z.writestr('classes.dex', 'dex'*900)
             certs = 'Signer #1 certificate SHA-256 digest:\n' + 'cd'*32 + '\n'
             badging = "package: name='com.sdvsync' versionCode='14' versionName='0.1.1'"
-            with patch.object(m3b, '_tool', side_effect=lambda name: name), \
+            with patch.object(m3b, 'certificate_sha256', return_value='cd'*32), \
+                 patch.object(m3b, '_tool', side_effect=lambda name: name), \
                  patch.object(m3b, '_run', side_effect=[certs, badging]):
                 self.assertEqual(inspect_apk(candidate)['certificate_sha256'], 'cd'*32)
 

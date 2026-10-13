@@ -80,14 +80,18 @@ class EvidenceContractTests(unittest.TestCase):
                             m3.EXPECTED_REPO, "refs/heads/master", "123")
 
     def test_wrong_certificate_fails(self):
-        with patch.object(m3, "_tool", side_effect=lambda s: s), patch.object(m3, "_run", side_effect=[
+        with patch.object(m3, "certificate_sha256", return_value="a"*64), \
+             patch.object(m3, "is_android_debug_certificate", return_value=False), \
+             patch.object(m3, "_tool", side_effect=lambda s: s), patch.object(m3, "_run", side_effect=[
             "Signer #1 certificate SHA-256 digest: " + "a"*64 + "\nSigner #1 certificate DN: CN=Release Key\n",
             "package: name='com.sdvsync' versionCode='14' versionName='0.1.1'\n"]):
             with self.assertRaisesRegex(m3.QualificationError, "debug certificate"):
                 m3.inspect_android(self.apk)
 
     def test_wrong_package_fails(self):
-        with patch.object(m3, "_tool", side_effect=lambda s: s), patch.object(m3, "_run", side_effect=[
+        with patch.object(m3, "certificate_sha256", return_value="a"*64), \
+             patch.object(m3, "is_android_debug_certificate", return_value=True), \
+             patch.object(m3, "_tool", side_effect=lambda s: s), patch.object(m3, "_run", side_effect=[
             "Signer #1 certificate SHA-256 digest: " + "a"*64 + "\nSigner #1 certificate DN: CN=Android Debug\n",
             "package: name='com.evil.app' versionCode='14' versionName='0.1.1'\n"]):
             with self.assertRaisesRegex(m3.QualificationError, "mismatched"):
