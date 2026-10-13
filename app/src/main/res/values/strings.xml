@@ -285,6 +285,10 @@
     <string name="download_error_no_licenses">No Steam licenses available. Please ensure you own the game.</string>
     <string name="download_error_unknown">Unknown error</string>
     <string name="download_error_load_branches">Failed to load branches: %1$s</string>
+    <string name="download_error_steam_offline">Steam is disconnected. Check your internet connection, then reconnect and retry.</string>
+    <string name="download_error_no_branches">Steam returned no game versions. Retry when connected.</string>
+    <string name="download_retry_steam">Reconnect Steam &amp; Retry</string>
+    <string name="download_retry_branches">Retry Loading Versions</string>
     <string name="download_error_no_directory">Please set an install directory</string>
     <string name="download_error_password_required">This branch requires a password</string>
     <string name="download_branch_build">Build %1$d</string>

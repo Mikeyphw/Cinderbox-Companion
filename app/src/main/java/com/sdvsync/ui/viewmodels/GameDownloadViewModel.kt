@@ -13,6 +13,9 @@ import com.sdvsync.download.GitHubReleaseChecker
 import com.sdvsync.download.SmapiSetupProgress
 import com.sdvsync.fileaccess.FileAccessDetector
 import com.sdvsync.logging.AppLogger
+import com.sdvsync.steam.ConnectionState
+import com.sdvsync.steam.SteamAuthenticator
+import com.sdvsync.steam.SteamClientManager
 import com.sdvsync.steam.SteamContentService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -51,6 +54,9 @@ data class GameDownloadState(
     val smapiSetupProgress: SmapiSetupProgress = SmapiSetupProgress(),
     val cinderboxDownloadProgress: CinderboxDownloadProgress = CinderboxDownloadProgress(),
     val error: String? = null,
+    val branchLoadError: String? = null,
+    val branchLoadNeedsReconnect: Boolean = false,
+    val steamLoggedIn: Boolean = false,
     val cinderboxUpdateAvailable: Boolean = false,
     val latestCinderboxVersion: String? = null,
     val installedCinderboxVersion: String? = null,
@@ -65,7 +71,9 @@ class GameDownloadViewModel(
     private val contentService: SteamContentService,
     private val downloadManager: GameDownloadManager,
     private val fileAccessDetector: FileAccessDetector,
-    private val releaseChecker: GitHubReleaseChecker
+    private val releaseChecker: GitHubReleaseChecker,
+    private val steamClientManager: SteamClientManager,
+    private val steamAuthenticator: SteamAuthenticator
 ) : ViewModel() {
 
     companion object {
@@ -78,6 +86,7 @@ class GameDownloadViewModel(
     val state: StateFlow<GameDownloadState> = _state.asStateFlow()
     private val _wizardState = MutableStateFlow(CinderboxWizardState())
     val wizardState: StateFlow<CinderboxWizardState> = _wizardState.asStateFlow()
+    private var branchLoadJob: Job? = null
     private var smapiJob: Job? = null
     private var cinderboxJob: Job? = null
     private var pendingSetupType: String? = null
@@ -91,6 +100,12 @@ class GameDownloadViewModel(
             isCinderboxSetup = fileAccessDetector.getSetupType() == SETUP_TYPE_CINDERBOX
         )
 
+        // Keep download eligibility in sync with the live Steam transport state.
+        viewModelScope.launch {
+            steamClientManager.connectionState.collect { connection ->
+                _state.update { it.copy(steamLoggedIn = connection == ConnectionState.LOGGED_IN) }
+            }
+        }
         viewModelScope.launch {
             downloadManager.progress.collect { progress ->
                 _state.value = _state.value.copy(downloadProgress = progress)
@@ -158,24 +173,85 @@ class GameDownloadViewModel(
         }
     }
 
-    fun loadBranches() {
-        viewModelScope.launch {
-            _state.value = _state.value.copy(isLoadingBranches = true, error = null)
-            try {
-                val info = contentService.getAppBranches()
-                _state.value = _state.value.copy(
-                    branches = info.branches,
-                    isLoadingBranches = false
+    /** Initial load is read-only; user Retry may resume the previously saved Steam session. */
+    fun loadBranches(reconnect: Boolean = false) {
+        // Prevent overlapping PICS jobs and competing saved-session reconnect attempts.
+        if (branchLoadJob?.isActive == true) return
+        branchLoadJob = viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    isLoadingBranches = true,
+                    branchLoadError = null,
+                    branchLoadNeedsReconnect = false
                 )
+            }
+            try {
+                if (!steamClientManager.isLoggedIn) {
+                    if (reconnect && steamClientManager.connectionState.value != ConnectionState.CONNECTING) {
+                        AppLogger.i(TAG, "User requested saved-session Steam reconnect")
+                        steamAuthenticator.loginWithSavedSession()
+                    }
+                    // Login and Steam transport callbacks are asynchronous. Never call PICS
+                    // until SteamClientManager itself reports a completed Steam logon.
+                    val timeoutMs = if (reconnect) 30_000L else 7_000L
+                    if (!steamClientManager.awaitLoggedIn(timeoutMs)) {
+                        _state.update {
+                            it.copy(
+                                isLoadingBranches = false,
+                                branchLoadNeedsReconnect = true,
+                                branchLoadError = context.getString(R.string.download_error_steam_offline)
+                            )
+                        }
+                        return@launch
+                    }
+                }
+
+                val info = contentService.getAppBranches()
+                if (info.branches.isEmpty()) {
+                    _state.update {
+                        it.copy(
+                            branches = emptyList(),
+                            isLoadingBranches = false,
+                            branchLoadError = context.getString(R.string.download_error_no_branches)
+                        )
+                    }
+                } else {
+                    _state.update { current ->
+                        val selected = current.selectedBranch.takeIf { selected ->
+                            info.branches.any { it.name == selected }
+                        } ?: info.branches.firstOrNull { it.name == "public" }?.name
+                            ?: info.branches.first().name
+                        current.copy(
+                            branches = info.branches,
+                            selectedBranch = selected,
+                            isLoadingBranches = false,
+                            branchLoadError = null,
+                            branchLoadNeedsReconnect = false
+                        )
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Failed to load branches", e)
-                _state.value = _state.value.copy(
-                    isLoadingBranches = false,
-                    error = context.getString(R.string.download_error_load_branches, e.message ?: "")
-                )
+                val disconnected = !steamClientManager.isLoggedIn
+                _state.update {
+                    it.copy(
+                        isLoadingBranches = false,
+                        branchLoadNeedsReconnect = disconnected,
+                        branchLoadError = if (disconnected) {
+                            context.getString(R.string.download_error_steam_offline)
+                        } else {
+                            // Do not display raw Steam exceptions, which may include private data.
+                            context.getString(R.string.download_error_load_branches, e.javaClass.simpleName)
+                        }
+                    )
+                }
             }
         }
     }
+
+    fun retryBranchLoad() = loadBranches(reconnect = true)
 
     fun selectBranch(name: String) {
         _state.value = _state.value.copy(selectedBranch = name, branchPassword = "")
@@ -198,6 +274,16 @@ class GameDownloadViewModel(
     }
 
     fun startDownload() {
+        // A cached branch must never authorize a download after Steam disconnects.
+        if (!steamClientManager.isLoggedIn) {
+            _state.update {
+                it.copy(
+                    branchLoadNeedsReconnect = true,
+                    branchLoadError = context.getString(R.string.download_error_steam_offline)
+                )
+            }
+            return
+        }
         val current = _state.value
         if (current.installDirectory.isBlank()) {
             _state.value = current.copy(error = context.getString(R.string.download_error_no_directory))

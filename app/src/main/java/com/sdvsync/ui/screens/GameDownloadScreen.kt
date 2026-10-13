@@ -194,6 +194,38 @@ fun GameDownloadScreen(onBack: () -> Unit, viewModel: GameDownloadViewModel = ko
                 }
             }
 
+            // Always provide a recovery action, including when cached versions remain
+            // on screen but the Steam session has subsequently disconnected.
+            if (!state.isLoadingBranches &&
+                (state.branchLoadError != null || (!state.steamLoggedIn && state.branches.isNotEmpty()))
+            ) {
+                Spacer(Modifier.height(12.dp))
+                StardewCard {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            state.branchLoadError ?: stringResource(R.string.download_error_steam_offline),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        StardewOutlinedButton(
+                            onClick = viewModel::retryBranchLoad,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                stringResource(
+                                    if (state.branchLoadNeedsReconnect || !state.steamLoggedIn) {
+                                        R.string.download_retry_steam
+                                    } else {
+                                        R.string.download_retry_branches
+                                    }
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
             Spacer(Modifier.height(24.dp))
             PixelDivider()
             Spacer(Modifier.height(24.dp))
@@ -316,7 +348,7 @@ fun GameDownloadScreen(onBack: () -> Unit, viewModel: GameDownloadViewModel = ko
                         onClick = { viewModel.onDownloadButtonClicked() },
                         variant = StardewButtonVariant.Gold,
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = state.branches.isNotEmpty()
+                        enabled = state.branches.isNotEmpty() && state.steamLoggedIn && !state.isLoadingBranches
                     ) {
                         Text(stringResource(R.string.download_button))
                     }
