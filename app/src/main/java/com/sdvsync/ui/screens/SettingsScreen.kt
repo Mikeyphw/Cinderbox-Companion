@@ -68,7 +68,12 @@ private fun SettingsSectionGap() {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit, viewModel: SettingsViewModel = koinViewModel()) {
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onLogout: () -> Unit,
+    preLogin: Boolean = false,
+    viewModel: SettingsViewModel = koinViewModel()
+) {
     val state by viewModel.state.collectAsState()
     val migrationViewModel: CinderboxMigrationViewModel = koinViewModel()
     val migrationState by migrationViewModel.state.collectAsState()
@@ -373,44 +378,47 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit, viewModel: Settings
             SettingsSectionGap()
 
             // Auto-sync
-            SectionHeader(stringResource(R.string.settings_auto_sync_title))
-            Spacer(Modifier.height(8.dp))
-            StardewCard {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    if (state.autoSyncAvailable) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    stringResource(R.string.settings_auto_sync),
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                Text(
-                                    stringResource(R.string.settings_auto_sync_desc),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            if (!preLogin && state.isLoggedIn) {
+                SectionHeader(stringResource(R.string.settings_auto_sync_title))
+                Spacer(Modifier.height(8.dp))
+                StardewCard {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        if (state.autoSyncAvailable) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        stringResource(R.string.settings_auto_sync),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        stringResource(R.string.settings_auto_sync_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = state.autoSyncEnabled,
+                                    onCheckedChange = { viewModel.toggleAutoSync(it) },
+                                    colors = switchColors
                                 )
                             }
-                            Switch(
-                                checked = state.autoSyncEnabled,
-                                onCheckedChange = { viewModel.toggleAutoSync(it) },
-                                colors = switchColors
+                        } else {
+                            Text(
+                                stringResource(R.string.settings_auto_sync_root_only),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                    } else {
-                        Text(
-                            stringResource(R.string.settings_auto_sync_root_only),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
-            }
 
-            SettingsSectionGap()
+                SettingsSectionGap()
+
+            }
 
             // Mods - Nexus API Key
             NexusApiKeySection(
@@ -426,19 +434,22 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit, viewModel: Settings
             SettingsSectionGap()
 
             // Account
-            SectionHeader(stringResource(R.string.settings_steam_account))
-            Spacer(Modifier.height(8.dp))
-            StardewButton(
-                onClick = {
-                    viewModel.logout()
-                    onLogout()
-                },
-                variant = StardewButtonVariant.Danger
-            ) {
-                Text(stringResource(R.string.settings_logout))
-            }
+            if (!preLogin && state.isLoggedIn) {
+                SectionHeader(stringResource(R.string.settings_steam_account))
+                Spacer(Modifier.height(8.dp))
+                StardewButton(
+                    onClick = {
+                        viewModel.logout()
+                        onLogout()
+                    },
+                    variant = StardewButtonVariant.Danger
+                ) {
+                    Text(stringResource(R.string.settings_logout))
+                }
 
-            SettingsSectionGap()
+                SettingsSectionGap()
+
+            }
 
             // About
             SectionHeader(stringResource(R.string.settings_about_title))
