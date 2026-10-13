@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "repository": "Mikeyphw/Cinderbox-Companion",
+  "package_name": "com.sdvsync",
+  "ci_build_variant": "debug",
+  "ci_artifact_format": "apk",
+  "release_enabled": false,
+  "release_signing_certificate_sha256": null,
+  "release_keystore_source": null,
+  "automatic_device_install": false,
+  "device_qualification_complete": false,
+  "publication_enabled": false
+}

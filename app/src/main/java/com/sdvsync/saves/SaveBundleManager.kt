@@ -3,6 +3,7 @@ package com.sdvsync.saves
 import android.content.Context
 import com.sdvsync.logging.AppLogger
 import com.sdvsync.mods.ModFileManager
+import com.sdvsync.util.ZipBudget
 import java.io.File
 import java.io.InputStream
 import java.util.zip.ZipEntry
@@ -98,11 +99,13 @@ class SaveBundleManager(
      * Read the manifest from a .sdvsync ZIP without full extraction.
      */
     fun readManifest(inputStream: InputStream): BundleManifest? {
+        val budget = ZipBudget(200, 64L * 1024 * 1024, 512L * 1024 * 1024)
         ZipInputStream(inputStream.buffered()).use { zip ->
             var entry = zip.nextEntry
             while (entry != null) {
+                budget.nextEntry()
                 if (entry.name == MANIFEST_FILENAME) {
-                    val json = zip.readBytes().toString(Charsets.UTF_8)
+                    val json = budget.readEntry(zip, 1024L * 1024).toString(Charsets.UTF_8)
                     return parseManifest(json)
                 }
                 zip.closeEntry()
@@ -121,19 +124,25 @@ class SaveBundleManager(
             val saveFiles = mutableMapOf<String, ByteArray>()
             var manifest: BundleManifest? = null
 
+            val budget = ZipBudget(200, 64L * 1024 * 1024, 512L * 1024 * 1024)
             ZipInputStream(inputStream.buffered()).use { zip ->
                 var entry = zip.nextEntry
                 while (entry != null) {
+                    budget.nextEntry()
                     when {
                         entry.name == MANIFEST_FILENAME -> {
-                            val json = zip.readBytes().toString(Charsets.UTF_8)
+                            require(manifest == null) { "Duplicate bundle manifest" }
+                            val json = budget.readEntry(zip, 1024L * 1024).toString(Charsets.UTF_8)
                             manifest = parseManifest(json)
                         }
                         entry.name.startsWith(SAVE_DIR_PREFIX) && !entry.isDirectory -> {
                             val filename = entry.name.removePrefix(SAVE_DIR_PREFIX)
                             saveFileManager.requireSafeName(filename)
-                            saveFiles[filename] = zip.readBytes()
+                            require(!saveFiles.containsKey(filename)) { "Duplicate save file in bundle" }
+                            saveFiles[filename] = budget.readEntry(zip)
                         }
+                        // Consume unrecognized files under the same decompression budget.
+                        !entry.isDirectory -> budget.readEntry(zip)
                     }
                     zip.closeEntry()
                     entry = zip.nextEntry

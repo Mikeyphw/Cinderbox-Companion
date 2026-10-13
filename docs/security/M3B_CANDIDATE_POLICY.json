@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "repository": "Mikeyphw/Cinderbox-Companion",
+  "package_name": "com.sdvsync",
+  "keystore_alias": "cinderbox",
+  "candidate_signing_enabled": true,
+  "certificate_sha256": "1a97bfe73fccba607b7816e50db0fa1c16850b3036c4bb156efe047e70046ca0",
+  "publication_enabled": false,
+  "automatic_install": false,
+  "release_qualified": false,
+  "device_qualification_complete": false
+}

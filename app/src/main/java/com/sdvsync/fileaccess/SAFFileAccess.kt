@@ -107,13 +107,16 @@ class SAFFileAccess(
             ?: throw IllegalStateException("Cannot open tree URI: $treeUri")
     }
 
-    /**
-     * Map a java.io.File path to a DocumentFile by stripping the SDV_SAVE_PATH prefix
-     * and walking the tree.
-     */
+    /** Only map descendants of the granted logical base, never unrelated paths. */
+    private fun relativePath(file: File): String? {
+        val root = File(basePath).toPath().normalize()
+        val candidate = file.toPath().toAbsolutePath().normalize()
+        if (!candidate.startsWith(root)) return null
+        return root.relativize(candidate).toString()
+    }
+
     private fun resolveDocument(file: File): DocumentFile? {
-        val relativePath = file.absolutePath.removePrefix(basePath)
-            .trimStart('/')
+        val relativePath = relativePath(file) ?: return null
         if (relativePath.isEmpty()) return treeRoot
 
         var current = treeRoot
@@ -128,9 +131,8 @@ class SAFFileAccess(
      * Returns the parent DocumentFile for the given file.
      */
     private fun resolveParentCreating(file: File): DocumentFile? {
-        val parentPath = file.parentFile?.absolutePath ?: return null
-        val relativePath = parentPath.removePrefix(basePath)
-            .trimStart('/')
+        val parent = file.parentFile ?: return null
+        val relativePath = relativePath(parent) ?: return null
         if (relativePath.isEmpty()) return treeRoot
 
         var current = treeRoot
@@ -204,6 +206,7 @@ class SAFFileAccess(
 
     override suspend fun deleteFile(file: File): Boolean = withContext(Dispatchers.IO) {
         try {
+            if (relativePath(file).isNullOrEmpty()) return@withContext false
             resolveDocument(file)?.delete() ?: false
         } catch (e: Exception) {
             AppLogger.e(TAG, "deleteFile failed: ${file.absolutePath}", e)
@@ -213,6 +216,7 @@ class SAFFileAccess(
 
     override suspend fun renameFile(from: File, to: File): Boolean = withContext(Dispatchers.IO) {
         try {
+            if (relativePath(to) == null || from.parentFile != to.parentFile) return@withContext false
             val doc = resolveDocument(from) ?: return@withContext false
             doc.renameTo(to.name)
         } catch (e: Exception) {
@@ -223,8 +227,7 @@ class SAFFileAccess(
 
     override suspend fun mkdirs(dir: File): Boolean = withContext(Dispatchers.IO) {
         try {
-            val relativePath = dir.absolutePath.removePrefix(basePath)
-                .trimStart('/')
+            val relativePath = relativePath(dir) ?: return@withContext false
             if (relativePath.isEmpty()) return@withContext treeRoot.exists()
 
             var current = treeRoot

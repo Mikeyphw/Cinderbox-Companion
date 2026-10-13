@@ -5,6 +5,7 @@ import com.sdvsync.cinderbox.CinderboxPaths
 import com.sdvsync.logging.AppLogger
 import com.sdvsync.mods.models.InstallResult
 import com.sdvsync.mods.models.InstalledMod
+import com.sdvsync.util.ZipBudget
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
@@ -85,17 +86,26 @@ class ModFileManager(
         return renameMod(folderName, ".$folderName")
     }
 
-    private fun renameMod(from: String, to: String): Boolean {
-        val target = File(modsDir, to)
-        if (target.exists()) return false
-        return File(modsDir, from).renameTo(target)
+    /** A mod operation must never escape Mods/ through ../ or a symlink. */
+    private fun safeFolder(name: String): File {
+        require(name.isNotBlank() && name != "." && name != ".." &&
+            '/' !in name && '\\' !in name && '\u0000' !in name) { "Invalid mod folder name" }
+        val folder = File(modsDir, name)
+        require(folder.canonicalFile.parentFile == modsDir.canonicalFile) {
+            "Mod path is outside the Mods directory"
+        }
+        return folder
     }
 
-    /**
-     * Remove a mod by recursively deleting its folder.
-     */
+    private fun renameMod(from: String, to: String): Boolean {
+        val target = safeFolder(to)
+        if (target.exists()) return false
+        return safeFolder(from).renameTo(target)
+    }
+
+    /** Remove one validated direct child, never an arbitrary path. */
     fun removeMod(folderName: String): Boolean {
-        val folder = File(modsDir, folderName)
+        val folder = safeFolder(folderName)
         if (!folder.exists()) return true
         return folder.deleteRecursively().also {
             AppLogger.d(TAG, "Remove mod: $folderName: $it")
@@ -136,7 +146,7 @@ class ModFileManager(
                     "Invalid mod folder name"
                 }
                 val existing = listInstalledMods().firstOrNull { it.manifest.uniqueID == manifest.uniqueID }
-                val targetDir = existing?.let { File(it.folderPath) } ?: File(modsDir, targetName)
+                val targetDir = safeFolder(existing?.folderName ?: targetName)
                 check(!targetDir.exists() || existing != null) { "A different mod already uses $targetName" }
                 Files.createDirectories(modsDir.toPath())
                 val staged = Files.createTempDirectory(modsDir.toPath(), ".install-").toFile()
@@ -175,11 +185,13 @@ class ModFileManager(
     }
 
     private fun extractZip(zipFile: File, destDir: File) {
+        // 3,000 files, 128 MiB per entry, 1 GiB total uncompressed.
+        val budget = ZipBudget(3_000, 128L * 1024 * 1024, 1024L * 1024 * 1024)
         ZipInputStream(zipFile.inputStream().buffered()).use { zip ->
             var entry = zip.nextEntry
             while (entry != null) {
+                budget.nextEntry()
                 val file = File(destDir, entry.name)
-                // Protect against zip slip
                 if (!file.canonicalPath.startsWith(destDir.canonicalPath + File.separator)) {
                     throw SecurityException("Zip entry outside target dir: ${entry.name}")
                 }
@@ -188,7 +200,7 @@ class ModFileManager(
                 } else {
                     file.parentFile?.mkdirs()
                     file.outputStream().buffered().use { out ->
-                        zip.copyTo(out)
+                        budget.copyEntry(zip, out)
                     }
                 }
                 zip.closeEntry()

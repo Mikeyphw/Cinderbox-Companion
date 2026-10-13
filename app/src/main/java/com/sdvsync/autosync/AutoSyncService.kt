@@ -12,6 +12,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.sdvsync.MainActivity
 import com.sdvsync.R
+import com.sdvsync.fileaccess.FileAccessDetector
 import com.sdvsync.logging.AppLogger
 import com.sdvsync.sync.SyncEngine
 import com.sdvsync.sync.SyncHistoryStore
@@ -59,6 +60,11 @@ class AutoSyncService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!FileAccessDetector(this).isRootExplicitlyEnabled()) {
+            AppLogger.w(TAG, "Auto-sync stopped: Root mode is not explicitly enabled")
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         processMonitor.start(
             onGameStarted = {
                 updateNotification("Stardew Valley is running")

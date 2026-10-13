@@ -83,6 +83,17 @@ jobs:
       - name: Configure Gradle caching
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Check M3 debug-only CI policy
+        run: python3 scripts/devtool/m3_build_evidence.py source
+
+      - name: Run M3 evidence contract regression tests
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m3_*.py' -v
+
+      - name: Enforce M3B non-publishing policy and regressions
+        run: |
+          python3 scripts/devtool/m3b_release_candidate.py policy
+          python3 -m unittest discover -s scripts/devtool -p 'test_m3b_*.py' -v
+
       - name: Check M0/M1 security invariants
         run: python3 scripts/devtool/check_security_contract.py
 
@@ -125,6 +136,14 @@ jobs:
           test -s "$stage/debug.apk"
           cat "$stage/SHA256SUMS"
 
+      - name: Inspect APK signature and record M3 source provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/devtool/m3_build_evidence.py generate \
+            --apk-dir "$RUNNER_TEMP/cinderbox-devtool-debug" \
+            --output "$RUNNER_TEMP/cinderbox-devtool-debug/M3_PROVENANCE.json"
+
       - name: Upload debug APK for Devtool Actions collection
         uses: actions/upload-artifact@v4
         with:
@@ -133,5 +152,6 @@ jobs:
             ${{ runner.temp }}/cinderbox-devtool-debug/debug.apk
             ${{ runner.temp }}/cinderbox-devtool-debug/SHA256SUMS
             ${{ runner.temp }}/cinderbox-devtool-debug/BUILD_INFO.txt
+            ${{ runner.temp }}/cinderbox-devtool-debug/M3_PROVENANCE.json
           if-no-files-found: error
           retention-days: 14

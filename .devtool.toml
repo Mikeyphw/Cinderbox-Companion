@@ -1,0 +1,205 @@
+# Cinderbox Companion / Devtool — Android source validation and debug APK.
+# This repository is untrusted configuration, not permission authority.
+# Production/release signing is intentionally NOT configured here.
+[project]
+runner = "android"
+platform = "android"
+
+[workspace]
+default_target = "cinderbox"
+
+[wrapper]
+schema = 2
+default_command = "validate"
+
+[wrapper.commands.quick]
+description = "Verify the security contract and run local JVM tests"
+workflow = "quick"
+target = "cinderbox"
+
+[wrapper.commands.security]
+description = "Check privileged-access and Android manifest regressions without Gradle"
+workflow = "security"
+target = "cinderbox"
+
+[wrapper.commands.test]
+description = "Run Android debug JVM unit tests"
+devtool = "test"
+target = "cinderbox"
+allow_passthrough = true
+
+[wrapper.commands.lint]
+description = "Run Android lint for the debug variant"
+devtool = "lint"
+target = "cinderbox"
+allow_passthrough = true
+
+[wrapper.commands.build]
+description = "Build and verify a debug APK (not a release APK)"
+workflow = "build"
+target = "cinderbox"
+
+[wrapper.commands.validate]
+description = "Run Devtool's Android-aware validation with persistent evidence"
+devtool = "validate"
+target = "cinderbox"
+allow_passthrough = true
+
+[wrapper.commands.full]
+description = "Run security, unit tests, lint, and debug APK assembly"
+workflow = "full"
+target = "cinderbox"
+
+[wrapper.commands.format-check]
+description = "Run Kotlin lint formatting checks (does not alter source)"
+workflow = "format-check"
+target = "cinderbox"
+
+[wrapper.commands.device]
+description = "Explicit on-device instrumentation lane; requires a connected test device"
+workflow = "device"
+target = "cinderbox"
+
+[execution]
+environment = "auto"
+chroot_name = "androidos"
+
+# Prefer in-place Termux builds to avoid an unnecessary chroot copy/bind on ARM64.
+# Override with `devtool --chroot androidos ...` if local SDK providers require it.
+[targets.cinderbox]
+runner = "android"
+platform = "android"
+root = "."
+execution_environment = "auto"
+inputs = [".devtool.toml", "devtoolw", "gradlew", "gradle/**", "settings.gradle.kts", "build.gradle.kts", "gradle.properties", "app/**", "scripts/devtool/**", "docs/devtool/**", ".github/workflows/**"]
+outputs = ["app/build/**", "build/**"]
+
+[targets.cinderbox.android]
+variant = "debug"
+aapt2_provider = "auto"
+sdk_provider = "auto"
+prefer_native_termux = true
+instrumentation = "disabled"
+
+[targets.cinderbox.android.storage]
+auto_cleanup = "safe"
+min_free_mb = 4096
+target_free_mb = 6144
+managed_gradle_retention = 2
+manage_gradle_user_cache = false
+keep_provider_downloads = false
+cleanup_after_build = true
+
+[targets.cinderbox.gradle]
+max_workers = 2
+parallel = false
+no_daemon = false
+daemon_idle_timeout_ms = 900000
+build_cache = true
+structured_events = false
+args = ["-Dorg.gradle.vfs.watch=false"]
+
+# Actual Gradle tasks from the checked-in :app project. No invented composite task.
+[targets.cinderbox.tasks]
+build = [":app:assembleDebug"]
+test = [":app:testDebugUnitTest"]
+lint = [":app:lintDebug"]
+clean = [":app:clean"]
+instrumentation = [":app:connectedDebugAndroidTest"]
+
+[targets.cinderbox.artifacts]
+# Unit-test and lint jobs produce no APK; the debug-build job has its own verification gate.
+required = false
+external_verification = "auto"
+
+[targets.cinderbox.validation]
+android_safe = true
+split_gradle = false
+max_workers = 2
+cpu_limit = 2
+parallel = false
+no_daemon = false
+low_priority = false
+memory_guard_mb = 0
+gradle_heap_mb = 1152
+gradle_metaspace_mb = 512
+gradle_packaging_metaspace_mb = 640
+gradle_lint_metaspace_mb = 640
+affected_module_lint = true
+
+[targets.cinderbox.validation.phases]
+preflight = []
+dependencies = []
+compile = []
+resources = []
+unit-test = [":app:testDebugUnitTest"]
+package = [":app:assembleDebug"]
+lint = [":app:lintDebug"]
+
+# This job is cheap and works even before JDK, Gradle, or the Android SDK exists.
+[targets.cinderbox.jobs.security-contract]
+runner = "command"
+command = ["python3", "scripts/devtool/check_security_contract.py"]
+inputs = ["app/src/main/AndroidManifest.xml", "app/src/main/java/com/sdvsync/fileaccess/**", "scripts/devtool/check_security_contract.py"]
+metadata = { read_only = true, area = "security", root_required = false }
+
+[targets.cinderbox.jobs.unit-tests]
+runner = "android"
+gradle_tasks = [":app:testDebugUnitTest"]
+inputs = ["app/src/**", "app/build.gradle.kts", "gradle/**", "build.gradle.kts", "settings.gradle.kts"]
+metadata = { area = "unit-tests" }
+
+[targets.cinderbox.jobs.android-lint]
+runner = "android"
+gradle_tasks = [":app:lintDebug"]
+inputs = ["app/src/**", "app/build.gradle.kts", "gradle/**", "build.gradle.kts", "settings.gradle.kts"]
+metadata = { area = "android-lint" }
+
+[targets.cinderbox.jobs.debug-apk]
+runner = "android"
+gradle_tasks = [":app:assembleDebug"]
+inputs = ["app/src/**", "app/build.gradle.kts", "gradle/**", "build.gradle.kts", "settings.gradle.kts"]
+outputs = ["app/build/outputs/apk/debug/**"]
+metadata = { area = "debug-build", release_signed = false }
+
+[targets.cinderbox.jobs.verify-debug-apk]
+runner = "command"
+command = ["python3", "scripts/devtool/verify_debug_apk.py"]
+inputs = ["scripts/devtool/verify_debug_apk.py", "app/build/outputs/apk/debug/**"]
+metadata = { read_only = true, area = "debug-artifact", release_signed = false }
+
+[targets.cinderbox.jobs.ktlint-check]
+runner = "android"
+gradle_tasks = [":app:ktlintCheck"]
+metadata = { area = "format", modifies_source = false }
+
+[targets.cinderbox.jobs.connected-tests]
+runner = "android"
+gradle_tasks = [":app:connectedDebugAndroidTest"]
+metadata = { area = "device", explicit_only = true }
+
+[targets.cinderbox.workflows]
+security = ["job:security-contract"]
+quick = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "unit", ref = "job:unit-tests", depends_on = ["security"] },
+]
+build = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "apk", ref = "job:debug-apk", depends_on = ["security"] },
+  { id = "verify", ref = "job:verify-debug-apk", depends_on = ["apk"] },
+]
+full = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "unit", ref = "job:unit-tests", depends_on = ["security"] },
+  { id = "lint", ref = "job:android-lint", depends_on = ["unit"] },
+  { id = "apk", ref = "job:debug-apk", depends_on = ["lint"] },
+  { id = "verify", ref = "job:verify-debug-apk", depends_on = ["apk"] },
+]
+format-check = ["job:ktlint-check"]
+device = ["job:connected-tests"]
+
+[artifacts]
+output_directory = ".devtool/build-artifacts"
+output_name = "cinderbox-companion"
+collision = "unique"

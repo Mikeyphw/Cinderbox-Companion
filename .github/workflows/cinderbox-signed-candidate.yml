@@ -1,0 +1,99 @@
+# M3B: explicitly gated, manually invoked stable-key APK build.
+# CANDIDATE ONLY: no GitHub release publishing or device install.
+name: Cinderbox Signed Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type SIGNED_CANDIDATE to acknowledge a manual, non-publishing build'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cinderbox-signed-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    # Stable credentials are never exposed to arbitrary feature branches.
+    if: github.ref == 'refs/heads/master' && inputs.confirm == 'SIGNED_CANDIDATE'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: release-signing
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Enforce source and explicit candidate policy before secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 scripts/devtool/m3_build_evidence.py source
+          python3 scripts/devtool/m3b_release_candidate.py require-enabled
+          python3 -m unittest discover -s scripts/devtool -p 'test_m3b_*.py' -v
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Install pinned SDK
+        run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Assemble manually approved signed candidate
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.CINDERBOX_RELEASE_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.CINDERBOX_RELEASE_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.CINDERBOX_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$KEYSTORE_B64" && test -n "$STORE_PASSWORD" && test -n "$KEY_PASSWORD"
+          trap 'rm -f keystore.jks' EXIT
+          test ! -e keystore.jks
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > keystore.jks
+          test -s keystore.jks && test ! -L keystore.jks
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 --build-cache --console=plain \
+            :app:testDebugUnitTest :app:lintDebug :app:assembleRelease
+
+      - name: Verify stable signing identity and generate candidate evidence
+        shell: bash
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(app/build/outputs/apk/release/*.apk)
+          test "${#files[@]}" -eq 1
+          mkdir -p candidate-artifact
+          cp -- "${files[0]}" candidate-artifact/candidate.apk
+          python3 scripts/devtool/m3b_release_candidate.py generate \
+            --apk candidate-artifact/candidate.apk \
+            --output candidate-artifact/M3B_CANDIDATE_PROVENANCE.json \
+            --source-sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID"
+          ( cd candidate-artifact && sha256sum candidate.apk > SHA256SUMS )
+
+      - name: Upload signed candidate and non-secret evidence only
+        uses: actions/upload-artifact@v4
+        with:
+          name: cinderbox-signed-candidate-not-release
+          path: |
+            candidate-artifact/candidate.apk
+            candidate-artifact/M3B_CANDIDATE_PROVENANCE.json
+            candidate-artifact/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
