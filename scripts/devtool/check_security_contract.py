@@ -51,6 +51,26 @@ def check(repo: Path) -> list[str]:
             failures.append("Explicit user opt-in for root is required")
     except (OSError, ValueError) as exc:
         failures.append(f"Cannot check FileAccessDetector.kt: {exc}")
+    # M2B: both setup paths must use the same verified, transactional SMAPI installer.
+    try:
+        downloads = (repo / "app/src/main/java/com/sdvsync/download/GameDownloadManager.kt").read_text()
+        release = (repo / "app/src/main/java/com/sdvsync/download/VerifiedReleaseAsset.kt").read_text()
+        installer = (repo / "app/src/main/java/com/sdvsync/download/SmapiTransactionalInstaller.kt").read_text()
+        if downloads.count("VerifiedReleaseAsset.verifyCached(") < 2:
+            failures.append("SMAPI install paths must verify cached release SHA-256")
+        if downloads.count("SmapiTransactionalInstaller.install(") < 2:
+            failures.append("Both SMAPI paths must use the transactional installer")
+        if "VerifiedReleaseAsset.download(" not in downloads:
+            failures.append("Release downloads must use the verified downloader")
+        for required in ("MessageDigest.isEqual", "ATOMIC_MOVE", "followRedirects(false)", "response.request.url"):
+            if required not in release:
+                failures.append(f"M2B release downloader missing {required}")
+        for required in ("ZipBudget(", "fun recover(", "previous.renameTo(destination)",
+                         "pending.renameTo(destination)"):
+            if required not in installer:
+                failures.append(f"M2B SMAPI transaction missing {required}")
+    except OSError as exc:
+        failures.append(f"Cannot check M2B sources: {exc}")
     return failures
 
 
@@ -61,7 +81,7 @@ def main() -> int:
         print(f"SECURITY CONTRACT FAIL: {failure}", file=sys.stderr)
     if failures:
         return 1
-    print("Cinderbox M0/M1 security source contract: OK (static only)")
+    print("Cinderbox M0/M1/M2B security source contract: OK (static only)")
     return 0
 
 
