@@ -86,7 +86,7 @@ class AppUpdateViewModel(
             )
         }
         downloadJob = viewModelScope.launch {
-            val apk = updateManager.downloadUpdate(info.assetUrl, info.assetName) { progress ->
+            val apk = updateManager.downloadUpdate(info) { progress ->
                 _state.update { it.copy(downloadProgress = progress) }
             }
             if (apk != null) {

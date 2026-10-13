@@ -17,7 +17,8 @@ data class GitHubReleaseInfo(
     val assetSize: Long,
     val assetName: String,
     val publishedAt: String,
-    val body: String = ""
+    val body: String = "",
+    val assetDigest: String? = null
 )
 
 class GitHubReleaseChecker(private val context: Context, private val httpClient: OkHttpClient) {
@@ -29,7 +30,8 @@ class GitHubReleaseChecker(private val context: Context, private val httpClient:
 
         const val CINDERBOX_REPO = "Ekyso/Cinderbox"
         const val SMAPI_REPO = "Ekyso/SMAPI-for-Cinderbox"
-        const val APP_REPO = "ObfuscatedVoid/Cinderbox-Companion"
+        // This fork must not silently install APKs published by another maintainer.
+        const val APP_REPO = "Mikeyphw/Cinderbox-Companion"
         val CINDERBOX_ASSET_PATTERN = Regex("Cinderbox-.*\\.apk")
         val SMAPI_ASSET_PATTERN = Regex("smapi-internal.*\\.zip")
         val APP_ASSET_PATTERN = Regex("CinderboxCompanion-.*\\.apk")
@@ -88,7 +90,8 @@ class GitHubReleaseChecker(private val context: Context, private val httpClient:
                             assetSize = asset.getLong("size"),
                             assetName = name,
                             publishedAt = publishedAt,
-                            body = releaseBody
+                            body = releaseBody,
+                            assetDigest = asset.optString("digest", "").ifBlank { null }
                         )
                         break
                     }
@@ -188,6 +191,7 @@ class GitHubReleaseChecker(private val context: Context, private val httpClient:
         put("assetName", info.assetName)
         put("publishedAt", info.publishedAt)
         put("body", info.body)
+        put("assetDigest", info.assetDigest)
     }.toString()
 
     private fun parseReleaseInfoFromCache(json: String): GitHubReleaseInfo? = try {
@@ -199,7 +203,8 @@ class GitHubReleaseChecker(private val context: Context, private val httpClient:
             assetSize = obj.getLong("assetSize"),
             assetName = obj.getString("assetName"),
             publishedAt = obj.optString("publishedAt", ""),
-            body = obj.optString("body", "")
+            body = obj.optString("body", ""),
+            assetDigest = obj.optString("assetDigest", "").takeUnless { it.isBlank() || it == "null" }
         )
     } catch (e: Exception) {
         null
