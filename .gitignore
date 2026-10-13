@@ -23,6 +23,7 @@ kls_database.db
 /.devtool/state/
 /.devtool/reports/
 /.devtool/tmp/
+/.devtool/
 /.devtool/build-artifacts/
 **/__pycache__/
 *.py[cod]
