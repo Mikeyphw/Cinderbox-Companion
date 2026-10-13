@@ -54,7 +54,11 @@ import kotlinx.coroutines.withContext
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
-fun LoginScreen(onLoginSuccess: () -> Unit, viewModel: LoginViewModel = koinViewModel()) {
+fun LoginScreen(
+    onLoginSuccess: () -> Unit,
+    onOpenSettings: () -> Unit,
+    viewModel: LoginViewModel = koinViewModel()
+) {
     val authState by viewModel.authState.collectAsState()
     val username by viewModel.username.collectAsState()
     val password by viewModel.password.collectAsState()
@@ -269,6 +273,17 @@ fun LoginScreen(onLoginSuccess: () -> Unit, viewModel: LoginViewModel = koinView
 
                 is AuthState.LoggedIn -> {
                     PixelLoadingSpinner()
+                }
+            }
+
+            // Local settings must be accessible without Steam authentication.
+            if (authState !is AuthState.LoggedIn) {
+                Spacer(Modifier.height(16.dp))
+                StardewOutlinedButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(stringResource(R.string.settings_title))
                 }
             }
 

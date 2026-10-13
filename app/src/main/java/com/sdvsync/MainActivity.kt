@@ -239,7 +239,17 @@ fun SdvSyncNavGraph(navController: NavHostController) {
                     navController.navigate("main") {
                         popUpTo("login") { inclusive = true }
                     }
-                }
+                },
+                onOpenSettings = { navController.navigate("prelogin_settings") }
+            )
+        }
+
+        // Pre-login local settings. Steam-only features remain unavailable.
+        composable("prelogin_settings") {
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onLogout = { navController.popBackStack() },
+                preLogin = true
             )
         }
 
