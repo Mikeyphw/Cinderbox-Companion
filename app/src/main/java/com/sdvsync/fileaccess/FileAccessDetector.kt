@@ -18,27 +18,24 @@ class FileAccessDetector(private val context: Context) {
         private const val KEY_LAYOUT_DONT_ASK = "cinderbox_layout_dont_ask"
     }
 
-    /**
-     * Detect the best available file access strategy.
-     * Priority: Root > Shizuku > All Files > SAF > Manual
-     */
+    /** Auto-detection never asks for superuser privileges. */
+    fun isRootExplicitlyEnabled(): Boolean = getPreferredStrategy().equals("root", ignoreCase = true)
+
+    /** Default order prioritizes the user-granted SAF tree over global/privileged access. */
     fun detectBestStrategy(): FileAccessStrategy {
-        if (RootFileAccess.isAvailable()) {
-            AppLogger.d(TAG, "detectBestStrategy: selected Root")
-            return RootFileAccess()
-        }
-        if (ShizukuFileAccess.isAvailable()) {
-            AppLogger.d(TAG, "detectBestStrategy: selected Shizuku")
-            return ShizukuFileAccess()
+        SAFFileAccess.createInstance(context)?.let {
+            AppLogger.d(TAG, "detectBestStrategy: selected ${it.name}")
+            return it
         }
         if (isAllFilesUsable()) {
             AppLogger.d(TAG, "detectBestStrategy: selected All Files")
             return AllFilesAccess()
         }
-        SAFFileAccess.createInstance(context)?.let {
-            AppLogger.d(TAG, "detectBestStrategy: selected ${it.name}")
-            return it
+        if (ShizukuFileAccess.isAvailable()) {
+            AppLogger.d(TAG, "detectBestStrategy: selected Shizuku")
+            return ShizukuFileAccess()
         }
+        // No root probe or request in automatic mode.
         AppLogger.d(TAG, "detectBestStrategy: falling back to Manual")
         return ManualFileAccess()
     }
@@ -61,7 +58,11 @@ class FileAccessDetector(private val context: Context) {
      * Get a specific strategy by name.
      */
     fun getStrategy(name: String): FileAccessStrategy = when (name.lowercase()) {
-        "root" -> RootFileAccess()
+        "root" -> if (isRootExplicitlyEnabled() && RootFileAccess.isAvailable()) {
+            RootFileAccess()
+        } else {
+            detectBestStrategy()
+        }
         "shizuku" -> ShizukuFileAccess()
         "all files" -> AllFilesAccess()
         "saf", "saf (staging)" -> SAFFileAccess.createInstance(context) ?: ManualFileAccess()
@@ -74,10 +75,10 @@ class FileAccessDetector(private val context: Context) {
      */
     fun availableMethods(): List<String> {
         val methods = mutableListOf<String>()
-        if (RootFileAccess.isAvailable()) methods.add("Root")
-        if (ShizukuFileAccess.isAvailable()) methods.add("Shizuku")
-        if (isAllFilesUsable()) methods.add("All Files")
         if (SAFFileAccess.isAvailable(context)) methods.add("SAF")
+        if (isAllFilesUsable()) methods.add("All Files")
+        if (ShizukuFileAccess.isAvailable()) methods.add("Shizuku")
+        if (isRootExplicitlyEnabled() && RootFileAccess.isAvailable()) methods.add("Root")
         methods.add("Manual") // Always available as fallback
         return methods
     }
@@ -147,7 +148,7 @@ class FileAccessDetector(private val context: Context) {
         if (Build.VERSION.SDK_INT < 30) return false
         if (!cinderboxMode) return false
         if (Environment.isExternalStorageManager()) return false
-        if (RootFileAccess.isAvailable() || ShizukuFileAccess.isAvailable()) return false
+        if (resolveStrategy() is RootFileAccess || resolveStrategy() is ShizukuFileAccess) return false
         return true
     }
 }

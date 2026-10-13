@@ -93,7 +93,7 @@ class SettingsViewModel(
 
     fun load() {
         viewModelScope.launch(Dispatchers.IO) {
-            val hasRoot = RootFileAccess.isAvailable()
+            val hasRoot = fileAccessDetector.isRootExplicitlyEnabled() && RootFileAccess.isAvailable()
             val shizukuInstalled = ShizukuFileAccess.isInstalled(context.packageManager)
             val shizukuRunning = ShizukuFileAccess.isRunning()
             val shizukuPermission = ShizukuFileAccess.isPermissionGranted()
@@ -176,6 +176,10 @@ class SettingsViewModel(
     }
 
     fun toggleAutoSync(enabled: Boolean) {
+        if (enabled && (!fileAccessDetector.isRootExplicitlyEnabled() || !RootFileAccess.isAvailable())) {
+            _state.update { it.copy(autoSyncEnabled = false) }
+            return
+        }
         _state.update { it.copy(autoSyncEnabled = enabled) }
         if (enabled) {
             AutoSyncService.start(context)
@@ -220,6 +224,10 @@ class SettingsViewModel(
     }
 
     fun setFileAccessMode(name: String?) {
+        if (!name.equals("root", ignoreCase = true)) {
+            AutoSyncService.stop(context)
+            _state.update { it.copy(autoSyncEnabled = false) }
+        }
         fileAccessDetector.setPreferredStrategy(name)
         load()
     }

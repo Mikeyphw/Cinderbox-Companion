@@ -74,6 +74,7 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit, viewModel: Settings
     val migrationState by migrationViewModel.state.collectAsState()
 
     val context = LocalContext.current
+    var confirmRoot by remember { mutableStateOf(false) }
 
     val allFilesLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -117,6 +118,21 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit, viewModel: Settings
         selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
         selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
     )
+
+    if (confirmRoot) {
+        AlertDialog(
+            onDismissRequest = { confirmRoot = false },
+            title = { Text("Enable Root file access?") },
+            text = { Text("Root can modify Stardew saves as superuser. Prefer standard storage or Shizuku when possible. Continue only if needed.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRoot = false
+                    viewModel.setFileAccessMode("Root")
+                }) { Text("Enable Root") }
+            },
+            dismissButton = { TextButton(onClick = { confirmRoot = false }) { Text("Cancel") } }
+        )
+    }
 
     if (state.showStoragePermissionPrompt) {
         StoragePermissionDialog(
@@ -252,7 +268,15 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit, viewModel: Settings
                             colors = filterChipColors,
                             shape = RectangleShape
                         )
-                        state.availableModes.forEach { mode ->
+                        // Root is never auto-probed. Selecting this chip is explicit opt-in.
+                        FilterChip(
+                            selected = state.preferredStrategy.equals("root", ignoreCase = true),
+                            onClick = { confirmRoot = true },
+                            label = { Text("Root (opt-in)") },
+                            colors = filterChipColors,
+                            shape = RectangleShape
+                        )
+                        state.availableModes.filterNot { it.equals("root", ignoreCase = true) }.forEach { mode ->
                             FilterChip(
                                 selected = state.preferredStrategy.equals(mode, ignoreCase = true),
                                 onClick = { viewModel.setFileAccessMode(mode) },
@@ -262,23 +286,28 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit, viewModel: Settings
                             )
                         }
                     }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Root is optional and grants elevated filesystem access. Select it only if needed; " +
+                            "the app will never enable it automatically.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
             // Shizuku status
-            if (!state.hasRoot) {
-                Spacer(Modifier.height(12.dp))
-                ShizukuStatusSection(
-                    installed = state.shizukuInstalled,
-                    running = state.shizukuRunning,
-                    permissionGranted = state.shizukuPermissionGranted,
-                    onRequestPermission = { viewModel.requestShizukuPermission() },
-                    onBindService = { viewModel.bindShizukuService() }
-                )
-            }
+            Spacer(Modifier.height(12.dp))
+            ShizukuStatusSection(
+                installed = state.shizukuInstalled,
+                running = state.shizukuRunning,
+                permissionGranted = state.shizukuPermissionGranted,
+                onRequestPermission = { viewModel.requestShizukuPermission() },
+                onBindService = { viewModel.bindShizukuService() }
+            )
 
             // All Files Access
-            if (state.allFilesEligible && !state.hasRoot) {
+            if (state.allFilesEligible) {
                 Spacer(Modifier.height(12.dp))
                 AllFilesAccessSection(
                     permissionGranted = state.allFilesPermissionGranted,
@@ -296,7 +325,7 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit, viewModel: Settings
             }
 
             // SAF
-            if (state.safEligible && !state.hasRoot) {
+            if (state.safEligible) {
                 Spacer(Modifier.height(12.dp))
                 SAFAccessSection(
                     configured = state.safConfigured,
