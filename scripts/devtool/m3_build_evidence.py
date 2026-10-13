@@ -21,7 +21,13 @@ import zipfile
 
 EXPECTED_REPO = "Mikeyphw/Cinderbox-Companion"
 EXPECTED_PACKAGE = "com.sdvsync"
-CERT_FIELD = re.compile(r"(?im)^\s*Signer\s*#1\s+certificate\s+SHA-256\s+digest:\s*([a-fA-F0-9]{64})\s*$")
+# Some Android Build Tools versions separate certificate digests with colons
+# or wrap a digest onto the following line. Never confuse certificate hashes
+# with the separate public-key digest field.
+CERT_FIELD = re.compile(
+    r"(?im)^[ \t]*Signer[ \t]*#([0-9]+)[ \t]+certificate[ \t]+SHA-?256[ \t]+digest:[ \t\r\n]*"
+    r"((?:[0-9a-fA-F]{2}:){31}[0-9a-fA-F]{2}|[0-9a-fA-F]{64})"
+)
 PACKAGE_FIELD = re.compile(r"(?m)^package:\s+name='([^']+)'\s+versionCode='([0-9]+)'\s+versionName='([^']*)'")
 SHA40 = re.compile(r"[a-f0-9]{40}\Z")
 SHA64 = re.compile(r"[a-f0-9]{64}\Z")
@@ -120,15 +126,14 @@ def _run(args: list[str]) -> str:
 
 def inspect_android(apk: Path) -> dict:
     signatures = _run([_tool("apksigner"), "verify", "--print-certs", str(apk)])
-    fingerprints = set(CERT_FIELD.findall(signatures))
-    if len(fingerprints) != 1:
-        raise QualificationError("Could not establish a unique Android APK signing certificate")
-    if len(re.findall(r"(?im)^\s*Signer\s*#\d+\s+certificate\s+SHA-256\s+digest:", signatures)) != 1:
-        raise QualificationError("Multiple/unexpected Android signers")
-    if re.search(r"(?i)\bSigner\s*#(?:[2-9]|[1-9][0-9]+)\b", signatures):
-        raise QualificationError("Unexpected additional APK signers")
-    if not re.search(r"(?i)Signer\s*#1\s+certificate\s+DN:\s*CN=Android Debug\b", signatures):
-        raise QualificationError("CI artifact is not signed with a debug certificate")
+    signed = [(int(number), raw.replace(":", "").lower()) for number, raw in CERT_FIELD.findall(signatures)]
+    fingerprints = {digest for _, digest in signed}
+    if not signed or {number for number, _ in signed} != {1} or len(fingerprints) != 1:
+        raise QualificationError("Could not establish exactly one Android APK signing identity")
+    # Distinguished-name fields are not necessarily in CN-first order.
+    dn = re.search(r"(?im)^[ \t]*Signer[ \t]*#1[ \t]+certificate[ \t]+DN:[ \t]*(.+)$", signatures)
+    if not dn or not re.search(r"(?i)(?:^|,[ \t]*)CN=Android Debug(?:,|$)", dn.group(1).strip()):
+        raise QualificationError("CI artifact is not signed with the expected debug certificate")
     try:
         package_data = _run([_tool("aapt"), "dump", "badging", str(apk)])
     except QualificationError:
