@@ -18,3 +18,11 @@ local.properties
 smapi-internal.zip
 CINDERBOX_INSTALL_INSTRUCTIONS.md
 kls_database.db
+
+# Devtool-generated state and Android artifact copies (local-only).
+/.devtool/state/
+/.devtool/reports/
+/.devtool/tmp/
+/.devtool/build-artifacts/
+**/__pycache__/
+*.py[cod]

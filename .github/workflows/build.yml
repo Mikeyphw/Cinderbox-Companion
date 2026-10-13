@@ -2,7 +2,7 @@ name: Build Debug APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, 'security/**' ]
   pull_request:
     branches: [ main, master ]
 
@@ -24,6 +24,9 @@ jobs:
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
+
+      - name: Offline M0/M1 security source contract
+        run: python3 scripts/devtool/check_security_contract.py
 
       - name: Test, lint, and build debug APK
         run: ./gradlew testDebugUnitTest lintDebug assembleDebug
