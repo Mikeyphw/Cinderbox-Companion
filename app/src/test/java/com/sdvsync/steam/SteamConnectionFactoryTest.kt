@@ -54,15 +54,15 @@ class SteamConnectionFactoryTest {
     }
 
     @Test
-    fun `connection plan falls back from TCP to websocket once`() {
+    fun `connection plan falls back from websocket to TCP once`() {
         val webSocketOne = ServerRecord.createServer("wss-one.example", 443, ProtocolTypes.WEB_SOCKET)
         val webSocketTwo = ServerRecord.createServer("wss-two.example", 443, ProtocolTypes.WEB_SOCKET)
         val tcpOne = ServerRecord.createServer("tcp-one.example", 27017, ProtocolTypes.TCP)
         val tcpTwo = ServerRecord.createServer("tcp-two.example", 27017, ProtocolTypes.TCP)
         val plan = SteamConnectionPlan()
 
-        assertEquals(tcpOne, plan.begin(listOf(tcpOne, tcpTwo, webSocketOne, webSocketTwo)))
-        assertEquals(webSocketOne, plan.retry())
+        assertEquals(webSocketOne, plan.begin(listOf(tcpOne, tcpTwo, webSocketOne, webSocketTwo)))
+        assertEquals(tcpOne, plan.retry())
         assertNull(plan.retry())
     }
 
@@ -78,11 +78,11 @@ class SteamConnectionFactoryTest {
         )
 
         assertEquals(
-            listOf(tcp, defaultWebSocket),
+            listOf(defaultWebSocket, tcp),
             buildSteamConnectionCandidates(listOf(tcp), defaultTcp, defaultWebSocket)
         )
         assertEquals(
-            listOf(defaultTcp, webSocket),
+            listOf(webSocket, defaultTcp),
             buildSteamConnectionCandidates(listOf(webSocket), defaultTcp, defaultWebSocket)
         )
     }
@@ -93,7 +93,7 @@ class SteamConnectionFactoryTest {
         val webSocket = ServerRecord.createServer("wss.example", 443, ProtocolTypes.WEB_SOCKET)
         val plan = SteamConnectionPlan()
 
-        assertEquals(tcp, plan.begin(listOf(tcp, webSocket)))
+        assertEquals(webSocket, plan.begin(listOf(tcp, webSocket)))
         plan.clear()
 
         assertNull(plan.retry())

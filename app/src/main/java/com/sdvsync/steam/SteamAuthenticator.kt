@@ -60,6 +60,10 @@ private fun AuthState.isTransientAttemptState(): Boolean = this is AuthState.Con
     this is AuthState.Authenticating ||
     this is AuthState.LoggingIn
 
+// Pure policy, also exercised by Android unit tests.
+internal fun shouldRecoverOrphanedAuthState(state: AuthState): Boolean =
+    state.isTransientAttemptState()
+
 class SteamAuthenticator(
     private val context: Context,
     private val clientManager: SteamClientManager,
@@ -68,6 +72,10 @@ class SteamAuthenticator(
     companion object {
         private const val TAG = "SteamAuth"
         private const val CONNECT_TIMEOUT_MS = 30_000L
+        private const val AUTH_REQUEST_TIMEOUT_MS = 45_000L
+        private const val STEAM_GUARD_TIMEOUT_MS = 45_000L
+        private const val AUTH_POLL_TIMEOUT_MS = 120_000L
+        private const val LOGON_CALLBACK_TIMEOUT_MS = 30_000L
     }
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
@@ -247,6 +255,10 @@ class SteamAuthenticator(
             if (connectOrFail(attempt)) {
                 try {
                     logOnWithToken(attempt, username, refreshToken)
+                } catch (_: TimeoutCancellationException) {
+                    AppLogger.w(TAG, "Saved session login timed out")
+                    setState(attempt, AuthState.Error(context.getString(R.string.error_steam_verification_timeout)))
+                    clientManager.disconnect()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -275,15 +287,21 @@ class SteamAuthenticator(
             }
             val attemptScope = CoroutineScope(currentCoroutineContext() + Dispatchers.IO)
 
-            val session = SteamAuthentication(clientManager.client)
-                .beginAuthSessionViaCredentials(authDetails, attemptScope)
-                .await()
+            val session = withTimeout(AUTH_REQUEST_TIMEOUT_MS) {
+                SteamAuthentication(clientManager.client)
+                    .beginAuthSessionViaCredentials(authDetails, attemptScope)
+                    .await()
+            }
             ensureActive(attempt)
 
             val pollResponse = completeCredentialsAuthentication(attempt, session, attemptScope)
             ensureActive(attempt)
 
             logOnWithToken(attempt, username, pollResponse.refreshToken, pollResponse)
+        } catch (_: TimeoutCancellationException) {
+            AppLogger.w(TAG, "Steam credential authentication timed out")
+            setState(attempt, AuthState.Error(context.getString(R.string.error_steam_verification_timeout)))
+            clientManager.disconnect()
         } catch (e: CancellationException) {
             throw e
         } catch (e: AuthenticationException) {
@@ -320,7 +338,7 @@ class SteamAuthenticator(
             ensureActive(attempt)
             if (useMobileApproval) {
                 setState(attempt, AuthState.Authenticating)
-                return pollUntilResult(
+                return pollUntilResultBounded(
                     attempt = attempt,
                     session = session,
                     attemptScope = attemptScope,
@@ -334,13 +352,13 @@ class SteamAuthenticator(
 
         return when (val confirmationType = confirmation.confirmationType) {
             EAuthSessionGuardType.k_EAuthSessionGuardType_None -> {
-                pollUntilResult(attempt, session, attemptScope, delayBeforeFirstPoll = false)
+                pollUntilResultBounded(attempt, session, attemptScope, delayBeforeFirstPoll = false)
             }
 
             EAuthSessionGuardType.k_EAuthSessionGuardType_DeviceCode,
             EAuthSessionGuardType.k_EAuthSessionGuardType_EmailCode -> {
                 submitSteamGuardCode(attempt, session, confirmationType, attemptScope)
-                pollUntilResult(attempt, session, attemptScope, delayBeforeFirstPoll = false)
+                pollUntilResultBounded(attempt, session, attemptScope, delayBeforeFirstPoll = false)
             }
 
             EAuthSessionGuardType.k_EAuthSessionGuardType_Unknown -> {
@@ -385,7 +403,9 @@ class SteamAuthenticator(
             setState(attempt, AuthState.Authenticating)
 
             try {
-                session.sendSteamGuardCode(code, confirmationType, attemptScope).await()
+                withTimeout(STEAM_GUARD_TIMEOUT_MS) {
+                    session.sendSteamGuardCode(code, confirmationType, attemptScope).await()
+                }
                 return
             } catch (e: AuthenticationException) {
                 if (e.result != invalidCodeResult) {
@@ -394,6 +414,15 @@ class SteamAuthenticator(
                 previousCodeWasIncorrect = true
             }
         }
+    }
+
+    private suspend fun pollUntilResultBounded(
+        attempt: AuthAttemptToken,
+        session: AuthSession,
+        attemptScope: CoroutineScope,
+        delayBeforeFirstPoll: Boolean
+    ): AuthPollResult = withTimeout(AUTH_POLL_TIMEOUT_MS) {
+        pollUntilResult(attempt, session, attemptScope, delayBeforeFirstPoll)
     }
 
     private suspend fun pollUntilResult(
@@ -473,7 +502,7 @@ class SteamAuthenticator(
             }
             setState(attempt, AuthState.WaitingForQRScan(qrSession.challengeUrl))
 
-            val pollResult = pollUntilResult(
+            val pollResult = pollUntilResultBounded(
                 attempt = attempt,
                 session = qrSession,
                 attemptScope = attemptScope,
@@ -482,6 +511,10 @@ class SteamAuthenticator(
             ensureActive(attempt)
 
             logOnWithToken(attempt, pollResult.accountName, pollResult.refreshToken, pollResult)
+        } catch (_: TimeoutCancellationException) {
+            AppLogger.w(TAG, "Steam QR authentication timed out")
+            setState(attempt, AuthState.Error(context.getString(R.string.error_steam_verification_timeout)))
+            clientManager.disconnect()
         } catch (e: CancellationException) {
             throw e
         } catch (e: AuthenticationException) {
@@ -523,7 +556,7 @@ class SteamAuthenticator(
                 throw CancellationException("Authentication ended before Steam logon started")
             }
 
-            val callback = callbackResult.await()
+            val callback = withTimeout(LOGON_CALLBACK_TIMEOUT_MS) { callbackResult.await() }
             ensureActive(attempt)
             handleLoggedOn(attempt, username, newAuthResult, callback)
         } finally {
@@ -647,6 +680,12 @@ class SteamAuthenticator(
 
     private fun handleActiveConnectionLoss(currentAuthState: AuthState): Boolean {
         if (authAttempts.activeAttempt() == null) {
+            // An asynchronous attempt can finish just before its disconnect callback.
+            // Do not strand the UI on Authenticating / LoggingIn without a live job.
+            if (shouldRecoverOrphanedAuthState(currentAuthState)) {
+                _authState.value = AuthState.Error(context.getString(R.string.error_steam_disconnected_login))
+                return true
+            }
             return false
         }
         if (currentAuthState is AuthState.Error) {

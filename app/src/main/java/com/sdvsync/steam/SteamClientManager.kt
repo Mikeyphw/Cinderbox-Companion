@@ -72,9 +72,10 @@ internal fun buildSteamConnectionCandidates(
         it != preferredTcp && it.protocolTypes.contains(ProtocolTypes.WEB_SOCKET)
     } ?: defaultWebSocket
 
+    // Prefer WSS for interactive authentication; retain TCP as one fallback.
     return buildList(2) {
-        preferredTcp?.let(::add)
         add(preferredWebSocket)
+        preferredTcp?.let(::add)
     }.distinct()
 }
 
@@ -198,7 +199,7 @@ class SteamClientManager(context: Context, sessionStore: SteamSessionStore) {
 
         AppLogger.d(
             TAG,
-            "Initialized with TCP-first and stable WebSocket fallback, FileServerListProvider, " +
+            "Initialized with stable WebSocket-first and TCP fallback, FileServerListProvider, " +
                 "cellId=$savedCellId"
         )
     }
