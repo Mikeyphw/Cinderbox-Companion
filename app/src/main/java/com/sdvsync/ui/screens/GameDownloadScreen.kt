@@ -581,7 +581,15 @@ fun GameDownloadScreen(onBack: () -> Unit, viewModel: GameDownloadViewModel = ko
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(stringResource(R.string.action_retry))
+                        Text(if (state.hasRecoverableDownload) "Resume interrupted download"
+                            else stringResource(R.string.action_retry))
+                    }
+                    if (state.hasRecoverableDownload) {
+                        Spacer(Modifier.height(8.dp))
+                        StardewOutlinedButton(
+                            onClick = { viewModel.discardInterruptedDownload() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Discard recovery record — Keep game files") }
                     }
                 }
 
@@ -604,7 +612,15 @@ fun GameDownloadScreen(onBack: () -> Unit, viewModel: GameDownloadViewModel = ko
                         variant = StardewButtonVariant.Gold,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(stringResource(R.string.download_button))
+                        Text(if (state.hasRecoverableDownload) "Resume interrupted download"
+                            else stringResource(R.string.download_button))
+                    }
+                    if (state.hasRecoverableDownload) {
+                        Spacer(Modifier.height(8.dp))
+                        StardewOutlinedButton(
+                            onClick = { viewModel.discardInterruptedDownload() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Discard recovery record — Keep game files") }
                     }
                 }
             }

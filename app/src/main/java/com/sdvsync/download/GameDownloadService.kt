@@ -25,6 +25,7 @@ import `in`.dragonbra.javasteam.depotdownloader.data.DownloadItem
 import java.io.File
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.update
@@ -79,6 +80,7 @@ class GameDownloadService : Service() {
 
     // Track cumulative bytes per depot (callback values are cumulative, not deltas)
     private val depotBytes = ConcurrentHashMap<Int, Long>()
+    private val failedItems = AtomicBoolean(false)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -136,11 +138,9 @@ class GameDownloadService : Service() {
         try {
             val installRoot = File(installDir)
             StoragePreflight.requireWritable(installRoot)
-            val detected = InstallationScanner.game(installRoot).health
-            check(detected != InstallHealth.STRUCTURALLY_VALID && detected != InstallHealth.INCOMPLETE &&
-                detected != InstallHealth.DETECTED && detected != InstallHealth.INACCESSIBLE) {
-                "Existing or inaccessible game directory; refusing to overwrite"
-            }
+            // Only a checkpoint written by our manager authorizes touching partial files.
+            // This also rejects intents manually dispatched to the service.
+            GameDownloadRecovery(filesDir).requireMatching(installRoot, branch, os, verify)
             GameDownloadManager._progress.value = DownloadProgress(state = DownloadState.PREPARING)
             updateNotification(getString(R.string.download_preparing))
 
@@ -187,6 +187,7 @@ class GameDownloadService : Service() {
             lastSpeedUpdateMs.set(System.currentTimeMillis())
             lastSpeedBytes.set(0L)
             depotBytes.clear()
+            failedItems.set(false)
             val completedFiles = Collections.synchronizedSet(mutableSetOf<String>())
 
             downloader.addListener(object : IDownloadListener {
@@ -282,6 +283,7 @@ class GameDownloadService : Service() {
                 }
 
                 override fun onDownloadFailed(item: DownloadItem, error: Throwable) {
+                    failedItems.set(true)
                     try {
                         AppLogger.e(TAG, "Download failed", error)
                         GameDownloadManager._progress.value = DownloadProgress(
@@ -325,11 +327,16 @@ class GameDownloadService : Service() {
             downloader.finishAdding()
             downloader.awaitCompletion()
 
+            // A per-item callback can report failure without throwing awaitCompletion().
+            check(!failedItems.get() && GameDownloadManager._progress.value.state != DownloadState.ERROR) {
+                "Steam reported a failed depot or file download"
+            }
             AppLogger.d(TAG, "Download pipeline finished")
 
             if (verify) {
                 verifyFiles(installDir, completedFiles)
             } else {
+                GameDownloadRecovery(filesDir).completed()
                 GameDownloadManager._progress.value = DownloadProgress(
                     state = DownloadState.COMPLETED,
                     overallPercent = 1f
@@ -363,70 +370,43 @@ class GameDownloadService : Service() {
         }
     }
 
+    /** Persist SHA-256 hashes and detect changed/unreadable game files.
+     * This is local integrity checking; Steam authenticates chunks during transfer.
+     */
     private suspend fun verifyFiles(installDir: String, completedFiles: Set<String>) {
-        AppLogger.d(TAG, "Starting file verification for ${completedFiles.size} tracked files")
-
-        val installRoot = File(installDir)
-        // Walk the install directory, excluding .DepotDownloader metadata
-        val allFiles = installRoot.walk()
-            .filter { it.isFile && !it.relativeTo(installRoot).path.startsWith(".DepotDownloader") }
-            .toList()
-
-        val totalFiles = allFiles.size
-        AppLogger.d(TAG, "Found $totalFiles files on disk (tracked ${completedFiles.size} during download)")
-
+        val root = File(installDir)
         GameDownloadManager._progress.value = DownloadProgress(
-            state = DownloadState.VERIFYING,
-            overallPercent = 0f,
-            totalFilesToVerify = totalFiles
+            state = DownloadState.VERIFYING, totalFilesToVerify = completedFiles.size
         )
         updateNotification(getString(R.string.download_notification_verifying, 0))
-
-        val errors = mutableListOf<String>()
-        val buffer = ByteArray(64 * 1024)
-
-        for ((index, file) in allFiles.withIndex()) {
-            yield()
-
-            val relativePath = file.relativeTo(installRoot).path
-            try {
-                if (file.length() == 0L) {
-                    AppLogger.d(TAG, "Verify: $relativePath is 0 bytes (ok)")
-                } else {
-                    file.inputStream().use { input ->
-                        while (input.read(buffer) != -1) { }
-                    }
-                }
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Verify failed: $relativePath", e)
-                errors.add(relativePath)
+        val activeJob = currentCoroutineContext()[Job]
+        val report = GameFileIntegrity(filesDir).verifyAndRecord(root) { done, total, name ->
+            activeJob?.ensureActive()
+            val percent = if (total > 0) done.toFloat() / total else 0f
+            GameDownloadManager._progress.update {
+                it.copy(state = DownloadState.VERIFYING, verifiedFiles = done,
+                    totalFilesToVerify = total, overallPercent = percent, currentFile = name)
             }
-
-            val verified = index + 1
-            val percent = verified.toFloat() / totalFiles
-            GameDownloadManager._progress.value = DownloadProgress(
-                state = DownloadState.VERIFYING,
-                overallPercent = percent,
-                verifiedFiles = verified,
-                totalFilesToVerify = totalFiles,
-                currentFile = relativePath
-            )
-
-            if (verified % maxOf(1, totalFiles / 20) == 0 || verified == totalFiles) {
+            if (done % maxOf(1, total / 20) == 0 || done == total) {
                 updateNotification(getString(R.string.download_notification_verifying, (percent * 100).toInt()))
             }
         }
-
-        val passed = errors.isEmpty()
-        AppLogger.d(TAG, "Verification ${if (passed) "PASSED" else "FAILED"}: $totalFiles files, ${errors.size} errors")
-
+        if (!report.passed) {
+            GameDownloadManager._progress.value = DownloadProgress(
+                state = DownloadState.ERROR, verificationPassed = false,
+                verifiedFiles = report.files, totalFilesToVerify = report.files,
+                verificationErrors = report.errors,
+                errorMessage = "Local game file integrity verification failed"
+            )
+            updateNotification("File verification failed. Retry to repair this download.")
+            return
+        }
+        // Do not retire recovery until the file audit and ledger commit both succeeded.
+        GameDownloadRecovery(filesDir).completed()
         GameDownloadManager._progress.value = DownloadProgress(
-            state = DownloadState.COMPLETED,
-            overallPercent = 1f,
-            verifiedFiles = totalFiles,
-            totalFilesToVerify = totalFiles,
-            verificationPassed = passed,
-            verificationErrors = errors
+            state = DownloadState.COMPLETED, overallPercent = 1f,
+            verifiedFiles = report.files, totalFilesToVerify = report.files,
+            verificationPassed = true
         )
         updateNotification(getString(R.string.download_complete))
     }
