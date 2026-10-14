@@ -36,6 +36,7 @@ import androidx.navigation.navArgument
 import com.sdvsync.logging.AppLogger
 import com.sdvsync.mods.ModDownloadManager
 import com.sdvsync.mods.api.NexusModSource
+import com.sdvsync.steam.SteamAuthenticator
 import com.sdvsync.ui.components.AppUpdateDialog
 import com.sdvsync.ui.components.BottomTab
 import com.sdvsync.ui.components.CinderboxMigrationDialog
@@ -70,6 +71,7 @@ class MainActivity : ComponentActivity() {
 
     private val nexusSource: NexusModSource by inject()
     private val downloadManager: ModDownloadManager by inject()
+    private val steamAuthenticator: SteamAuthenticator by inject()
 
     /** URI from an incoming .sdvsync file intent, consumed by the DashboardScreen. */
     var pendingImportUri: android.net.Uri? = null
@@ -91,6 +93,16 @@ class MainActivity : ComponentActivity() {
                 SdvSyncNavGraph(navController)
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        steamAuthenticator.onAppForeground()
+    }
+
+    override fun onStop() {
+        steamAuthenticator.onAppBackground()
+        super.onStop()
     }
 
     override fun onNewIntent(intent: Intent) {

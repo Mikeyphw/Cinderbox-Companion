@@ -63,8 +63,10 @@ class M3GSourceContracts(unittest.TestCase):
 
     def test_reconnect_bounded_and_cancelable(self):
         auth = read('app/src/main/java/com/sdvsync/steam/SteamAuthenticator.kt')
-        self.assertIn('repeat(6)', auth)
-        self.assertIn('30_000L', auth)
+        runner = read('app/src/main/java/com/sdvsync/steam/SavedSessionReconnectRunner.kt')
+        self.assertIn('1..6', runner)
+        self.assertIn('30_000L', runner)
+        self.assertIn('supervisorScope', runner)
         self.assertIn('autoReconnectJob?.cancel()', auth)
         self.assertIn('loginWithSavedSession()', auth)
         self.assertIn('reconnect_exhausted', auth)
