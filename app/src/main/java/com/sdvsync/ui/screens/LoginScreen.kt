@@ -57,6 +57,7 @@ import org.koin.androidx.compose.koinViewModel
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onOpenSettings: () -> Unit,
+    onContinueOffline: () -> Unit = {},
     viewModel: LoginViewModel = koinViewModel()
 ) {
     val authState by viewModel.authState.collectAsState()
@@ -273,6 +274,14 @@ fun LoginScreen(
 
                 is AuthState.LoggedIn -> {
                     PixelLoadingSpinner()
+                }
+            }
+
+            // An offline launch keeps local saves, backups, mods and settings accessible.
+            if (authState !is AuthState.LoggedIn) {
+                Spacer(Modifier.height(12.dp))
+                StardewOutlinedButton(onClick = onContinueOffline, modifier = Modifier.fillMaxWidth()) {
+                    Text("Continue offline")
                 }
             }
 

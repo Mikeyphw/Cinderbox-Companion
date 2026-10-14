@@ -61,6 +61,7 @@ fun GameDownloadScreen(onBack: () -> Unit, viewModel: GameDownloadViewModel = ko
     }
     LifecycleResumeEffect(Unit) {
         viewModel.refreshInstalledVersions()
+        viewModel.refreshSelectedDirectoryHealth()
         onPauseOrDispose {}
     }
 
@@ -296,6 +297,17 @@ fun GameDownloadScreen(onBack: () -> Unit, viewModel: GameDownloadViewModel = ko
                 }
             }
 
+            // Read-only assessment of the selected path, not a hash verification.
+            state.selectedInstallHealth?.let { health ->
+                Text("Selected folder: ${health.health.name.replace('_', ' ')}",
+                    style = MaterialTheme.typography.titleSmall)
+                Text(health.details, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(12.dp))
+            }
+            if (!state.storageReady) {
+                Text("Download blocked: ${state.storageDetail}", color = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.height(12.dp))
+            }
             // Verification toggle
             StardewCard {
                 Row(

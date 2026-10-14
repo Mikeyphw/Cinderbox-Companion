@@ -3,6 +3,7 @@ package com.sdvsync.download
 import android.content.Context
 import com.sdvsync.BuildConfig
 import com.sdvsync.logging.AppLogger
+import com.sdvsync.local.StoragePreflight
 import java.io.File
 import java.security.MessageDigest
 import kotlin.coroutines.coroutineContext
@@ -53,6 +54,7 @@ class AppUpdateManager(
     @Suppress("DEPRECATION")
     suspend fun downloadUpdate(release: GitHubReleaseInfo, onProgress: (Float) -> Unit): File? =
         withContext(Dispatchers.IO) {
+            StoragePreflight.requireWritable(context.cacheDir)
             val expected = try {
                 TrustedUpdate.expectedSha256(
                     release.assetUrl, release.assetName, release.assetSize, release.assetDigest

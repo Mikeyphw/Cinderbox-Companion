@@ -50,6 +50,7 @@ import com.sdvsync.ui.components.StardewBottomBar
 import com.sdvsync.ui.screens.BackupListScreen
 import com.sdvsync.ui.screens.DashboardScreen
 import com.sdvsync.ui.screens.GameDownloadScreen
+import com.sdvsync.ui.screens.InstallationHealthScreen
 import com.sdvsync.ui.screens.InstalledModDetailScreen
 import com.sdvsync.ui.screens.LoginScreen
 import com.sdvsync.ui.screens.ModBrowseScreen
@@ -272,7 +273,13 @@ fun SdvSyncNavGraph(navController: NavHostController) {
                         popUpTo("login") { inclusive = true }
                     }
                 },
-                onOpenSettings = { navController.navigate("prelogin_settings") }
+                onOpenSettings = { navController.navigate("prelogin_settings") },
+                onContinueOffline = {
+                    navController.navigate("main") {
+                        popUpTo("login") { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
             )
         }
 
@@ -282,8 +289,12 @@ fun SdvSyncNavGraph(navController: NavHostController) {
                 onBack = { navController.popBackStack() },
                 onLogout = { navController.popBackStack() },
                 preLogin = true,
-                onOpenDeveloperDiagnostics = { navController.navigate("steam_diagnostics") }
+                onOpenDeveloperDiagnostics = { navController.navigate("steam_diagnostics") },
+                onOpenInstallationHealth = { navController.navigate("installation_health") }
             )
+        }
+        composable("installation_health") {
+            InstallationHealthScreen(onBack = { navController.popBackStack() })
         }
         composable("steam_diagnostics") {
             SteamDiagnosticsScreen(onBack = { navController.popBackStack() })
@@ -472,6 +483,9 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
             // Saves tab
             composable("saves") {
                 DashboardScreen(
+                    onSignInClick = { parentNavController.navigate("login") },
+                    onBackupsClick = { folderName -> parentNavController.navigate("backups/$folderName") },
+                    onViewSaveClick = { folderName -> parentNavController.navigate("save_viewer/$folderName") },
                     onSaveClick = { folderName, hasCloud, hasLocal ->
                         parentNavController.navigate("sync_detail/$folderName/$hasCloud/$hasLocal")
                     },
@@ -525,7 +539,8 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
                             popUpTo(0) { inclusive = true }
                         }
                     },
-                    onOpenDeveloperDiagnostics = { parentNavController.navigate("steam_diagnostics") }
+                    onOpenDeveloperDiagnostics = { parentNavController.navigate("steam_diagnostics") },
+                    onOpenInstallationHealth = { parentNavController.navigate("installation_health") }
                 )
             }
         }

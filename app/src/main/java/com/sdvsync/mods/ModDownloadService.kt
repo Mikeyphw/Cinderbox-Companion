@@ -13,6 +13,8 @@ import androidx.core.app.NotificationCompat
 import com.sdvsync.MainActivity
 import com.sdvsync.R
 import com.sdvsync.logging.AppLogger
+import com.sdvsync.local.StoragePreflight
+import com.sdvsync.cinderbox.CinderboxPaths
 import com.sdvsync.mods.models.InstallResult
 import com.sdvsync.mods.models.ModDownloadProgress
 import com.sdvsync.mods.models.ModDownloadState
@@ -99,6 +101,8 @@ class ModDownloadService : Service() {
 
     private suspend fun runDownload(url: String, modName: String, modId: String, source: String) {
         try {
+            StoragePreflight.requireWritable(File(CinderboxPaths.MODS_DIR))
+            StoragePreflight.requireWritable(cacheDir)
             // Download
             ModDownloadManager._progress.value =
                 ModDownloadProgress(
