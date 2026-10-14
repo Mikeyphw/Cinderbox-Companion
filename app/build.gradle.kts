@@ -1,4 +1,6 @@
 import java.util.Properties
+import com.android.build.api.instrumentation.InstrumentationScope
+import com.sdvsync.build.AndroidSafeMachineIdVisitorFactory
 
 plugins {
     alias(libs.plugins.android.application)
@@ -74,6 +76,17 @@ android {
             excludes += "META-INF/BCKEY.SF"
         }
         jniLibs { useLegacyPackaging = true }
+    }
+}
+
+// Rewrite JavaSteam 1.8.0 HardwareUtils.getMachineID(), not the ROM or dependency cache.
+// Apply to ALL compiled classes including external dependency jars.
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.instrumentation.transformClassesWith(
+            AndroidSafeMachineIdVisitorFactory::class.java,
+            InstrumentationScope.ALL
+        ) { }
     }
 }
 

@@ -69,7 +69,7 @@ class GitHubReleaseChecker(private val context: Context, private val httpClient:
                     json = fetchFirstRelease(repo)
                 }
                 if (json == null) {
-                    AppLogger.e(TAG, "No releases found for $repo")
+                    AppLogger.i(TAG, "No published GitHub releases for $repo")
                     return@withContext cachedJson?.let { parseReleaseInfoFromCache(it) }
                 }
                 val tagName = json.getString("tag_name")

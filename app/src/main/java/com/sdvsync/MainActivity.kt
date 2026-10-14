@@ -50,6 +50,7 @@ import com.sdvsync.ui.screens.ModDetailScreen
 import com.sdvsync.ui.screens.ModManagerScreen
 import com.sdvsync.ui.screens.SaveViewerScreen
 import com.sdvsync.ui.screens.SettingsScreen
+import com.sdvsync.ui.screens.SteamDiagnosticsScreen
 import com.sdvsync.ui.screens.SyncDetailScreen
 import com.sdvsync.ui.screens.SyncLogScreen
 import com.sdvsync.ui.theme.SdvSyncTheme
@@ -249,8 +250,12 @@ fun SdvSyncNavGraph(navController: NavHostController) {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onLogout = { navController.popBackStack() },
-                preLogin = true
+                preLogin = true,
+                onOpenDeveloperDiagnostics = { navController.navigate("steam_diagnostics") }
             )
+        }
+        composable("steam_diagnostics") {
+            SteamDiagnosticsScreen(onBack = { navController.popBackStack() })
         }
 
         // Main section with bottom bar
@@ -488,7 +493,8 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
                         parentNavController.navigate("login") {
                             popUpTo(0) { inclusive = true }
                         }
-                    }
+                    },
+                    onOpenDeveloperDiagnostics = { parentNavController.navigate("steam_diagnostics") }
                 )
             }
         }

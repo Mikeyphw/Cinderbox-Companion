@@ -89,6 +89,9 @@ jobs:
       - name: Run M3 evidence contract regression tests
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m3_*.py' -v
 
+      - name: M3G Steam regression tests
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m3g_*.py' -v
+
       - name: Enforce M3B non-publishing policy and regressions
         run: |
           python3 scripts/devtool/m3b_release_candidate.py policy

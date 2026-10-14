@@ -289,6 +289,8 @@ class SteamClientManager(context: Context, sessionStore: SteamSessionStore) {
         }
 
         _connectionState.value = ConnectionState.CONNECTING
+        SteamDiagnostics.setTransport(candidate.protocolTypes.toString())
+        SteamDiagnostics.record(SteamDiagnostics.Phase.CONNECTING, "cm_connect_started")
         retryAwaitingClaim = false
         AppLogger.d(TAG, "Connecting to Steam CM via ${candidate.protocolTypes}")
         client.connect(candidate)
@@ -335,6 +337,7 @@ class SteamClientManager(context: Context, sessionStore: SteamSessionStore) {
         }
 
         AppLogger.d(TAG, "Connected to Steam")
+        SteamDiagnostics.record(SteamDiagnostics.Phase.AUTHENTICATING, "cm_transport_connected")
         retryAwaitingClaim = false
         connectionPlan.clear()
         _connectionState.value = ConnectionState.CONNECTED
@@ -342,6 +345,7 @@ class SteamClientManager(context: Context, sessionStore: SteamSessionStore) {
 
     fun onLoggedIn() {
         AppLogger.d(TAG, "Logged in to Steam")
+        SteamDiagnostics.record(SteamDiagnostics.Phase.CONNECTED, "steam_logon_ok")
         _connectionState.value = ConnectionState.LOGGED_IN
     }
 
@@ -370,6 +374,11 @@ class SteamClientManager(context: Context, sessionStore: SteamSessionStore) {
         retryAwaitingClaim = false
         connectionPlan.clear()
         _connectionState.value = ConnectionState.DISCONNECTED
+        SteamDiagnostics.record(
+            SteamDiagnostics.Phase.OFFLINE,
+            if (userInitiated) "transport_closed_intentionally" else "transport_closed_unexpectedly",
+            failure = !userInitiated
+        )
         DisconnectDisposition.TERMINAL
     }
 

@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -72,6 +73,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onLogout: () -> Unit,
     preLogin: Boolean = false,
+    onOpenDeveloperDiagnostics: () -> Unit = {},
     viewModel: SettingsViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -80,6 +82,9 @@ fun SettingsScreen(
 
     val context = LocalContext.current
     var confirmRoot by remember { mutableStateOf(false) }
+    val developerPrefs = remember(context) { context.getSharedPreferences("hidden_developer_features", android.content.Context.MODE_PRIVATE) }
+    var developerUnlocked by remember { mutableStateOf(developerPrefs.getBoolean("steam_diagnostics_enabled", false)) }
+    var developerTaps by rememberSaveable { mutableIntStateOf(0) }
 
     val allFilesLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -458,7 +463,16 @@ fun SettingsScreen(
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
                         stringResource(R.string.settings_about, BuildConfig.VERSION_NAME),
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.clickable {
+                            if (!developerUnlocked) {
+                                developerTaps++
+                                if (developerTaps >= 7) {
+                                    developerUnlocked = true
+                                    developerPrefs.edit().putBoolean("steam_diagnostics_enabled", true).apply()
+                                }
+                            }
+                        }
                     )
                     Text(
                         stringResource(R.string.settings_about_desc),
@@ -541,6 +555,12 @@ fun SettingsScreen(
             // Diagnostics
             SectionHeader(stringResource(R.string.settings_diagnostics_title))
             Spacer(Modifier.height(8.dp))
+            if (developerUnlocked) {
+                StardewOutlinedButton(onClick = onOpenDeveloperDiagnostics) {
+                    Text("Developer: Steam diagnostics & 1h connection history")
+                }
+                Spacer(Modifier.height(12.dp))
+            }
             StardewCard {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(

@@ -30,6 +30,8 @@ import `in`.dragonbra.javasteam.networking.steam3.NetMsgEventArgs
 import `in`.dragonbra.javasteam.networking.steam3.ProtocolTypes
 import `in`.dragonbra.javasteam.util.log.LogManager
 import io.ktor.client.HttpClient
+import com.sdvsync.steam.SteamDiagnostics
+import io.ktor.websocket.readReason
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.pingInterval
@@ -58,7 +60,7 @@ import kotlinx.coroutines.withTimeout
 internal class StableWebSocketConnection : Connection() {
     companion object {
         private val logger = LogManager.getLogger<StableWebSocketConnection>()
-        private val PING_INTERVAL = 5.toDuration(DurationUnit.SECONDS)
+        private val PING_INTERVAL = 20.toDuration(DurationUnit.SECONDS)
         private val UNSPECIFIED_ADDRESS = InetAddress.getByAddress(byteArrayOf(0, 0, 0, 0))
     }
 
@@ -126,18 +128,26 @@ internal class StableWebSocketConnection : Connection() {
                             NetMsgEventArgs(frame.readBytes(), currentEndPoint)
                         )
 
-                        is Frame.Close -> disconnectInternal(userInitiated = false)
-                        is Frame.Ping -> logger.debug("Received WebSocket ping")
-                        is Frame.Pong -> logger.debug("Received WebSocket pong")
+                        is Frame.Close -> {
+                            val closeCode = frame.readReason()?.code?.toString() ?: "unknown"
+                            SteamDiagnostics.record(SteamDiagnostics.Phase.OFFLINE, "websocket_close_code_$closeCode", failure = true)
+                            disconnectInternal(userInitiated = false, expectedGeneration = generation)
+                        }
+                        is Frame.Ping -> { logger.debug("Received WebSocket ping"); SteamDiagnostics.trace("websocket_ping_received") }
+                        is Frame.Pong -> { logger.debug("Received WebSocket pong"); SteamDiagnostics.trace("websocket_pong_received") }
                         is Frame.Text -> logger.debug(
                             "Received WebSocket text frame (${frame.data.size} bytes)"
                         )
                     }
                 }
 
+                if (isCurrentGeneration(generation)) {
+                    SteamDiagnostics.record(SteamDiagnostics.Phase.OFFLINE, "websocket_stream_ended", failure = true)
+                }
                 disconnectInternal(userInitiated = false, expectedGeneration = generation)
             } catch (e: TimeoutCancellationException) {
                 logger.error("Stable WebSocket connection timed out", e)
+                SteamDiagnostics.record(SteamDiagnostics.Phase.OFFLINE, "websocket_timeout", failure = true)
                 disconnectInternal(userInitiated = false, expectedGeneration = generation)
             } catch (e: CancellationException) {
                 if (isCurrentGeneration(generation)) {
@@ -146,6 +156,7 @@ internal class StableWebSocketConnection : Connection() {
                 throw e
             } catch (e: Exception) {
                 logger.error("Stable WebSocket connection failed", e)
+                SteamDiagnostics.record(SteamDiagnostics.Phase.OFFLINE, "websocket_exception", failure = true)
                 disconnectInternal(userInitiated = false, expectedGeneration = generation)
             }
         }
@@ -211,6 +222,7 @@ internal class StableWebSocketConnection : Connection() {
                 currentSession?.send(Frame.Binary(fin = true, data = data))
             } catch (e: Exception) {
                 logger.error("Stable WebSocket send failed", e)
+                SteamDiagnostics.record(SteamDiagnostics.Phase.OFFLINE, "websocket_send_exception", failure = true)
                 disconnectInternal(userInitiated = false)
             }
         }
