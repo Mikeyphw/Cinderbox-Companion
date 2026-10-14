@@ -2,6 +2,9 @@ package com.sdvsync.download
 
 import android.content.Context
 import com.sdvsync.cinderbox.CinderboxPaths
+import com.sdvsync.local.InstallationScanner
+import com.sdvsync.local.InstallHealth
+import com.sdvsync.local.StoragePreflight
 import com.sdvsync.logging.AppLogger
 import java.io.File
 import java.nio.file.Files
@@ -140,6 +143,13 @@ class GameDownloadManager(
         os: String = "windows",
         verifyAfterDownload: Boolean = true
     ) {
+        val directory = File(installDirectory)
+        StoragePreflight.requireWritable(directory)
+        val health = InstallationScanner.game(directory).health
+        check(health != InstallHealth.INCOMPLETE && health != InstallHealth.INACCESSIBLE &&
+            health != InstallHealth.DETECTED && health != InstallHealth.STRUCTURALLY_VALID) {
+            "Selected folder already contains files or is inaccessible; choose an empty destination"
+        }
         GameDownloadService.start(
             context = context,
             branch = branch,
@@ -155,6 +165,8 @@ class GameDownloadManager(
     }
 
     suspend fun downloadCinderboxApk() {
+        StoragePreflight.requireWritable(File(CinderboxPaths.DESKTOP_DIR))
+        StoragePreflight.requireWritable(context.cacheDir)
         _cinderboxProgress.value = CinderboxDownloadProgress(isDownloading = true)
         withContext(Dispatchers.IO) {
             try {
@@ -195,6 +207,8 @@ class GameDownloadManager(
     }
 
     suspend fun downloadSmapiZip(): File? = withContext(Dispatchers.IO) {
+        StoragePreflight.requireWritable(File(CinderboxPaths.SMAPI_DIR))
+        StoragePreflight.requireWritable(context.cacheDir)
         try {
             val releaseInfo = checkNotNull(releaseChecker.getLatestRelease(
                 GitHubReleaseChecker.SMAPI_REPO, GitHubReleaseChecker.SMAPI_ASSET_PATTERN

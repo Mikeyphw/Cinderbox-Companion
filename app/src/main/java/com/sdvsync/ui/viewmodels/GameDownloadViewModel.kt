@@ -9,6 +9,11 @@ import com.sdvsync.cinderbox.CinderboxPaths
 import com.sdvsync.download.CinderboxDownloadProgress
 import com.sdvsync.download.DownloadProgress
 import com.sdvsync.download.GameDownloadManager
+import com.sdvsync.local.InstallationScanner
+import com.sdvsync.local.InstallAssessment
+import com.sdvsync.local.InstallHealth
+import com.sdvsync.local.StoragePreflight
+import java.io.File
 import com.sdvsync.download.GitHubReleaseChecker
 import com.sdvsync.download.SmapiSetupProgress
 import com.sdvsync.fileaccess.FileAccessDetector
@@ -49,6 +54,9 @@ data class GameDownloadState(
     val branchPassword: String = "",
     val selectedOs: String = "windows",
     val installDirectory: String = "",
+    val selectedInstallHealth: InstallAssessment? = null,
+    val storageReady: Boolean = false,
+    val storageDetail: String = "Storage not checked",
     val verifyAfterDownload: Boolean = true,
     val downloadProgress: DownloadProgress = DownloadProgress(),
     val smapiSetupProgress: SmapiSetupProgress = SmapiSetupProgress(),
@@ -95,8 +103,13 @@ class GameDownloadViewModel(
         val defaultDir = Environment.getExternalStoragePublicDirectory(
             Environment.DIRECTORY_DOWNLOADS
         ).resolve("StardewValley").absolutePath
+        val savedDir = context.getSharedPreferences("m4_local_install", Context.MODE_PRIVATE)
+            .getString("game_dir", null) ?: defaultDir
         _state.value = _state.value.copy(
-            installDirectory = defaultDir,
+            installDirectory = savedDir,
+            selectedInstallHealth = InstallationScanner.game(File(savedDir)),
+            storageReady = StoragePreflight.check(File(savedDir)).writable,
+            storageDetail = StoragePreflight.check(File(savedDir)).details,
             isCinderboxSetup = fileAccessDetector.getSetupType() == SETUP_TYPE_CINDERBOX
         )
 
@@ -262,7 +275,23 @@ class GameDownloadViewModel(
     }
 
     fun updateInstallDirectory(path: String) {
-        _state.value = _state.value.copy(installDirectory = path)
+        context.getSharedPreferences("m4_local_install", Context.MODE_PRIVATE)
+            .edit().putString("game_dir", path).apply()
+        _state.value = _state.value.copy(
+            installDirectory = path,
+            selectedInstallHealth = InstallationScanner.game(File(path)),
+            storageReady = StoragePreflight.check(File(path)).writable,
+            storageDetail = StoragePreflight.check(File(path)).details
+        )
+    }
+
+    fun refreshSelectedDirectoryHealth() {
+        val path = _state.value.installDirectory
+        _state.value = _state.value.copy(
+            selectedInstallHealth = InstallationScanner.game(File(path)),
+            storageReady = StoragePreflight.check(File(path)).writable,
+            storageDetail = StoragePreflight.check(File(path)).details
+        )
     }
 
     fun updateBranchPassword(password: String) {
@@ -290,6 +319,16 @@ class GameDownloadViewModel(
             return
         }
 
+        val selectedHealth = InstallationScanner.game(File(current.installDirectory))
+        val storage = StoragePreflight.check(File(current.installDirectory))
+        if (!storage.writable || selectedHealth.health == InstallHealth.INACCESSIBLE ||
+            selectedHealth.health == InstallHealth.INCOMPLETE ||
+            selectedHealth.health == InstallHealth.STRUCTURALLY_VALID ||
+            selectedHealth.health == InstallHealth.DETECTED) {
+            _state.value = current.copy(error = if (!storage.writable) storage.details else
+                "Existing game files detected (${selectedHealth.health}). Choose an empty destination; M4 never overwrites existing installations.")
+            return
+        }
         val selectedBranchInfo = current.branches.find { it.name == current.selectedBranch }
         if (selectedBranchInfo?.passwordRequired == true && current.branchPassword.isBlank()) {
             _state.value = current.copy(error = context.getString(R.string.download_error_password_required))
@@ -304,13 +343,17 @@ class GameDownloadViewModel(
 
         _state.value = current.copy(error = null)
 
-        downloadManager.startDownload(
-            branch = current.selectedBranch,
-            branchPassword = current.branchPassword.ifBlank { null },
-            installDirectory = current.installDirectory,
-            os = current.selectedOs,
-            verifyAfterDownload = current.verifyAfterDownload
-        )
+        try {
+            downloadManager.startDownload(
+                branch = current.selectedBranch,
+                branchPassword = current.branchPassword.ifBlank { null },
+                installDirectory = current.installDirectory,
+                os = current.selectedOs,
+                verifyAfterDownload = current.verifyAfterDownload
+            )
+        } catch (e: IllegalStateException) {
+            _state.value = _state.value.copy(error = e.message ?: "Storage is unavailable")
+        }
     }
 
     fun cancelDownload() {

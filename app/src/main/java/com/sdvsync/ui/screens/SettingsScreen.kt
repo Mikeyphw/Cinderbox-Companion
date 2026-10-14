@@ -75,6 +75,7 @@ fun SettingsScreen(
     onLogout: () -> Unit,
     preLogin: Boolean = false,
     onOpenDeveloperDiagnostics: () -> Unit = {},
+    onOpenInstallationHealth: () -> Unit = {},
     viewModel: SettingsViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -554,6 +555,14 @@ fun SettingsScreen(
                 }
             }
 
+            SettingsSectionGap()
+
+            // Local-first installation assessment is available without a Steam session.
+            SectionHeader("Installation health")
+            Spacer(Modifier.height(8.dp))
+            StardewOutlinedButton(onClick = onOpenInstallationHealth, modifier = Modifier.fillMaxWidth()) {
+                Text("Inspect game, Cinderbox, SMAPI and storage")
+            }
             SettingsSectionGap()
 
             // Diagnostics

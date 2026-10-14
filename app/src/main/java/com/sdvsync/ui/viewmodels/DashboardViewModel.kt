@@ -45,6 +45,7 @@ data class DashboardState(
     val isRefreshing: Boolean = false,
     val error: String? = null,
     val isStagingMode: Boolean = false,
+    val offlineMode: Boolean = false,
     val importPreview: BundleManifest? = null,
     val importUri: Uri? = null,
     val isImporting: Boolean = false,
@@ -78,31 +79,33 @@ class DashboardViewModel(
                 isLoading = !isUserRefresh,
                 isRefreshing = isUserRefresh,
                 error = null,
-                isStagingMode = saveFileManager.isStaging
+                isStagingMode = saveFileManager.isStaging,
+                offlineMode = !clientManager.isLoggedIn
             )
 
             try {
-                if (!ensureSteamReady()) {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        error = if (sessionStore.hasSession()) {
-                            context.getString(R.string.error_steam_connection)
-                        } else {
-                            context.getString(R.string.error_not_connected)
-                        }
-                    )
-                    return@launch
+                // Local-first: read local saves before requesting anything from Steam.
+                val localSaves = try {
+                    saveFileManager.listLocalSaves()
+                } catch (e: Exception) {
+                    AppLogger.w(TAG, "Local saves inaccessible", e)
+                    emptyList()
                 }
-
-                AppLogger.d(TAG, "Fetching cloud saves...")
-
-                // Fetch cloud saves with retry (Steam may disconnect/reconnect after login)
-                val cloudSaves = retryOnDisconnect {
-                    cloudService.listCloudSaves()
+                val steamReady = clientManager.isLoggedIn
+                var cloudAvailable = steamReady
+                val cloudSaves = if (steamReady) {
+                    try {
+                        retryOnDisconnect { cloudService.listCloudSaves() }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        AppLogger.w(TAG, "Steam Cloud unavailable; showing local saves", e)
+                        cloudAvailable = false
+                        emptyMap()
+                    }
+                } else {
+                    emptyMap()
                 }
-                AppLogger.d(TAG, "Got ${cloudSaves.size} cloud save folders")
-
                 val cloudMetadata = mutableMapOf<String, SaveMetadata>()
 
                 for ((folderName, files) in cloudSaves) {
@@ -122,11 +125,6 @@ class DashboardViewModel(
                 }
 
                 // Fetch local saves
-                val localSaves = try {
-                    saveFileManager.listLocalSaves()
-                } catch (_: Exception) {
-                    emptyList()
-                }
                 val localMap = localSaves.associateBy { it.folderName }
 
                 // Merge into a unified list (use cloudSaves.keys so saves appear
@@ -158,7 +156,8 @@ class DashboardViewModel(
                     saves = entries,
                     isLoading = false,
                     isRefreshing = false,
-                    isStagingMode = saveFileManager.isStaging
+                    isStagingMode = saveFileManager.isStaging,
+                    offlineMode = !cloudAvailable
                 )
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) {

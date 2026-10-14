@@ -14,6 +14,9 @@ import androidx.core.app.NotificationCompat
 import com.sdvsync.MainActivity
 import com.sdvsync.R
 import com.sdvsync.logging.AppLogger
+import com.sdvsync.local.InstallationScanner
+import com.sdvsync.local.InstallHealth
+import com.sdvsync.local.StoragePreflight
 import com.sdvsync.steam.SteamClientManager
 import `in`.dragonbra.javasteam.depotdownloader.DepotDownloader
 import `in`.dragonbra.javasteam.depotdownloader.IDownloadListener
@@ -131,6 +134,13 @@ class GameDownloadService : Service() {
         verify: Boolean
     ) {
         try {
+            val installRoot = File(installDir)
+            StoragePreflight.requireWritable(installRoot)
+            val detected = InstallationScanner.game(installRoot).health
+            check(detected != InstallHealth.STRUCTURALLY_VALID && detected != InstallHealth.INCOMPLETE &&
+                detected != InstallHealth.DETECTED && detected != InstallHealth.INACCESSIBLE) {
+                "Existing or inaccessible game directory; refusing to overwrite"
+            }
             GameDownloadManager._progress.value = DownloadProgress(state = DownloadState.PREPARING)
             updateNotification(getString(R.string.download_preparing))
 

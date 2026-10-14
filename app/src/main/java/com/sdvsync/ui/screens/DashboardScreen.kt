@@ -37,6 +37,9 @@ import org.koin.androidx.compose.koinViewModel
 fun DashboardScreen(
     onSaveClick: (String, Boolean, Boolean) -> Unit,
     onSyncLogClick: () -> Unit = {},
+    onSignInClick: () -> Unit = {},
+    onBackupsClick: (String) -> Unit = {},
+    onViewSaveClick: (String) -> Unit = {},
     viewModel: DashboardViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -119,6 +122,9 @@ fun DashboardScreen(
             StardewTopAppBar(
                 title = stringResource(R.string.dashboard_title),
                 actions = {
+                    if (state.offlineMode) {
+                        TextButton(onClick = onSignInClick) { Text("Steam login") }
+                    }
                     PixelIconButton(
                         pixelData = ImportData,
                         onClick = {
@@ -179,7 +185,8 @@ fun DashboardScreen(
                     Box(modifier = Modifier.fillMaxSize()) {
                         EmptyState(
                             title = stringResource(R.string.dashboard_no_saves),
-                            subtitle = "Pull to refresh or check your save files",
+                            subtitle = if (state.offlineMode) "Offline: no local saves found. Check your file access in Settings."
+                            else "Pull to refresh or check your save files",
                             modifier = Modifier
                                 .align(Alignment.Center)
                                 .padding(24.dp)
@@ -211,12 +218,39 @@ fun DashboardScreen(
                                 }
                             }
                         }
+                        if (state.offlineMode) {
+                            item {
+                                StardewCard {
+                                    Column(Modifier.padding(12.dp)) {
+                                        Text("Offline mode — local saves only", style = MaterialTheme.typography.titleSmall)
+                                        Text("Steam Cloud requires sign-in. Existing local files remain available.")
+                                        Spacer(Modifier.height(8.dp))
+                                        StardewOutlinedButton(onClick = onSignInClick) { Text("Sign in to Steam") }
+                                    }
+                                }
+                            }
+                        }
                         itemsIndexed(state.saves) { index, save ->
                             StaggeredAnimatedItem(index = index) {
-                                SaveCard(
-                                    save = save,
-                                    onClick = { onSaveClick(save.folderName, save.hasCloud, save.hasLocal) }
-                                )
+                                Column {
+                                    SaveCard(
+                                        save = save,
+                                        onClick = {
+                                            if (state.offlineMode) onViewSaveClick(save.folderName)
+                                            else onSaveClick(save.folderName, save.hasCloud, save.hasLocal)
+                                        }
+                                    )
+                                    if (state.offlineMode && save.hasLocal) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            StardewOutlinedButton(onClick = { onViewSaveClick(save.folderName) }) {
+                                                Text("View local save")
+                                            }
+                                            StardewOutlinedButton(onClick = { onBackupsClick(save.folderName) }) {
+                                                Text("Backups")
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
