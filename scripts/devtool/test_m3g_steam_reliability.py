@@ -12,6 +12,11 @@ class M3GSourceContracts(unittest.TestCase):
         source = read('app/src/main/java/com/sdvsync/SdvSyncApp.kt')
         self.assertLess(source.index('AndroidSteamMachineId.initialize(this)'), source.index('startKoin {'))
 
+    def test_agp_is_compile_only_to_prevent_plugin_classpath_collision(self):
+        script = read('buildSrc/build.gradle.kts')
+        self.assertIn('compileOnly("com.android.tools.build:gradle:8.10.1")', script)
+        self.assertNotIn('implementation("com.android.tools.build:gradle:8.10.1")', script)
+
     def test_android_identity_persisted_and_private(self):
         source = read('app/src/main/java/com/sdvsync/steam/AndroidSteamMachineId.kt')
         self.assertIn('Context.MODE_PRIVATE', source)
