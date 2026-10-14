@@ -46,6 +46,9 @@ jobs:
       - name: M4 local-first safety regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m4_*.py' -v
 
+      - name: M5 safe operations regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m5_*.py' -v
+
       - name: Enforce M3B non-publishing policy and regressions
         run: |
           python3 scripts/devtool/m3b_release_candidate.py policy

@@ -32,13 +32,13 @@ class ModFileManagerTest {
 
     @Test
     fun installDisableUpdateEnableAndRemove() {
-        assertTrue(manager.installFromZip(archive("1.0.0")) is InstallResult.Success)
+        assertTrue(reviewedInstall(archive("1.0.0")) is InstallResult.Success)
         assertTrue(manager.disableMod("TestMod"))
         val disabled = manager.listInstalledMods().single()
         assertFalse(disabled.enabled)
         assertEquals(".TestMod", disabled.folderName)
         File(disabled.folderPath, "config.json").writeText("{\"option\":true}")
-        assertTrue(manager.installFromZip(archive("2.0.0")) is InstallResult.Success)
+        assertTrue(reviewedInstall(archive("2.0.0")) is InstallResult.Success)
         val updated = manager.listInstalledMods().single()
         assertFalse(updated.enabled)
         assertEquals("2.0.0", updated.manifest.version)
@@ -51,7 +51,7 @@ class ModFileManagerTest {
 
     @Test
     fun legacyDisabledFoldersAreConvertedToSmapiIgnoredNames() {
-        assertTrue(manager.installFromZip(archive("1.0.0")) is InstallResult.Success)
+        assertTrue(reviewedInstall(archive("1.0.0")) is InstallResult.Success)
         val old = root.resolve("Mods/TestMod.disabled")
         assertTrue(root.resolve("Mods/TestMod").renameTo(old))
         val mod = manager.listInstalledMods().single()
@@ -68,18 +68,24 @@ class ModFileManagerTest {
             zip.write("bad".toByteArray())
             zip.closeEntry()
         }
-        assertTrue(manager.installFromZip(archive) is InstallResult.Error)
+        assertTrue(runCatching { reviewedInstall(archive) }.isFailure)
         assertFalse(root.resolve("escape").exists())
     }
 
     @Test
     fun disablingNeverOverwritesAnotherFolder() {
-        assertTrue(manager.installFromZip(archive("1.0.0")) is InstallResult.Success)
+        assertTrue(reviewedInstall(archive("1.0.0")) is InstallResult.Success)
         root.resolve("Mods/.TestMod").mkdirs()
         root.resolve("Mods/.TestMod/keep").writeText("keep")
         assertFalse(manager.disableMod("TestMod"))
         assertEquals("keep", root.resolve("Mods/.TestMod/keep").readText())
         assertTrue(root.resolve("Mods/TestMod/manifest.json").isFile)
+    }
+
+    /** Installation requires explicit approval of the current ZIP bytes and targets. */
+    private fun reviewedInstall(file: File): InstallResult {
+        val reviewed = manager.previewFromZip(file)
+        return manager.installFromZip(file, reviewed.approvalKey)
     }
 
     private fun archive(version: String): File {

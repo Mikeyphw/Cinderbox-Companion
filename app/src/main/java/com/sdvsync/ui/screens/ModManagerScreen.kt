@@ -19,6 +19,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.sdvsync.R
 import com.sdvsync.mods.models.ModProfile
+import com.sdvsync.mods.ModSnapshot
 import com.sdvsync.ui.animation.StaggeredAnimatedItem
 import com.sdvsync.ui.components.EmptyState
 import com.sdvsync.ui.components.FolderData
@@ -78,12 +79,59 @@ fun ModManagerScreen(
     var showSaveProfileDialog by remember { mutableStateOf(false) }
     var showApplyProfileConfirm by remember { mutableStateOf<ModProfile?>(null) }
     var showDeleteProfileConfirm by remember { mutableStateOf<String?>(null) }
+    var restoreConfirm by remember { mutableStateOf<ModSnapshot?>(null) }
+    var showSnapshots by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state.importMessage) { viewModel.refreshSafetyState() }
+    if (state.hasPendingReview) {
+        AlertDialog(onDismissRequest = {}, title = { Text("Review mod installation") },
+            text = { Column {
+                Text(state.pendingLabel)
+                state.pendingPreview?.changes?.forEach { c ->
+                    Spacer(Modifier.height(8.dp))
+                    Text("${c.action}: ${c.modName} → ${c.folder}")
+                    Text("Add ${c.added}, replace ${c.replaced}, remove ${c.removed} files",
+                        style = MaterialTheme.typography.bodySmall)
+                } ?: Text("Archive cannot be safely inspected. Discard it; no files were installed.")
+                Text("Existing mod versions are retained as restorable snapshots before replacement.",
+                    style = MaterialTheme.typography.bodySmall)
+            } },
+            confirmButton = { TextButton(onClick = viewModel::confirmPendingReview,
+                enabled = state.pendingPreview != null && !state.isApplyingReview) { Text("Approve install") } },
+            dismissButton = { TextButton(onClick = viewModel::discardPendingReview,
+                enabled = !state.isApplyingReview) { Text("Discard archive") } })
+    }
+    if (showSnapshots) {
+        AlertDialog(onDismissRequest = { showSnapshots = false },
+            title = { Text("Retained mod snapshots") }, text = {
+                Column {
+                    if (state.snapshots.isEmpty()) Text("No retained mod snapshots")
+                    state.snapshots.take(15).forEach { snapshot ->
+                        TextButton(onClick = { showSnapshots = false; restoreConfirm = snapshot }) {
+                            Text("Restore ${snapshot.folder} (${snapshot.id.take(8)})")
+                        }
+                    }
+                }
+            }, confirmButton = { TextButton(onClick = { showSnapshots = false }) { Text("Close") } })
+    }
+    restoreConfirm?.let { snapshot ->
+        AlertDialog(onDismissRequest = { restoreConfirm = null },
+            title = { Text("Restore mod snapshot?") },
+            text = { Text("This replaces the current ${snapshot.folder} folder. A backup of the current version is created first.") },
+            confirmButton = { TextButton(onClick = {
+                viewModel.restoreRetainedSnapshot(snapshot.id); restoreConfirm = null
+            }) { Text("Restore") } },
+            dismissButton = { TextButton(onClick = { restoreConfirm = null }) { Text("Cancel") } })
+    }
 
     Scaffold(
         topBar = {
             StardewTopAppBar(
                 title = stringResource(R.string.mods_title),
                 actions = {
+                    TextButton(onClick = { viewModel.refreshSafetyState(); showSnapshots = true }) {
+                        Text("Backups")
+                    }
                     PixelIconButton(
                         pixelData = RefreshData,
                         onClick = { viewModel.checkForUpdates() },
