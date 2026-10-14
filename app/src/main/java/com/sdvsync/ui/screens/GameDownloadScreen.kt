@@ -376,9 +376,10 @@ fun GameDownloadScreen(onBack: () -> Unit, viewModel: GameDownloadViewModel = ko
                     DownloadProgressSection(
                         currentFile = state.downloadProgress.currentFile,
                         downloadedBytes = state.downloadProgress.downloadedBytes,
-                        totalBytes = state.downloadProgress.totalBytes,
                         bytesPerSecond = state.downloadProgress.bytesPerSecond,
-                        overallPercent = state.downloadProgress.overallPercent,
+                        currentDepotId = state.downloadProgress.currentDepotId,
+                        currentDepotPercent = state.downloadProgress.currentDepotPercent,
+                        filesDownloaded = state.downloadProgress.filesDownloaded,
                         onCancel = { viewModel.cancelDownload() }
                     )
                 }
@@ -822,9 +823,10 @@ private fun SmapiSetupSection(
 private fun DownloadProgressSection(
     currentFile: String,
     downloadedBytes: Long,
-    totalBytes: Long,
     bytesPerSecond: Long,
-    overallPercent: Float,
+    currentDepotId: Int?,
+    currentDepotPercent: Float,
+    filesDownloaded: Int,
     onCancel: () -> Unit
 ) {
     StardewCard {
@@ -857,10 +859,6 @@ private fun DownloadProgressSection(
             // Size + speed
             val sizeText = buildString {
                 append(formatBytes(downloadedBytes))
-                if (totalBytes > 0) {
-                    append(" / ")
-                    append(formatBytes(totalBytes))
-                }
                 if (bytesPerSecond > 0) {
                     append(" \u2022 ")
                     append(formatBytes(bytesPerSecond))
@@ -875,14 +873,23 @@ private fun DownloadProgressSection(
 
             Spacer(Modifier.height(8.dp))
 
-            PixelProgressBar(progress = overallPercent)
-
-            Spacer(Modifier.height(4.dp))
             Text(
-                "${(overallPercent * 100).toInt()}%",
+                "Files received: $filesDownloaded (overall game size not yet available)",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Spacer(Modifier.height(8.dp))
+            if (currentDepotId != null) {
+                Text(
+                    "Depot $currentDepotId: ${(currentDepotPercent * 100).toInt()}% (not overall game progress)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(4.dp))
+                PixelProgressBar(progress = currentDepotPercent)
+            } else {
+                Text("Waiting for depot progress…", style = MaterialTheme.typography.bodySmall)
+            }
 
             Spacer(Modifier.height(12.dp))
 

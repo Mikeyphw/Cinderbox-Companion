@@ -183,9 +183,8 @@ class GameDownloadService : Service() {
                 override fun onDownloadStarted(item: DownloadItem) {
                     try {
                         AppLogger.d(TAG, "Download started for item")
-                        GameDownloadManager._progress.value = DownloadProgress(
-                            state = DownloadState.DOWNLOADING
-                        )
+                        // A second item can start after other depots already transferred data.
+                        GameDownloadManager._progress.update { it.copy(state = DownloadState.DOWNLOADING) }
                         updateNotification(getString(R.string.download_downloading))
                     } catch (e: Exception) {
                         AppLogger.e(TAG, "Error in onDownloadStarted", e)
@@ -199,8 +198,14 @@ class GameDownloadService : Service() {
                     uncompressedBytes: Long
                 ) {
                     try {
-                        depotBytes[depotId] = uncompressedBytes
+                        // Callbacks are cumulative per depot and may arrive from parallel workers.
+                        depotBytes.compute(depotId) { _, previous ->
+                            maxOf(previous ?: 0L, uncompressedBytes.coerceAtLeast(0L))
+                        }
                         val totalDownloaded = depotBytes.values.sum()
+                        val depotPercent = if (depotPercentComplete.isFinite()) {
+                            depotPercentComplete.coerceIn(0f, 1f)
+                        } else 0f
 
                         val now = System.currentTimeMillis()
                         val lastUpdate = lastSpeedUpdateMs.get()
@@ -210,14 +215,16 @@ class GameDownloadService : Service() {
                                 val prevBytes = lastSpeedBytes.getAndSet(totalDownloaded)
                                 val elapsedMs = now - lastUpdate
                                 val bytesDelta = totalDownloaded - prevBytes
-                                speed = if (elapsedMs > 0) (bytesDelta * 1000 / elapsedMs) else 0L
+                                speed = if (elapsedMs > 0) (bytesDelta.coerceAtLeast(0L) * 1000 / elapsedMs) else 0L
                             }
                         }
 
                         GameDownloadManager._progress.update { current ->
                             current.copy(
-                                overallPercent = depotPercentComplete,
-                                downloadedBytes = totalDownloaded,
+                                // Do not misrepresent one depot's progress as game-wide progress.
+                                currentDepotId = depotId,
+                                currentDepotPercent = depotPercent,
+                                downloadedBytes = maxOf(current.downloadedBytes, totalDownloaded),
                                 bytesPerSecond = speed
                             )
                         }
@@ -232,16 +239,14 @@ class GameDownloadService : Service() {
                         GameDownloadManager._progress.update { current ->
                             current.copy(
                                 currentFile = fileName,
-                                overallPercent = depotPercentComplete
+                                filesDownloaded = completedFiles.size,
+                                currentDepotId = depotId,
+                                currentDepotPercent = if (depotPercentComplete.isFinite()) {
+                                    depotPercentComplete.coerceIn(0f, 1f)
+                                } else current.currentDepotPercent
                             )
                         }
-                        updateNotification(
-                            getString(
-                                R.string.download_notification_progress,
-                                (depotPercentComplete * 100).toInt(),
-                                fileName
-                            )
-                        )
+                        updateNotification(getString(R.string.download_downloading))
                     } catch (e: Exception) {
                         AppLogger.e(TAG, "Error in onFileCompleted", e)
                     }
@@ -250,10 +255,13 @@ class GameDownloadService : Service() {
                 override fun onDepotCompleted(depotId: Int, compressedBytes: Long, uncompressedBytes: Long) {
                     try {
                         AppLogger.d(TAG, "Depot $depotId completed: ${uncompressedBytes / 1024 / 1024} MB")
-                        depotBytes[depotId] = uncompressedBytes
-                        GameDownloadManager._progress.update { current ->
-                            current.copy(totalBytes = depotBytes.values.sum())
+                        depotBytes.compute(depotId) { _, previous ->
+                            maxOf(previous ?: 0L, uncompressedBytes.coerceAtLeast(0L))
                         }
+                        GameDownloadManager._progress.update { current ->
+                            current.copy(downloadedBytes = maxOf(current.downloadedBytes, depotBytes.values.sum()))
+                        }
+                        // A completed depot does not reveal the total size of all depots.
                     } catch (e: Exception) {
                         AppLogger.e(TAG, "Error in onDepotCompleted", e)
                     }

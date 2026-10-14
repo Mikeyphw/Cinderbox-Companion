@@ -24,6 +24,9 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -36,6 +39,10 @@ import androidx.navigation.navArgument
 import com.sdvsync.logging.AppLogger
 import com.sdvsync.mods.ModDownloadManager
 import com.sdvsync.mods.api.NexusModSource
+import com.sdvsync.steam.SteamAuthenticator
+import com.sdvsync.steam.SteamBackgroundService
+import com.sdvsync.steam.SteamClientManager
+import com.sdvsync.steam.ConnectionState
 import com.sdvsync.ui.components.AppUpdateDialog
 import com.sdvsync.ui.components.BottomTab
 import com.sdvsync.ui.components.CinderboxMigrationDialog
@@ -61,6 +68,7 @@ import com.sdvsync.ui.viewmodels.ModBrowseViewModel
 import com.sdvsync.ui.viewmodels.ModDetailViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 import org.koin.androidx.compose.koinViewModel
@@ -70,6 +78,8 @@ class MainActivity : ComponentActivity() {
 
     private val nexusSource: NexusModSource by inject()
     private val downloadManager: ModDownloadManager by inject()
+    private val steamAuthenticator: SteamAuthenticator by inject()
+    private val steamClientManager: SteamClientManager by inject()
 
     /** URI from an incoming .sdvsync file intent, consumed by the DashboardScreen. */
     var pendingImportUri: android.net.Uri? = null
@@ -85,12 +95,33 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         handleIncomingIntent(intent)
+        // Only launch a foreground service from a STARTED (visible) Activity.
+        // The service remains active while the app is backgrounded and until logout/opt-out.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                steamClientManager.connectionState.collect { state ->
+                    if (state == ConnectionState.LOGGED_IN) {
+                        SteamBackgroundService.start(this@MainActivity)
+                    }
+                }
+            }
+        }
         setContent {
             SdvSyncTheme {
                 val navController = rememberNavController()
                 SdvSyncNavGraph(navController)
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        steamAuthenticator.onAppForeground()
+    }
+
+    override fun onStop() {
+        steamAuthenticator.onAppBackground()
+        super.onStop()
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -2,6 +2,7 @@ package com.sdvsync.steam
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
 import com.sdvsync.R
 import com.sdvsync.logging.AppLogger
@@ -30,6 +31,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -40,6 +42,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 sealed class AuthState {
     data object Idle : AuthState()
@@ -86,7 +89,19 @@ class SteamAuthenticator(
     private val deviceConfirmationChoice = PendingDeviceConfirmationChoice()
     private val twoFactorChallenge = PendingTwoFactorChallenge()
     private val pendingLogOn = AtomicReference<PendingLogOn?>(null)
-    private var autoReconnectJob: Job? = null
+    // This job supervises retries; each login runs in its own cancellable child job.
+    @Volatile private var autoReconnectJob: Job? = null
+    private val reconnectWakeups = Channel<Unit>(Channel.CONFLATED)
+    private val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    private var networkCallbackRegistered = false
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+            if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) {
+                requestSavedSessionRecovery("network_restored")
+            }
+        }
+    }
 
     @Volatile
     private var wasLoggedIn = false
@@ -96,6 +111,72 @@ class SteamAuthenticator(
 
     init {
         registerCallbacks()
+        // Receiving an Android network callback is a hint to try Steam again,
+        // not proof of successful connectivity. The transport remains authoritative.
+        try {
+            connectivityManager.registerDefaultNetworkCallback(networkCallback)
+            networkCallbackRegistered = true
+        } catch (e: RuntimeException) {
+            AppLogger.w(TAG, "Could not register default-network callback", e)
+        }
+    }
+
+    // Retry only when Android exposes a usable default network. A lack of network
+    // in the background must not consume the six login attempts.
+    private suspend fun awaitNetworkForReconnect() {
+        if (isNetworkAvailable()) return
+        SteamDiagnostics.record(SteamDiagnostics.Phase.RECONNECTING, "reconnect_wait_for_network")
+        while (!isNetworkAvailable()) {
+            reconnectWakeups.receive()
+        }
+        SteamDiagnostics.record(SteamDiagnostics.Phase.RECONNECTING, "reconnect_network_available")
+    }
+
+    fun onAppForeground() {
+        SteamDiagnostics.trace("app_foreground")
+        requestSavedSessionRecovery("app_foreground_recovery")
+    }
+
+    fun onAppBackground() {
+        SteamDiagnostics.trace("app_background")
+    }
+
+    @Synchronized
+    private fun requestSavedSessionRecovery(reason: String) {
+        if (isUserDisconnect || !sessionStore.hasSession() || clientManager.isLoggedIn) return
+        if (autoReconnectJob?.isActive == true) {
+            reconnectWakeups.trySend(Unit)
+            return
+        }
+        // Do not interrupt an explicit manual login or Steam Guard challenge.
+        if (authAttempts.activeAttempt() != null) return
+        SteamDiagnostics.record(SteamDiagnostics.Phase.RECONNECTING, reason)
+        autoReconnectJob = scope.launch {
+            val recovered = runSavedSessionReconnect(
+                pause = { duration ->
+                    withTimeoutOrNull(duration) { reconnectWakeups.receive() }
+                    Unit
+                },
+                awaitNetwork = { awaitNetworkForReconnect() },
+                attempt = { loginWithSavedSession() },
+                connected = { clientManager.isLoggedIn },
+                canRetry = {
+                    !isUserDisconnect && sessionStore.hasSession() && authAttempts.activeAttempt() == null
+                },
+                onWaiting = { number ->
+                    SteamDiagnostics.record(SteamDiagnostics.Phase.RECONNECTING, "reconnect_wait_$number")
+                },
+                onResult = { number, ok ->
+                    SteamDiagnostics.record(
+                        if (ok) SteamDiagnostics.Phase.CONNECTED else SteamDiagnostics.Phase.RECONNECTING,
+                        if (ok) "reconnect_attempt_${number}_ok" else "reconnect_attempt_${number}_failed"
+                    )
+                }
+            )
+            if (!recovered && !isUserDisconnect && sessionStore.hasSession()) {
+                SteamDiagnostics.record(SteamDiagnostics.Phase.OFFLINE, "reconnect_exhausted", failure = true)
+            }
+        }
     }
 
     private fun registerCallbacks() {
@@ -662,23 +743,8 @@ class SteamAuthenticator(
         }
 
         if (!userInitiated && wasLoggedIn && sessionStore.hasSession()) {
-            AppLogger.d(TAG, "Auto-reconnecting with bounded exponential backoff")
-            _authState.value = AuthState.Connecting
-            autoReconnectJob?.cancel()
-            autoReconnectJob = scope.launch {
-                var backoff = 2_000L
-                repeat(6) { index ->
-                    SteamDiagnostics.record(SteamDiagnostics.Phase.RECONNECTING, "reconnect_wait_${index + 1}")
-                    delay(backoff)
-                    if (clientManager.isLoggedIn) return@launch
-                    loginWithSavedSession()
-                    if (clientManager.isLoggedIn) return@launch
-                    backoff = (backoff * 2).coerceAtMost(30_000L)
-                }
-                // Avoid an infinite reconnect loop; user can still manually Retry.
-                wasLoggedIn = false
-                SteamDiagnostics.record(SteamDiagnostics.Phase.OFFLINE, "reconnect_exhausted", failure = true)
-            }
+            AppLogger.d(TAG, "Automatic saved-session recovery requested")
+            requestSavedSessionRecovery("transport_disconnected_recovery")
         } else if (!userInitiated && currentAuthState is AuthState.LoggedIn) {
             _authState.value = AuthState.Idle
         }
@@ -718,6 +784,7 @@ class SteamAuthenticator(
         isUserDisconnect = true
         wasLoggedIn = false
         SteamDiagnostics.record(SteamDiagnostics.Phase.OFFLINE, "user_logout")
+        SteamBackgroundService.stop(context)
         autoReconnectJob?.cancel()
         autoReconnectJob = null
         authAttempts.cancelActive()?.let { cancelled ->
@@ -730,6 +797,13 @@ class SteamAuthenticator(
     }
 
     fun destroy() {
+        autoReconnectJob?.cancel()
+        if (networkCallbackRegistered) {
+            try {
+                connectivityManager.unregisterNetworkCallback(networkCallback)
+            } catch (_: RuntimeException) { }
+            networkCallbackRegistered = false
+        }
         authAttempts.cancelActive()?.let { cancelled ->
             cancelPendingInput(cancelled.id)
             clearPendingLogOn(cancelled.id)
