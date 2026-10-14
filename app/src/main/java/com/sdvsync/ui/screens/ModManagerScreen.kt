@@ -225,6 +225,22 @@ fun ModManagerScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        // M7: local manifest checks; never silently enable dependencies.
+                        if (state.compatibilityIssues.isNotEmpty()) {
+                            StardewCard {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text("Mod compatibility audit", style = MaterialTheme.typography.titleMedium)
+                                    state.compatibilityIssues.take(8).forEach { issue ->
+                                        Text("${if (issue.blocking) "Action needed" else "Check"}: ${issue.mod} — ${issue.message}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = if (issue.blocking) MaterialTheme.colorScheme.error
+                                                else MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(12.dp))
+                        }
+
                         // Profiles section
                         if (state.profiles.isNotEmpty() || state.installedMods.isNotEmpty()) {
                             item {
@@ -388,17 +404,28 @@ fun ModManagerScreen(
         )
     }
 
-    // Apply profile confirmation
+    // M7: show exact requested renames and dependency blockers before confirmation.
     showApplyProfileConfirm?.let { profile ->
+        val preview = remember(profile, state.installedMods) { viewModel.previewProfile(profile) }
         StardewDialog(
             onDismissRequest = { showApplyProfileConfirm = null },
             title = stringResource(R.string.profiles_apply_confirm_title),
-            text = stringResource(R.string.profiles_apply_confirm_message, profile.name),
+            text = buildString {
+                append("Profile: ${profile.name}\n")
+                append("${preview.steps.size} folder changes proposed\n")
+                preview.steps.take(12).forEach {
+                    append("${if (it.enable) "Enable" else "Disable"}: ${it.name}\n")
+                }
+                preview.issues.take(8).forEach {
+                    append("${if (it.blocking) "BLOCKED" else "CHECK"}: ${it.message}\n")
+                }
+                if (preview.blockers.isNotEmpty()) append("Fix blockers before applying this profile.")
+            },
             confirmButton = {
                 StardewButton(onClick = {
                     showApplyProfileConfirm = null
-                    viewModel.applyProfile(profile)
-                }) {
+                    viewModel.applyProfile(profile, preview.fingerprint)
+                }, enabled = preview.blockers.isEmpty() && !state.isApplyingProfile) {
                     Text(stringResource(R.string.sync_confirm_continue))
                 }
             },

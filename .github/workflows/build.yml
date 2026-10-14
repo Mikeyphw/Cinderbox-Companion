@@ -52,6 +52,9 @@ jobs:
       - name: M6 interrupted download recovery regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m6_*.py' -v
 
+      - name: M7 mod compatibility regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m7_*.py' -v
+
       - name: Enforce M3B non-publishing policy and regressions
         run: |
           python3 scripts/devtool/m3b_release_candidate.py policy
