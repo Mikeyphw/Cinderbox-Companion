@@ -81,6 +81,7 @@ enum class ModDownloadState {
     DOWNLOADING,
     EXTRACTING,
     INSTALLING,
+    REVIEW_REQUIRED,
     COMPLETED,
     ERROR
 }

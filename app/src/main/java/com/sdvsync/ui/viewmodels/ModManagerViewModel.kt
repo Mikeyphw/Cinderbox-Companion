@@ -8,6 +8,9 @@ import com.sdvsync.cinderbox.CinderboxLayoutEvents
 import com.sdvsync.logging.AppLogger
 import com.sdvsync.mods.ModDataStore
 import com.sdvsync.mods.ModFileManager
+import com.sdvsync.mods.ModArchivePreview
+import com.sdvsync.mods.ModReviewQueue
+import com.sdvsync.mods.ModSnapshot
 import com.sdvsync.mods.api.SmapiUpdateChecker
 import com.sdvsync.mods.models.InstallResult
 import com.sdvsync.mods.models.InstalledMod
@@ -31,6 +34,11 @@ data class ModManagerState(
     val isCheckingUpdates: Boolean = false,
     val error: String? = null,
     val importMessage: String? = null,
+    val pendingPreview: ModArchivePreview? = null,
+    val pendingLabel: String = "",
+    val hasPendingReview: Boolean = false,
+    val isApplyingReview: Boolean = false,
+    val snapshots: List<ModSnapshot> = emptyList(),
     val sortOrder: ModSortOrder = ModSortOrder.NAME,
     val filter: ModFilter = ModFilter.ALL,
     val searchQuery: String = "",
@@ -53,11 +61,13 @@ class ModManagerViewModel(
         private const val UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000L // 4 hours
     }
 
+    private val pending = ModReviewQueue(context.filesDir)
     private val _state = MutableStateFlow(ModManagerState())
     val state: StateFlow<ModManagerState> = _state.asStateFlow()
 
     init {
         loadInstalledMods()
+        refreshSafetyState()
         viewModelScope.launch {
             CinderboxLayoutEvents.changed.collect { loadInstalledMods() }
         }
@@ -74,6 +84,7 @@ class ModManagerViewModel(
                 }
                 updateDisplayedMods()
                 loadProfiles()
+                refreshSafetyState()
 
                 // Auto-check for updates if stale
                 val lastCheck = dataStore.getLastUpdateCheck()
@@ -135,34 +146,86 @@ class ModManagerViewModel(
         }
     }
 
+    fun refreshSafetyState() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val zip = pending.archive()
+            val review = zip?.let { runCatching { fileManager.previewFromZip(it) }.getOrNull() }
+            _state.update { it.copy(hasPendingReview = pending.hasPending(),
+                pendingPreview = review, pendingLabel = pending.description(),
+                snapshots = fileManager.listRetainedSnapshots()) }
+        }
+    }
+
     fun importFromUri(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
-            _state.update { it.copy(importMessage = null) }
+            val temp = File(context.cacheDir, "m5-import-${System.currentTimeMillis()}.zip")
             try {
-                val tempFile = File(context.cacheDir, "import_${System.currentTimeMillis()}.zip")
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    tempFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                } ?: throw IllegalStateException("Cannot read file")
+                check(!pending.hasPending()) { "A mod is already awaiting review" }
+                val input = context.contentResolver.openInputStream(uri)
+                    ?: error("Cannot read archive")
+                input.use { source -> temp.outputStream().use { target -> source.copyTo(target) } }
+                pending.enqueue(temp, "Imported mod archive", "local", "")
+                _state.update { it.copy(importMessage = "Review the proposed changes before installing") }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Mod import staging failed", e)
+                _state.update { it.copy(importMessage = "Import failed: ${e.message}") }
+            } finally {
+                temp.delete()
+                refreshSafetyState()
+            }
+        }
+    }
 
-                val result = fileManager.installFromZip(tempFile)
-                tempFile.delete()
-
+    fun confirmPendingReview() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _state.update { it.copy(isApplyingReview = true) }
+            try {
+                val archive = requireNotNull(pending.archive()) { "No pending mod" }
+                val prior = requireNotNull(_state.value.pendingPreview) { "Cannot approve an invalid archive" }
+                val result = fileManager.installFromZip(archive, prior.approvalKey)
                 when (result) {
                     is InstallResult.Success -> {
-                        val names = result.mods.joinToString { it.manifest.name }
-                        _state.update { it.copy(importMessage = "Installed: $names") }
+                        val (source, modId) = pending.source()
+                        if (source != "local") {
+                            result.mods.forEach { mod -> dataStore.setModMetadata(mod.manifest.uniqueID,
+                                com.sdvsync.mods.ModMetadata(installedFrom = "$source:$modId",
+                                    installedAt = System.currentTimeMillis())) }
+                        }
+                        pending.clear()
+                        _state.update { it.copy(importMessage = "Installed: ${result.mods.joinToString { m -> m.manifest.name }}") }
                         loadInstalledMods()
                     }
-                    is InstallResult.Error -> {
-                        _state.update { it.copy(importMessage = "Import failed: ${result.message}") }
-                    }
+                    is InstallResult.Error -> _state.update {
+                        it.copy(importMessage = "Installation rejected: ${result.message}") }
                 }
             } catch (e: Exception) {
-                AppLogger.e(TAG, "Import failed", e)
-                _state.update { it.copy(importMessage = "Import failed: ${e.message}") }
+                AppLogger.e(TAG, "Reviewed mod installation failed", e)
+                _state.update { it.copy(importMessage = "Installation failed: ${e.message}") }
+            } finally {
+                _state.update { it.copy(isApplyingReview = false) }
+                refreshSafetyState()
             }
+        }
+    }
+
+    fun discardPendingReview() {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { pending.clear() }.onFailure {
+                _state.update { old -> old.copy(importMessage = "Cannot discard: ${it.message}") }
+            }
+            refreshSafetyState()
+        }
+    }
+
+    fun restoreRetainedSnapshot(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { fileManager.restoreSnapshot(id) }.onSuccess { restored ->
+                _state.update { it.copy(importMessage = if (restored) "Mod restored from snapshot" else "Snapshot not found") }
+                loadInstalledMods()
+            }.onFailure { error ->
+                _state.update { it.copy(importMessage = "Restore failed: ${error.message}") }
+            }
+            refreshSafetyState()
         }
     }
 

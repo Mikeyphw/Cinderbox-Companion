@@ -250,6 +250,10 @@ fun ModDetailScreen(viewModel: ModDetailViewModel, onBack: () -> Unit) {
                                 Spacer(Modifier.height(8.dp))
                                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                             }
+                            ModDownloadState.REVIEW_REQUIRED -> {
+                                Text("Download saved for review. Open Mods and approve the proposed file changes.",
+                                    style = MaterialTheme.typography.bodyMedium)
+                            }
                             ModDownloadState.COMPLETED -> {
                                 Text(
                                     stringResource(R.string.mods_download_complete, progress.modName),

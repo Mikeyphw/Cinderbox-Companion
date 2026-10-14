@@ -22,6 +22,11 @@ class ModDownloadManager(private val context: Context) {
     val progress: StateFlow<ModDownloadProgress> = _progress.asStateFlow()
 
     fun startDownload(url: String, modName: String, modId: String, source: String) {
+        if (ModReviewQueue(context.filesDir).hasPending()) {
+            _progress.value = ModDownloadProgress(state = ModDownloadState.ERROR,
+                errorMessage = "Review or discard the previous mod archive in Mods first")
+            return
+        }
         try {
             StoragePreflight.requireWritable(File(CinderboxPaths.MODS_DIR))
             StoragePreflight.requireWritable(context.cacheDir)

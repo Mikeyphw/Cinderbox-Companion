@@ -114,60 +114,21 @@ class ModDownloadService : Service() {
             val tempFile = File(cacheDir, "mod_download_${System.currentTimeMillis()}.zip")
             downloadFile(url, tempFile)
 
-            // Extract + Install
-            ModDownloadManager._progress.value =
-                ModDownloadProgress(
-                    state = ModDownloadState.INSTALLING,
-                    modName = modName
-                )
-            updateNotification(getString(R.string.mods_download_installing))
-
-            val result = fileManager.installFromZip(tempFile)
-            tempFile.delete()
-
-            when (result) {
-                is InstallResult.Success -> {
-                    // Save metadata for each installed mod
-                    for (mod in result.mods) {
-                        dataStore.setModMetadata(
-                            mod.manifest.uniqueID,
-                            ModMetadata(
-                                installedFrom = "$source:$modId",
-                                installedAt = System.currentTimeMillis()
-                            )
-                        )
-                    }
-
-                    ModDownloadManager._progress.value =
-                        ModDownloadProgress(
-                            state = ModDownloadState.COMPLETED,
-                            modName = modName
-                        )
-                    updateNotification(getString(R.string.mods_download_complete, modName))
-                }
-                is InstallResult.Error -> {
-                    ModDownloadManager._progress.value =
-                        ModDownloadProgress(
-                            state = ModDownloadState.ERROR,
-                            modName = modName,
-                            errorMessage = result.message
-                        )
-                    updateNotification(getString(R.string.mods_download_failed, result.message))
-                }
-            }
+            // Stage for mandatory review; downloads never mutate the Mods directory.
+            ModReviewQueue(filesDir).enqueue(tempFile, modName, source, modId)
+            check(tempFile.delete()) { "Cannot remove temporary mod download" }
+            ModDownloadManager._progress.value = ModDownloadProgress(
+                state = ModDownloadState.REVIEW_REQUIRED, modName = modName
+            )
+            updateNotification("Mod downloaded. Open Mods to preview and approve installation.")
         } catch (e: CancellationException) {
             AppLogger.d(TAG, "Download cancelled")
         } catch (e: Exception) {
             AppLogger.e(TAG, "Download failed", e)
             ModDownloadManager._progress.value =
-                ModDownloadProgress(
-                    state = ModDownloadState.ERROR,
-                    modName = modName,
-                    errorMessage = e.message ?: "Unknown error"
-                )
-            updateNotification(
-                getString(R.string.mods_download_failed, e.message ?: "Unknown error")
-            )
+                ModDownloadProgress(state = ModDownloadState.ERROR, modName = modName,
+                    errorMessage = e.message ?: "Unknown error")
+            updateNotification(getString(R.string.mods_download_failed, e.message ?: "Unknown error"))
         } finally {
             stopSelf()
         }
