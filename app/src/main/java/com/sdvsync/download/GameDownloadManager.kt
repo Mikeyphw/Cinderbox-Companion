@@ -104,6 +104,28 @@ class GameDownloadManager(
         const val MODS_DIR = CinderboxPaths.MODS_DIR
     }
 
+    private val recovery = GameDownloadRecovery(context.filesDir)
+
+    fun pendingDownload(): GameDownloadCheckpoint? = recovery.pending()
+
+    fun canResume(directory: File, branch: String, os: String, verify: Boolean): Boolean =
+        recovery.pending()?.matches(directory, branch, os, verify) == true
+
+    /** Explicit discard ONLY forgets metadata, never deletes downloaded game bytes. */
+    fun discardPendingDownload() {
+        recovery.discard()
+        _progress.value = DownloadProgress()
+    }
+
+    fun restoreInterruptedProgress() {
+        if (recovery.pending() != null && _progress.value.state == DownloadState.IDLE) {
+            _progress.value = DownloadProgress(
+                state = DownloadState.ERROR,
+                errorMessage = "Interrupted Steam download detected. Sign in and choose Resume interrupted download."
+            )
+        }
+    }
+
     val progress: StateFlow<DownloadProgress> = _progress.asStateFlow()
     val smapiProgress: StateFlow<SmapiSetupProgress> = _smapiProgress.asStateFlow()
     val cinderboxProgress: StateFlow<CinderboxDownloadProgress> = _cinderboxProgress.asStateFlow()
@@ -143,12 +165,25 @@ class GameDownloadManager(
         os: String = "windows",
         verifyAfterDownload: Boolean = true
     ) {
+        check(_progress.value.state !in setOf(DownloadState.PREPARING,
+            DownloadState.DOWNLOADING, DownloadState.VERIFYING, DownloadState.COPYING)) {
+            "Another game download is already active"
+        }
         val directory = File(installDirectory)
         StoragePreflight.requireWritable(directory)
-        val health = InstallationScanner.game(directory).health
-        check(health != InstallHealth.INCOMPLETE && health != InstallHealth.INACCESSIBLE &&
-            health != InstallHealth.DETECTED && health != InstallHealth.STRUCTURALLY_VALID) {
-            "Selected folder already contains files or is inaccessible; choose an empty destination"
+        GameDownloadRecovery.safeDestination(directory)
+        val checkpoint = recovery.pending()
+        if (checkpoint == null) {
+            val health = InstallationScanner.game(directory).health
+            check(health != InstallHealth.INCOMPLETE && health != InstallHealth.INACCESSIBLE &&
+                health != InstallHealth.DETECTED && health != InstallHealth.STRUCTURALLY_VALID) {
+                "Selected folder already contains files; choose an empty destination"
+            }
+            // Journal before starting the service. A process death leaves a recoverable download.
+            recovery.beginNew(directory, branch, os, verifyAfterDownload)
+        } else {
+            // Existing game bytes are usable ONLY if this exact session created them.
+            recovery.requireMatching(directory, branch, os, verifyAfterDownload)
         }
         GameDownloadService.start(
             context = context,

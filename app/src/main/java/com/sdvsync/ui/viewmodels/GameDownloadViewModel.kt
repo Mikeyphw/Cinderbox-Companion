@@ -8,6 +8,7 @@ import com.sdvsync.R
 import com.sdvsync.cinderbox.CinderboxPaths
 import com.sdvsync.download.CinderboxDownloadProgress
 import com.sdvsync.download.DownloadProgress
+import com.sdvsync.download.DownloadState
 import com.sdvsync.download.GameDownloadManager
 import com.sdvsync.local.InstallationScanner
 import com.sdvsync.local.InstallAssessment
@@ -58,6 +59,7 @@ data class GameDownloadState(
     val storageReady: Boolean = false,
     val storageDetail: String = "Storage not checked",
     val verifyAfterDownload: Boolean = true,
+    val hasRecoverableDownload: Boolean = false,
     val downloadProgress: DownloadProgress = DownloadProgress(),
     val smapiSetupProgress: SmapiSetupProgress = SmapiSetupProgress(),
     val cinderboxDownloadProgress: CinderboxDownloadProgress = CinderboxDownloadProgress(),
@@ -105,13 +107,22 @@ class GameDownloadViewModel(
         ).resolve("StardewValley").absolutePath
         val savedDir = context.getSharedPreferences("m4_local_install", Context.MODE_PRIVATE)
             .getString("game_dir", null) ?: defaultDir
+        val interrupted = runCatching { downloadManager.pendingDownload() }
+        val pending = interrupted.getOrNull()
+        val selectedDir = pending?.directory ?: savedDir
         _state.value = _state.value.copy(
-            installDirectory = savedDir,
-            selectedInstallHealth = InstallationScanner.game(File(savedDir)),
-            storageReady = StoragePreflight.check(File(savedDir)).writable,
-            storageDetail = StoragePreflight.check(File(savedDir)).details,
+            installDirectory = selectedDir,
+            selectedBranch = pending?.branch ?: "public",
+            selectedOs = pending?.os ?: "windows",
+            verifyAfterDownload = pending?.verify ?: true,
+            hasRecoverableDownload = pending != null,
+            error = interrupted.exceptionOrNull()?.message,
+            selectedInstallHealth = InstallationScanner.game(File(selectedDir)),
+            storageReady = StoragePreflight.check(File(selectedDir)).writable,
+            storageDetail = StoragePreflight.check(File(selectedDir)).details,
             isCinderboxSetup = fileAccessDetector.getSetupType() == SETUP_TYPE_CINDERBOX
         )
+        if (pending != null) downloadManager.restoreInterruptedProgress()
 
         // Keep download eligibility in sync with the live Steam transport state.
         viewModelScope.launch {
@@ -121,7 +132,13 @@ class GameDownloadViewModel(
         }
         viewModelScope.launch {
             downloadManager.progress.collect { progress ->
-                _state.value = _state.value.copy(downloadProgress = progress)
+                val recoverable = when (progress.state) {
+                    DownloadState.ERROR, DownloadState.CANCELLED, DownloadState.COMPLETED ->
+                        runCatching { downloadManager.pendingDownload() != null }.getOrDefault(false)
+                    else -> _state.value.hasRecoverableDownload
+                }
+                _state.update { it.copy(downloadProgress = progress,
+                    hasRecoverableDownload = recoverable) }
             }
         }
         viewModelScope.launch {
@@ -321,12 +338,19 @@ class GameDownloadViewModel(
 
         val selectedHealth = InstallationScanner.game(File(current.installDirectory))
         val storage = StoragePreflight.check(File(current.installDirectory))
+        val resume = try {
+            downloadManager.canResume(File(current.installDirectory), current.selectedBranch,
+                current.selectedOs, current.verifyAfterDownload)
+        } catch (e: Exception) {
+            _state.value = current.copy(error = e.message ?: "Invalid recovery journal")
+            return
+        }
         if (!storage.writable || selectedHealth.health == InstallHealth.INACCESSIBLE ||
-            selectedHealth.health == InstallHealth.INCOMPLETE ||
-            selectedHealth.health == InstallHealth.STRUCTURALLY_VALID ||
-            selectedHealth.health == InstallHealth.DETECTED) {
+            (!resume && (selectedHealth.health == InstallHealth.INCOMPLETE ||
+                selectedHealth.health == InstallHealth.STRUCTURALLY_VALID ||
+                selectedHealth.health == InstallHealth.DETECTED))) {
             _state.value = current.copy(error = if (!storage.writable) storage.details else
-                "Existing game files detected (${selectedHealth.health}). Choose an empty destination; M4 never overwrites existing installations.")
+                "Existing game files detected (${selectedHealth.health}). Only a matching interrupted session may resume them.")
             return
         }
         val selectedBranchInfo = current.branches.find { it.name == current.selectedBranch }
@@ -351,13 +375,22 @@ class GameDownloadViewModel(
                 os = current.selectedOs,
                 verifyAfterDownload = current.verifyAfterDownload
             )
-        } catch (e: IllegalStateException) {
+        } catch (e: Exception) {
             _state.value = _state.value.copy(error = e.message ?: "Storage is unavailable")
         }
     }
 
     fun cancelDownload() {
         downloadManager.cancelDownload()
+    }
+
+    fun discardInterruptedDownload() {
+        runCatching { downloadManager.discardPendingDownload() }
+            .onSuccess { _state.update { it.copy(hasRecoverableDownload = false,
+                error = "Recovery forgotten. Existing files were kept; choose an empty folder for a new download.") } }
+            .onFailure { failure -> _state.update {
+                it.copy(error = "Cannot discard recovery: ${failure.message}")
+            } }
     }
 
     fun dismissError() {
