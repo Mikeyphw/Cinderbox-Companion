@@ -39,12 +39,32 @@ class M4Contracts(unittest.TestCase):
             assert 'StoragePreflight.requireWritable' in read(p), p
 
     def test_wizard_and_selected_dir_never_overwrite_game(self):
-        for p in ('app/src/main/java/com/sdvsync/download/GameDownloadManager.kt',
-                  'app/src/main/java/com/sdvsync/download/GameDownloadService.kt'):
-            src = read(p)
-            assert 'InstallationScanner.game' in src
-            assert 'InstallHealth.INCOMPLETE' in src
-            assert 'InstallHealth.STRUCTURALLY_VALID' in src
+        # M4 forbids overwriting someone else's game files. M6 adds an explicitly
+        # owned resume exception: new downloads are checked by the manager,
+        # while the service must reject any call without a matching checkpoint.
+        manager = read('app/src/main/java/com/sdvsync/download/GameDownloadManager.kt')
+        start = manager.split('    fun startDownload(', 1)[1].split('    fun cancelDownload()', 1)[0]
+        assert 'StoragePreflight.requireWritable(directory)' in start
+        assert 'InstallationScanner.game(directory).health' in start
+        for health in ('INCOMPLETE', 'INACCESSIBLE', 'DETECTED', 'STRUCTURALLY_VALID'):
+            assert 'InstallHealth.' + health in start
+        assert 'if (checkpoint == null)' in start
+        assert 'recovery.beginNew(directory, branch, os, verifyAfterDownload)' in start
+        assert 'recovery.requireMatching(directory, branch, os, verifyAfterDownload)' in start
+        assert (start.index('InstallationScanner.game(directory).health') <
+                start.index('recovery.beginNew(directory, branch, os, verifyAfterDownload)'))
+
+        service = read('app/src/main/java/com/sdvsync/download/GameDownloadService.kt')
+        run = service.split('    private suspend fun runDownload(', 1)[1]
+        gate = 'GameDownloadRecovery(filesDir).requireMatching(installRoot, branch, os, verify)'
+        assert 'StoragePreflight.requireWritable(installRoot)' in run
+        assert gate in run
+        assert run.index(gate) < run.index('depotDownloader = downloader')
+
+        recovery = read('app/src/main/java/com/sdvsync/download/GameDownloadRecovery.kt')
+        assert 'this.directory != safe.path' in recovery
+        assert 'marker.readText() == token' in recovery
+        assert 'check(pending()?.matches(directory, branch, os, verify) == true)' in recovery
 
     def test_health_ui_and_offline_navigation(self):
         nav = read('app/src/main/java/com/sdvsync/MainActivity.kt')
