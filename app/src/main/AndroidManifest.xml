@@ -54,6 +54,17 @@
             </intent-filter>
         </activity>
 
+        <!-- Foreground, user-disableable, continuously visible Steam session. -->
+        <service
+            android:name=".steam.SteamBackgroundService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Maintain a user-visible Steam session and recover from Android background network loss" />
+        </service>
+
         <service
             android:name=".autosync.AutoSyncService"
             android:foregroundServiceType="specialUse"

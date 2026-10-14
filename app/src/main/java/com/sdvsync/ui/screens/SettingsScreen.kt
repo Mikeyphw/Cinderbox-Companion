@@ -24,6 +24,7 @@ import androidx.core.net.toUri
 import com.sdvsync.BuildConfig
 import com.sdvsync.R
 import com.sdvsync.logging.AppLogger
+import com.sdvsync.steam.SteamBackgroundService
 import com.sdvsync.saves.SaveBackupManager
 import com.sdvsync.ui.components.ArrowLeftData
 import com.sdvsync.ui.components.CinderboxMigrationDialog
@@ -81,6 +82,9 @@ fun SettingsScreen(
     val migrationState by migrationViewModel.state.collectAsState()
 
     val context = LocalContext.current
+    var steamBackgroundEnabled by remember {
+        mutableStateOf(SteamBackgroundService.isEnabled(context))
+    }
     var confirmRoot by remember { mutableStateOf(false) }
     val developerPrefs = remember(context) { context.getSharedPreferences("hidden_developer_features", android.content.Context.MODE_PRIVATE) }
     var developerUnlocked by remember { mutableStateOf(developerPrefs.getBoolean("steam_diagnostics_enabled", false)) }
@@ -553,6 +557,28 @@ fun SettingsScreen(
             SettingsSectionGap()
 
             // Diagnostics
+            if (!preLogin) {
+                StardewCard {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Keep Steam connected in background", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    "Shows an ongoing notification and may use more battery. Android battery restrictions can still interrupt the connection.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(checked = steamBackgroundEnabled, onCheckedChange = { enabled ->
+                                steamBackgroundEnabled = enabled
+                                SteamBackgroundService.setEnabled(context, enabled)
+                                if (enabled && state.isLoggedIn) SteamBackgroundService.start(context)
+                            })
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
             SectionHeader(stringResource(R.string.settings_diagnostics_title))
             Spacer(Modifier.height(8.dp))
             if (developerUnlocked) {

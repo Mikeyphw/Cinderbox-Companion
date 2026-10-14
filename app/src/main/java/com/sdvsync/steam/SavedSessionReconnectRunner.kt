@@ -11,6 +11,7 @@ import kotlinx.coroutines.supervisorScope
  */
 internal suspend fun runSavedSessionReconnect(
     pause: suspend (Long) -> Unit,
+    awaitNetwork: suspend () -> Unit = {},
     attempt: suspend () -> Unit,
     connected: () -> Boolean,
     canRetry: () -> Boolean,
@@ -22,6 +23,10 @@ internal suspend fun runSavedSessionReconnect(
         if (!canRetry() || connected()) return connected()
         onWaiting(number)
         pause(backoffMs)
+        if (!canRetry() || connected()) return connected()
+        // This suspends rather than burning retry attempts during radio/network loss.
+        // Cancelling the retry supervisor (logout) also cancels this wait.
+        awaitNetwork()
         if (!canRetry() || connected()) return connected()
 
         // Child failure/cancellation must not cancel the enclosing retry controller.

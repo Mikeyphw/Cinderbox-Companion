@@ -121,6 +121,17 @@ class SteamAuthenticator(
         }
     }
 
+    // Retry only when Android exposes a usable default network. A lack of network
+    // in the background must not consume the six login attempts.
+    private suspend fun awaitNetworkForReconnect() {
+        if (isNetworkAvailable()) return
+        SteamDiagnostics.record(SteamDiagnostics.Phase.RECONNECTING, "reconnect_wait_for_network")
+        while (!isNetworkAvailable()) {
+            reconnectWakeups.receive()
+        }
+        SteamDiagnostics.record(SteamDiagnostics.Phase.RECONNECTING, "reconnect_network_available")
+    }
+
     fun onAppForeground() {
         SteamDiagnostics.trace("app_foreground")
         requestSavedSessionRecovery("app_foreground_recovery")
@@ -146,6 +157,7 @@ class SteamAuthenticator(
                     withTimeoutOrNull(duration) { reconnectWakeups.receive() }
                     Unit
                 },
+                awaitNetwork = { awaitNetworkForReconnect() },
                 attempt = { loginWithSavedSession() },
                 connected = { clientManager.isLoggedIn },
                 canRetry = {
@@ -772,6 +784,7 @@ class SteamAuthenticator(
         isUserDisconnect = true
         wasLoggedIn = false
         SteamDiagnostics.record(SteamDiagnostics.Phase.OFFLINE, "user_logout")
+        SteamBackgroundService.stop(context)
         autoReconnectJob?.cancel()
         autoReconnectJob = null
         authAttempts.cancelActive()?.let { cancelled ->

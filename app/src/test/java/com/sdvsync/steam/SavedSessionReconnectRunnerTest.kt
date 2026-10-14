@@ -1,5 +1,7 @@
 package com.sdvsync.steam
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
@@ -9,6 +11,52 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SavedSessionReconnectRunnerTest {
+    @Test
+    fun `logout cancels network wait before any login`() = runBlocking {
+        var attempts = 0
+        val waiting = CompletableDeferred<Unit>()
+        val neverAvailable = CompletableDeferred<Unit>()
+        val retry = async {
+            runSavedSessionReconnect(
+                pause = {},
+                awaitNetwork = { waiting.complete(Unit); neverAvailable.await() },
+                attempt = { attempts++ },
+                connected = { false },
+                canRetry = { true }
+            )
+        }
+        waiting.await()
+        retry.cancel()
+        retry.join()
+        assertTrue(retry.isCancelled)
+        assertEquals(0, attempts)
+    }
+
+    @Test
+    fun `network unavailability suspends without consuming attempts`() = runBlocking {
+        var attempts = 0
+        var connected = false
+        val waiting = CompletableDeferred<Unit>()
+        val network = CompletableDeferred<Unit>()
+        val result = async {
+            runSavedSessionReconnect(
+                pause = {},
+                awaitNetwork = {
+                    waiting.complete(Unit)
+                    network.await()
+                },
+                attempt = { attempts++; connected = true },
+                connected = { connected },
+                canRetry = { true }
+            )
+        }
+        waiting.await()
+        assertEquals(0, attempts)
+        network.complete(Unit)
+        assertTrue(result.await())
+        assertEquals(1, attempts)
+    }
+
     @Test
     fun `cancelling an individual login does not cancel subsequent retries`() = runBlocking {
         val waits = mutableListOf<Long>()
