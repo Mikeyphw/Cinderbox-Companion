@@ -1,4 +1,6 @@
 plugins { `kotlin-dsl` }
 repositories { google(); mavenCentral() }
-// AGP API is needed to compile the visitor, but must not leak into root plugin resolution.
-dependencies { compileOnly("com.android.tools.build:gradle:8.10.1") }
+// M3G visitor needs AGP at both compile time and runtime.
+// Root/app AGP plugin requests intentionally omit a version; the pinned buildSrc
+// dependency supplies AGP 8.10.1 to the plugin classpath.
+dependencies { implementation("com.android.tools.build:gradle:8.10.1") }

@@ -3,7 +3,7 @@ import com.android.build.api.instrumentation.InstrumentationScope
 import com.sdvsync.build.AndroidSafeMachineIdVisitorFactory
 
 plugins {
-    alias(libs.plugins.android.application)
+    id("com.android.application")
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }

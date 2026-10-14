@@ -12,10 +12,25 @@ class M3GSourceContracts(unittest.TestCase):
         source = read('app/src/main/java/com/sdvsync/SdvSyncApp.kt')
         self.assertLess(source.index('AndroidSteamMachineId.initialize(this)'), source.index('startKoin {'))
 
-    def test_agp_is_compile_only_to_prevent_plugin_classpath_collision(self):
+    def test_agp_plugin_classpath_and_version_source_are_consistent(self):
+        # buildSrc runtime must be able to load AsmClassVisitorFactory. Gradle's
+        # plugins blocks must then use the AGP already provided by that classpath.
         script = read('buildSrc/build.gradle.kts')
-        self.assertIn('compileOnly("com.android.tools.build:gradle:8.10.1")', script)
-        self.assertNotIn('implementation("com.android.tools.build:gradle:8.10.1")', script)
+        root = read('build.gradle.kts')
+        app = read('app/build.gradle.kts')
+        self.assertIn('implementation("com.android.tools.build:gradle:8.10.1")', script)
+        self.assertNotIn('compileOnly("com.android.tools.build:gradle:8.10.1")', script)
+        self.assertIn('id("com.android.application") apply false', root)
+        self.assertNotIn('alias(libs.plugins.android.application)', root)
+        self.assertIn('id("com.android.application")', app)
+        self.assertNotIn('alias(libs.plugins.android.application)', app)
+        self.assertIn('InstrumentationScope.ALL', app)
+        self.assertIn('AndroidSafeMachineIdVisitorFactory::class.java', app)
+
+    def test_gradle_kotlin_scripts_have_no_shell_style_comments(self):
+        for path in ('buildSrc/build.gradle.kts', 'build.gradle.kts', 'app/build.gradle.kts'):
+            for number, line in enumerate(read(path).splitlines(), start=1):
+                self.assertFalse(line.lstrip().startswith('#'), f'{path}:{number}: invalid Kotlin DSL comment')
 
     def test_android_identity_persisted_and_private(self):
         source = read('app/src/main/java/com/sdvsync/steam/AndroidSteamMachineId.kt')
