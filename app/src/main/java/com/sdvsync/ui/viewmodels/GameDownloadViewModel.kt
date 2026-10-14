@@ -8,6 +8,7 @@ import com.sdvsync.R
 import com.sdvsync.cinderbox.CinderboxPaths
 import com.sdvsync.download.CinderboxDownloadProgress
 import com.sdvsync.download.DownloadProgress
+import com.sdvsync.download.DownloadState
 import com.sdvsync.download.GameDownloadManager
 import com.sdvsync.local.InstallationScanner
 import com.sdvsync.local.InstallAssessment
