@@ -4,6 +4,8 @@ import android.app.Application
 import com.sdvsync.di.appModule
 import com.sdvsync.logging.AppLogger
 import com.sdvsync.logging.JavaSteamLogBridge
+import com.sdvsync.steam.AndroidSteamMachineId
+import com.sdvsync.steam.SteamDiagnostics
 import `in`.dragonbra.javasteam.util.log.LogManager
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
@@ -13,6 +15,8 @@ class SdvSyncApp : Application() {
     override fun onCreate() {
         super.onCreate()
         AppLogger.init(this)
+        AndroidSteamMachineId.initialize(this)
+        SteamDiagnostics.initialize(this)
         patchVZipBufferPool()
         LogManager.addListener(JavaSteamLogBridge())
         startKoin {

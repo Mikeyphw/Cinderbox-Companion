@@ -139,9 +139,10 @@ class SteamAuthenticator(
 
     private suspend fun connectOrFail(attempt: AuthAttemptToken): Boolean {
         if (!isNetworkAvailable()) {
-            AppLogger.w(TAG, "No network available")
-            setState(attempt, AuthState.Error(context.getString(R.string.error_no_internet)))
-            return false
+            // ConnectivityManager may transiently report no active network on Android ROMs.
+            // Attempt the actual Steam transport; its failure/timeout is authoritative.
+            AppLogger.w(TAG, "Network capabilities unavailable; trying Steam transport")
+            SteamDiagnostics.record(SteamDiagnostics.Phase.CONNECTING, "network_capabilities_unavailable")
         }
         if (!isClockValid()) {
             AppLogger.w(TAG, "Device clock appears incorrect")
@@ -277,6 +278,7 @@ class SteamAuthenticator(
     private suspend fun authenticateWithCredentials(attempt: AuthAttemptToken, username: String, password: String) {
         AppLogger.d(TAG, "Authenticating with credentials for ${username.take(2)}***")
         setState(attempt, AuthState.Authenticating)
+        SteamDiagnostics.record(SteamDiagnostics.Phase.AUTHENTICATING, "credentials_authentication")
 
         try {
             val authDetails = AuthSessionDetails().apply {
@@ -660,18 +662,22 @@ class SteamAuthenticator(
         }
 
         if (!userInitiated && wasLoggedIn && sessionStore.hasSession()) {
-            AppLogger.d(TAG, "Auto-reconnecting in 2s...")
+            AppLogger.d(TAG, "Auto-reconnecting with bounded exponential backoff")
             _authState.value = AuthState.Connecting
             autoReconnectJob?.cancel()
             autoReconnectJob = scope.launch {
-                delay(2000)
-                if (clientManager.isLoggedIn) {
-                    return@launch
+                var backoff = 2_000L
+                repeat(6) { index ->
+                    SteamDiagnostics.record(SteamDiagnostics.Phase.RECONNECTING, "reconnect_wait_${index + 1}")
+                    delay(backoff)
+                    if (clientManager.isLoggedIn) return@launch
+                    loginWithSavedSession()
+                    if (clientManager.isLoggedIn) return@launch
+                    backoff = (backoff * 2).coerceAtMost(30_000L)
                 }
-                loginWithSavedSession()
-                if (_authState.value is AuthState.Error) {
-                    wasLoggedIn = false
-                }
+                // Avoid an infinite reconnect loop; user can still manually Retry.
+                wasLoggedIn = false
+                SteamDiagnostics.record(SteamDiagnostics.Phase.OFFLINE, "reconnect_exhausted", failure = true)
             }
         } else if (!userInitiated && currentAuthState is AuthState.LoggedIn) {
             _authState.value = AuthState.Idle
@@ -696,6 +702,7 @@ class SteamAuthenticator(
         }
 
         val cancelled = authAttempts.cancelActive() ?: return true
+        SteamDiagnostics.record(SteamDiagnostics.Phase.OFFLINE, "authentication_transport_lost", failure = true)
         cancelPendingInput(cancelled.id)
         clearPendingLogOn(cancelled.id)
         val message = if (currentAuthState is AuthState.Connecting) {
@@ -710,6 +717,7 @@ class SteamAuthenticator(
     fun logout() {
         isUserDisconnect = true
         wasLoggedIn = false
+        SteamDiagnostics.record(SteamDiagnostics.Phase.OFFLINE, "user_logout")
         autoReconnectJob?.cancel()
         autoReconnectJob = null
         authAttempts.cancelActive()?.let { cancelled ->

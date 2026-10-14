@@ -2,6 +2,8 @@ package com.sdvsync.ui.components
 
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -25,11 +27,12 @@ fun StardewTopAppBar(title: String, navigationIcon: @Composable () -> Unit = {},
                 title,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1, overflow = TextOverflow.Ellipsis
             )
         },
         navigationIcon = navigationIcon,
-        actions = { actions() },
+        actions = { Row { SteamLiveBadge(); actions() } },
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
             navigationIconContentColor = MaterialTheme.colorScheme.primary,
