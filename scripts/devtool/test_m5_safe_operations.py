@@ -41,6 +41,11 @@ class M5SafeOperationsTest(unittest.TestCase):
         self.assertIn('mod-snapshots',safety)
         self.assertIn('private val modsDir: File',safety)
         self.assertIn('fun recover(): Boolean',safety)
+    def test_recovery_never_acknowledges_an_unbacked_journal(self):
+        src=read('app/src/main/java/com/sdvsync/mods/ModSafety.kt')
+        self.assertIn('if (list().none { it.id == id && it.folder == name }) return false', src)
+        self.assertNotIn('return if (data.getProperty("operation") == "install")', src)
+        self.assertIn('An initial install has no prior snapshot', src)
     def test_ci_enforces_m5(self):
         for p in ('.github/workflows/build.yml','.github/workflows/devtool-android-build.yml'):
             self.assertIn("test_m5_*.py",read(p))

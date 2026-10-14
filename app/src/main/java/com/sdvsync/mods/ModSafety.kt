@@ -125,18 +125,23 @@ internal class ModSafety(private val privateRoot: File, private val modsDir: Fil
         val name = data.getProperty("folder") ?: return false
         runCatching { validateName(name) }.getOrElse { return false }
         val target = File(modsDir, name)
+        // An initial install has no prior snapshot. Its journal is ambiguous after a crash:
+        // neither a missing target nor an unrecognized existing directory proves success.
+        // Keep the journal and block further modifications until explicitly reviewed.
+        val id = data.getProperty("snapshot")?.takeIf { Regex("[0-9a-f-]{36}").matches(it) }
+            ?: return false
+        // The journal must name an actual retained snapshot for this same folder.
+        // A syntactically valid ID (or another mod's snapshot) proves nothing.
+        if (list().none { it.id == id && it.folder == name }) return false
+        val previous = File(backupRoot, "$id/files")
+        if (!previous.isDirectory) return false
+        if (runCatching { ensureNoLinks(previous) }.isFailure) return false
         if (target.exists()) {
-            // Rename promotion is atomic; no destructive cleanup during recovery.
+            // An existing mod is safe to leave alone, not automatically overwrite.
+            if (runCatching { ensureNoLinks(target) }.isFailure) return false
             return target.isDirectory && File(target, "manifest.json").isFile &&
                 runCatching { complete() }.isSuccess
         }
-        val id = data.getProperty("snapshot")?.takeIf { Regex("[0-9a-f-]{36}").matches(it) }
-            ?: return if (data.getProperty("operation") == "install") {
-                runCatching { complete() }.isSuccess
-            } else false
-        val previous = File(backupRoot, "$id/files")
-        if (!previous.isDirectory) return false
-        ensureNoLinks(previous)
         val stage = File(modsDir, ".m5-recover-${UUID.randomUUID()}")
         if (!previous.copyRecursively(stage, overwrite = false)) return false
         if (!stage.renameTo(target)) return false

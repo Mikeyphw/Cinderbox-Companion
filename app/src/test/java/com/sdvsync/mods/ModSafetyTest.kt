@@ -41,6 +41,36 @@ class ModSafetyTest {
         assertFalse(File(mods, "TestMod").exists())
     }
 
+    @Test fun `unbacked journal cannot acknowledge an unknown existing mod`() = withDirectories { state, mods, safety ->
+        safety.begin("TestMod", null, "install")
+        val unexpected = File(mods, "TestMod").apply { mkdir() }
+        File(unexpected, "manifest.json").writeText("someone else's files")
+        assertFalse(safety.recover())
+        assertEquals("someone else's files", File(unexpected, "manifest.json").readText())
+        assertTrue(File(state, "mod-operation.properties").exists())
+    }
+
+    @Test fun `journal cannot use another mod snapshot`() = withDirectories { state, mods, safety ->
+        val other = File(mods, "OtherMod").apply { mkdir() }
+        File(other, "manifest.json").writeText("unrelated")
+        val wrong = requireNotNull(safety.snapshot(other))
+        safety.begin("TestMod", wrong, "install")
+        assertFalse(safety.recover())
+        assertFalse(File(mods, "TestMod").exists())
+        assertTrue(File(state, "mod-operation.properties").exists())
+    }
+
+    @Test fun `matching snapshot can finalize a promoted replacement`() = withDirectories { state, mods, safety ->
+        val target = File(mods, "TestMod").apply { mkdir() }
+        File(target, "manifest.json").writeText("old")
+        val backup = requireNotNull(safety.snapshot(target))
+        safety.begin("TestMod", backup, "install")
+        File(target, "manifest.json").writeText("new")
+        assertTrue(safety.recover())
+        assertEquals("new", File(target, "manifest.json").readText())
+        assertFalse(File(state, "mod-operation.properties").exists())
+    }
+
     @Test fun `review queue survives reopening and prevents replacement`() = withDirectories { state, _, _ ->
         val input = File(state, "test.zip").apply { writeText("fake zip archive") }
         val queue = ModReviewQueue(state)
