@@ -13,6 +13,12 @@ import com.sdvsync.local.InstallAssessment
 import com.sdvsync.local.InstallHealth
 import com.sdvsync.local.InstallationScanner
 import com.sdvsync.local.InstallationSnapshot
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import com.sdvsync.cinderbox.CinderboxPaths
+import com.sdvsync.download.GameRepairPreview
+import com.sdvsync.download.VerifiedGameRepair
+import kotlinx.coroutines.launch
 import com.sdvsync.ui.components.StardewTopAppBar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -26,6 +32,15 @@ fun InstallationHealthScreen(onBack: () -> Unit) {
     var selectedPath by remember { mutableStateOf(prefs.getString("game_dir", null) ?: "/storage/emulated/0/Download/StardewValley") }
     var refresh by remember { mutableIntStateOf(0) }
     var report by remember { mutableStateOf<InstallationSnapshot?>(null) }
+    val repairEngine = remember(context) { VerifiedGameRepair(context.filesDir) }
+    val repairScope = rememberCoroutineScope()
+    var repairTarget by remember { mutableStateOf(
+        prefs.getString("m10_repair_target", CinderboxPaths.GAME_FILES_DIR) ?: CinderboxPaths.GAME_FILES_DIR
+    ) }
+    var repairPreview by remember { mutableStateOf<GameRepairPreview?>(null) }
+    var repairBusy by remember { mutableStateOf(false) }
+    var repairMessage by remember { mutableStateOf("") }
+    LaunchedEffect(selectedPath, repairTarget) { repairPreview = null }
     LaunchedEffect(selectedPath, refresh) {
         report = withContext(Dispatchers.IO) {
             @Suppress("DEPRECATION")
@@ -47,6 +62,40 @@ fun InstallationHealthScreen(onBack: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             Button(onClick = { refresh++ }) { Text("Rescan installations") }
             Spacer(Modifier.height(16.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(12.dp))
+            Text("M10 · Repair existing game from verified Steam download",
+                style = MaterialTheme.typography.titleMedium)
+            Text("Source: the selected game folder above. It must match a completed Cinderbox " +
+                "download integrity record. Repair never downloads or deletes unrelated files.",
+                style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(value = repairTarget, onValueChange = {
+                repairTarget = it
+                prefs.edit().putString("m10_repair_target", it).apply()
+            }, label = { Text("Existing installation to repair") }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
+            Button(enabled = !repairBusy, onClick = {
+                repairScope.launch {
+                    repairBusy = true
+                    repairMessage = ""
+                    val outcome = withContext(Dispatchers.IO) {
+                        runCatching {
+                            check(repairEngine.recover()) {
+                                "Interrupted repair cannot be safely recovered; inspect files manually"
+                            }
+                            repairEngine.preview(File(selectedPath), File(repairTarget))
+                        }
+                    }
+                    repairPreview = outcome.getOrNull()
+                    repairMessage = outcome.exceptionOrNull()?.message ?: ""
+                    repairBusy = false
+                }
+            }) { Text(if (repairBusy) "Checking files…" else "Preview verified repair") }
+            if (repairMessage.isNotBlank()) {
+                Text(repairMessage, style = MaterialTheme.typography.bodySmall)
+            }
+            Spacer(Modifier.height(16.dp))
             report?.let { result ->
                 HealthRow("Selected game directory", result.selectedGame)
                 HealthRow("Cinderbox GameFiles", result.cinderboxGame)
@@ -64,6 +113,52 @@ fun InstallationHealthScreen(onBack: () -> Unit) {
             Text("Missing, inaccessible and incomplete are different states. Cinderbox will not overwrite an existing game automatically.",
                 style = MaterialTheme.typography.bodySmall)
         }
+    }
+    repairPreview?.let { preview ->
+        AlertDialog(
+            onDismissRequest = { if (!repairBusy) repairPreview = null },
+            title = { Text("Review selective game repair") },
+            text = {
+                Column {
+                    Text("Source: ${preview.source}")
+                    Text("Target: ${preview.destination}")
+                    Text("Changes: ${preview.changes.size} · Unchanged: ${preview.unchangedFiles} · " +
+                        "Target-only files preserved: ${preview.preservedFiles}")
+                    LazyColumn(Modifier.heightIn(max = 300.dp)) {
+                        items(preview.changes) { change ->
+                            Text("${change.kind}: ${change.path} (${change.bytes} bytes)",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    Text("Every changed file is backed up before replacement. Changes to either " +
+                        "directory invalidate this approval. A crash triggers safe rollback on rescan.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !repairBusy && preview.changes.isNotEmpty(), onClick = {
+                    repairScope.launch {
+                        repairBusy = true
+                        repairMessage = ""
+                        val outcome = withContext(Dispatchers.IO) {
+                            runCatching { repairEngine.apply(preview) }
+                        }
+                        repairMessage = outcome.fold(
+                            onSuccess = { "Repaired $it file(s); other game files preserved." },
+                            onFailure = { "Repair stopped: ${it.message ?: "manual review required"}" }
+                        )
+                        repairPreview = null
+                        repairBusy = false
+                        refresh++
+                    }
+                }) { Text("Approve repair") }
+            },
+            dismissButton = {
+                TextButton(enabled = !repairBusy, onClick = { repairPreview = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 
