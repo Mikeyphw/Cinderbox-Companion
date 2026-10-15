@@ -35,8 +35,9 @@ SHA40 = re.compile('[0-9a-f]{40}\\Z')
 SHA64 = re.compile('[0-9a-f]{64}\\Z')
 
 class DeviceGateError(Exception):
-    def __init__(self, code):
+    def __init__(self, code, *, case_summary=None):
         self.code = code
+        self.case_summary = case_summary
         super().__init__(code)
 
 def require(condition, code):
@@ -61,6 +62,16 @@ def json_from_gh(args):
     require(type(data) is dict, 'INVALID_GITHUB_RESPONSE')
     return data
 
+def list_from_gh(args):
+    """Read a GitHub list endpoint without accepting objects or malformed responses."""
+    raw = command(['gh', 'api', *args], timeout=45)
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        raise DeviceGateError('INVALID_GITHUB_RESPONSE') from None
+    require(type(data) is list and len(data) <= 100, 'INVALID_GITHUB_RESPONSE')
+    return data
+
 def git_head(repo):
     commit = command(['git','-C',str(repo),'rev-parse','HEAD']).strip()
     require(SHA40.fullmatch(commit) is not None, 'INVALID_LOCAL_COMMIT')
@@ -75,8 +86,9 @@ def verify_ci(run, jobs, commit):
         assess_ci(run, jobs, commit)
     except Exception:
         raise DeviceGateError('CI_QUALIFICATION_FAILED') from None
-    require(run.get('head_branch') == 'feature/m14-isolated-device-qualification' or
-            run.get('head_branch') == 'master', 'WRONG_CI_BRANCH')
+    require(run.get('head_branch') in (
+        'feature/m14-isolated-device-qualification',
+        'feature/m14-postmerge-device-provenance', 'master'), 'WRONG_CI_BRANCH')
     steps = jobs.get('jobs', [{}])[0].get('steps', [])
     successful = {s.get('name') for s in steps if s.get('conclusion') == 'success'}
     require({'M14 device qualification runner regressions',
@@ -84,51 +96,92 @@ def verify_ci(run, jobs, commit):
              'M14 upload isolated instrumentation APK'} <= successful,
             'M14_CI_STEPS_INCOMPLETE')
 
-def verified_ci_checkout(run, branch_commit):
-    """Resolve immutable CI checkout identity without confusing a PR merge with HEAD.
+def verified_ci_checkout(run, branch_commit, *, artifact_commit=None, artifact_ref=None):
+    """Bind CI build provenance to the source GitHub actually checked out.
 
-    GitHub `pull_request` builds compile refs/pull/N/merge (GITHUB_SHA), while
-    Actions run.head_sha refers to the feature tip. A merge is trusted only if
-    its current GitHub ref, PR association, and both Git parents agree.
-    If a PR or base moved after CI, fail closed and require a fresh run.
+    The Actions API reports the feature SHA for pull_request runs, even when
+    checkout built a synthetic PR merge commit. After a PR is merged, its run's
+    pull_requests may be empty and refs/pull/N/merge may be removed. Recover
+    association from GitHub's commit -> PR endpoint and verify the immutable
+    checkout commit's exact parent SHAs. Never treat master merge SHA as the
+    historical PR test build, and never bypass M3/M13 evidence verification.
     """
-    require(run.get('head_sha') == branch_commit, 'CI_HEAD_MISMATCH')
+    require(run.get('head_sha') == branch_commit and
+            SHA40.fullmatch(branch_commit or '') is not None, 'CI_HEAD_MISMATCH')
     if run.get('event') == 'push':
         branch = run.get('head_branch')
         require(branch in ('master', 'feature/m14-isolated-device-qualification'),
                 'UNEXPECTED_PUSH_BRANCH')
-        return branch_commit, f'refs/heads/{branch}'
+        expected_ref = f'refs/heads/{branch}'
+        require(artifact_commit in (None, branch_commit) and
+                artifact_ref in (None, expected_ref), 'PUSH_ARTIFACT_IDENTITY_MISMATCH')
+        return branch_commit, expected_ref
     require(run.get('event') == 'pull_request', 'UNEXPECTED_CI_EVENT')
+    branch_name = run.get('head_branch')
+    require(branch_name in ('feature/m14-isolated-device-qualification',
+                            'feature/m14-postmerge-device-provenance'),
+            'UNEXPECTED_PR_BRANCH')
     linked = run.get('pull_requests')
-    require(type(linked) is list and len(linked) == 1, 'PR_ASSOCIATION_AMBIGUOUS')
-    linked_pr = linked[0]
-    number = linked_pr.get('number')
-    require(type(number) is int and number > 0, 'INVALID_PR_NUMBER')
-    head = linked_pr.get('head') or {}
-    base = linked_pr.get('base') or {}
-    base_sha = base.get('sha')
-    require(head.get('sha') == branch_commit and head.get('ref') == run.get('head_branch') and
-            SHA40.fullmatch(base_sha or '') is not None,
+    require(type(linked) is list, 'PR_ASSOCIATION_AMBIGUOUS')
+    if not linked:
+        # GitHub removes the run -> PR association for some merged PRs.
+        # Commit association is explicit and still available after merging.
+        linked = list_from_gh([f'repos/{REPO}/commits/{branch_commit}/pulls?per_page=100'])
+    matching = [x for x in linked if type(x) is dict and
+                (x.get('head') or {}).get('sha') == branch_commit and
+                (x.get('head') or {}).get('ref') == branch_name and
+                type(x.get('number')) is int and x['number'] > 0]
+    require(len(matching) == 1 and len(linked) == 1, 'PR_ASSOCIATION_AMBIGUOUS')
+    association = matching[0]
+    number = association['number']
+    base_sha = (association.get('base') or {}).get('sha')
+    require(isinstance(base_sha, str) and SHA40.fullmatch(base_sha) is not None,
             'PR_HEAD_OR_BASE_MISMATCH')
     pr = json_from_gh([f'repos/{REPO}/pulls/{number}'])
     require(pr.get('number') == number and
             (pr.get('head') or {}).get('sha') == branch_commit and
-            (pr.get('base') or {}).get('sha') == base_sha and
-            (pr.get('head') or {}).get('ref') == run.get('head_branch'),
+            (pr.get('head') or {}).get('ref') == branch_name and
+            (pr.get('base') or {}).get('sha') == base_sha,
             'PR_CHANGED_SINCE_CI')
-    merge_sha = pr.get('merge_commit_sha')
-    require(isinstance(merge_sha, str) and SHA40.fullmatch(merge_sha) is not None,
-            'PR_MERGE_COMMIT_UNAVAILABLE')
-    ref = json_from_gh([f'repos/{REPO}/git/ref/pull/{number}/merge'])
-    require(ref.get('ref') == f'refs/pull/{number}/merge' and
-            (ref.get('object') or {}).get('sha') == merge_sha,
-            'PR_MERGE_REF_MISMATCH')
-    merge = json_from_gh([f'repos/{REPO}/git/commits/{merge_sha}'])
-    parents = merge.get('parents') or []
-    require(merge.get('sha') == merge_sha and len(parents) == 2 and
-            [p.get('sha') for p in parents] == [base_sha, branch_commit],
+    expected_ref = f'refs/pull/{number}/merge'
+    if artifact_ref is not None:
+        require(artifact_ref == expected_ref, 'PR_ARTIFACT_REF_MISMATCH')
+    merged = pr.get('state') == 'closed' and bool(pr.get('merged_at'))
+    if merged:
+        # A merged PR's merge_commit_sha is the FINAL master merge/squash,
+        # not the ephemeral merge commit that Actions built earlier.
+        require(bool(association.get('merged_at')), 'PR_ASSOCIATION_AMBIGUOUS')
+        from datetime import datetime, timezone
+        try:
+            run_started = datetime.fromisoformat(run['created_at'].replace('Z', '+00:00'))
+            merged_at = datetime.fromisoformat(pr['merged_at'].replace('Z', '+00:00'))
+        except (KeyError, AttributeError, ValueError):
+            raise DeviceGateError('PR_TIMELINE_UNVERIFIABLE') from None
+        require(run_started <= merged_at and
+                (association.get('merged_at') == pr.get('merged_at')),
+                'PR_TIMELINE_UNVERIFIABLE')
+        require(isinstance(artifact_commit, str) and
+                SHA40.fullmatch(artifact_commit) is not None and
+                artifact_ref == expected_ref,
+                'MERGED_PR_REQUIRES_ARTIFACT_SOURCE')
+        merge_sha = artifact_commit
+    else:
+        require(pr.get('state') == 'open', 'PR_STATE_UNVERIFIABLE')
+        merge_sha = pr.get('merge_commit_sha')
+        require(isinstance(merge_sha, str) and SHA40.fullmatch(merge_sha) is not None,
+                'PR_MERGE_COMMIT_UNAVAILABLE')
+        if artifact_commit is not None:
+            require(artifact_commit == merge_sha, 'PR_ARTIFACT_COMMIT_MISMATCH')
+        ref = json_from_gh([f'repos/{REPO}/git/ref/pull/{number}/merge'])
+        require(ref.get('ref') == expected_ref and
+                (ref.get('object') or {}).get('sha') == merge_sha,
+                'PR_MERGE_REF_MISMATCH')
+    commit = json_from_gh([f'repos/{REPO}/git/commits/{merge_sha}'])
+    parents = commit.get('parents') or []
+    require(commit.get('sha') == merge_sha and len(parents) == 2 and
+            [x.get('sha') for x in parents] == [base_sha, branch_commit],
             'PR_MERGE_PARENTS_MISMATCH')
-    return merge_sha, f'refs/pull/{number}/merge'
+    return merge_sha, expected_ref
 
 def sha256(path):
     h = hashlib.sha256()
@@ -237,19 +290,34 @@ class Transport:
         return {'api_level':int(sdk),'abi':abi}  # no serial, phone ID or path
 
 def parse_instrumentation(output):
-    # Delimited AndroidJUnitRunner STATUS records, never persist raw device logs.
-    completed=set()
-    for m in re.finditer(r'INSTRUMENTATION_STATUS: test=([A-Za-z][A-Za-z0-9_]*)',output):
-        tail=output[m.end():]
-        status=re.search(r'INSTRUMENTATION_STATUS_CODE:\s*(-?\d+)',tail)
-        if status and int(status.group(1)) == 0 and m.group(1) in TESTS:
-            completed.add(m.group(1))
-    failed=bool(re.search(r'INSTRUMENTATION_STATUS_CODE:\s*-(?:2|1)\b',output))
-    code=re.search(r'INSTRUMENTATION_CODE:\s*(-?\d+)',output)
-    require(not failed and code is not None and code.group(1)=='-1' and completed==TESTS,
-            'INSTRUMENTATION_INCOMPLETE_OR_FAILED')
-    return {'status':'PASS','completed':len(completed),'expected':len(TESTS),
-            'cases':{name:'PASS' for name in sorted(TESTS)}}
+    """Parse AndroidJUnitRunner status blocks without saving raw device output."""
+    cases = {name: 'NOT_COMPLETED' for name in sorted(TESTS)}
+    current = None
+    failed_event = False
+    for line in output.splitlines():
+        match = re.match(r'INSTRUMENTATION_STATUS: test=([A-Za-z][A-Za-z0-9_]*)\s*$', line)
+        if match:
+            current = match.group(1)
+            continue
+        match = re.match(r'INSTRUMENTATION_STATUS_CODE:\s*(-?\d+)\s*$', line)
+        if match:
+            status = int(match.group(1))
+            if status in (-1, -2):
+                failed_event = True
+            if current in cases and status in (0, -1, -2):
+                cases[current] = {0: 'PASS', -1: 'ERROR', -2: 'FAIL'}[status]
+            current = None
+    final_codes = re.findall(r'(?m)^INSTRUMENTATION_CODE:\s*(-?\d+)\s*$', output)
+    final_code = int(final_codes[-1]) if final_codes else None
+    complete = sum(value == 'PASS' for value in cases.values())
+    accepted = (not failed_event and final_code == -1 and
+                complete == len(TESTS) and len(final_codes) == 1)
+    summary = {'status': 'PASS' if accepted else 'FAILED_OR_BLOCKED',
+               'completed': complete, 'expected': len(TESTS),
+               'cases': cases, 'final_code': final_code}
+    if not accepted:
+        raise DeviceGateError('INSTRUMENTATION_INCOMPLETE_OR_FAILED', case_summary=summary)
+    return summary
 
 def write_report(path, doc):
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -266,7 +334,8 @@ def write_report(path, doc):
 def run(args):
     report={'schema_version':1,'producer':'cinderbox-m14-device',
             'scope':'explicit-debug-real-device-isolated-fixtures',
-            'repository':REPO,'source_commit':None,'ci_checkout_commit':None,'ci_checkout_ref':None,
+            'repository':REPO,'source_commit':None,'runner_source_commit':None,
+            'ci_checkout_commit':None,'ci_checkout_ref':None,
             'github_run_id':args.run_id,
             'ci':'NOT_RUN','apk_sha256':None,'test_apk_sha256':None,
             'transport':args.transport,'device':None,'install':'NOT_RUN',
@@ -277,24 +346,30 @@ def run(args):
     try:
         require(args.install,'INSTALL_REQUIRES_EXPLICIT_FLAG')
         repo=args.repo.resolve()
-        head=git_head(repo)
+        local_head=git_head(repo)
+        head=args.ci_head or local_head
+        require(SHA40.fullmatch(head or '') is not None, 'INVALID_CI_HEAD')
+        report['runner_source_commit']=local_head
         report['source_commit']=head
         require(args.run_id>0,'INVALID_RUN_ID')
         run_data=json_from_gh([f'repos/{REPO}/actions/runs/{args.run_id}'])
         jobs=json_from_gh([f'repos/{REPO}/actions/runs/{args.run_id}/jobs?per_page=100'])
         verify_ci(run_data,jobs,head)
-        ci_commit, ci_ref = verified_ci_checkout(run_data, head)
-        report['ci']='PASS'
-        report['ci_checkout_commit']=ci_commit
-        report['ci_checkout_ref']=ci_ref
         with tempfile.TemporaryDirectory(prefix='cinderbox-m14-') as directory:
             temp=Path(directory)
             main=temp/'debug';test=temp/'instrumentation'
             main.mkdir();test.mkdir()
             command(['gh','run','download',str(args.run_id),'--repo',REPO,'--name','debug-apk','--dir',str(main)],timeout=240)
             command(['gh','run','download',str(args.run_id),'--repo',REPO,'--name','m14-androidtest-apk','--dir',str(test)],timeout=240)
+            provenance=read_json(main/'M3_PROVENANCE.json')
+            ci_commit, ci_ref = verified_ci_checkout(
+                run_data,head,artifact_commit=provenance.get('source_commit'),
+                artifact_ref=provenance.get('source_ref'))
             apk,test_apk,digest,test_digest=verify_artifacts(
                 main,test,ci_commit,source_ref=ci_ref,run_id=args.run_id)
+            report['ci']='PASS'
+            report['ci_checkout_commit']=ci_commit
+            report['ci_checkout_ref']=ci_ref
             report['apk_sha256']=digest
             report['test_apk_sha256']=test_digest
             device=Transport(args.transport)
@@ -322,6 +397,8 @@ def run(args):
             report['overall']='PASS_ISOLATED_DEVICE_AUTOMATION'
     except DeviceGateError as error:
         report['failure_code']=error.code
+        if error.case_summary is not None:
+            report['instrumentation']=error.case_summary
         report['overall']='FAILED_OR_BLOCKED'
     except Exception:
         report['failure_code']='UNEXPECTED_FAILURE'
@@ -335,6 +412,7 @@ def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--repo',type=Path,default=Path(__file__).resolve().parents[2])
     p.add_argument('--run-id',type=int,required=True)
+    p.add_argument('--ci-head',default=None,help='Explicit historic feature commit when running after a PR was merged; verified against GitHub CI and PR records')
     p.add_argument('--transport',choices=('adb','termux-root'),required=True)
     p.add_argument('--install',action='store_true',help='Explicit consent to install CI debug and test APKs')
     p.add_argument('--allow-replace',action='store_true',help='Explicit consent to replace existing matching-signature app/test APKs')

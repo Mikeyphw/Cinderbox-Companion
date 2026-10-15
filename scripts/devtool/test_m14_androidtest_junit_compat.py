@@ -19,6 +19,25 @@ class AndroidJUnitCompatibility(unittest.TestCase):
         self.assertIn('assertFalse(File(mods, "beta").exists())', content)
         self.assertIn('assertTrue(tx.recover())', content)
 
+    def test_android_fixture_resolves_platform_cache_alias_without_loosening_production_paths(self):
+        content = TEST.read_text(encoding='utf8')
+        self.assertIn('targetContext.cacheDir.canonicalFile', content)
+        self.assertIn('createTempDirectory(cache.toPath(), "m14-device-").toFile().canonicalFile', content)
+        self.assertIn('root.parentFile == cache', content)
+        self.assertIn('!Files.isSymbolicLink(ancestor.toPath())', content)
+        self.assertIn('"Fixture escaped app-private cache"', content)
+        self.assertIn('".m14-test-owned"', content)
+        self.assertIn('root.deleteRecursively()', content)
+        self.assertNotIn('targetContext.filesDir', content)
+
+    def test_unknown_storage_budget_never_claims_capacity_sufficient(self):
+        content = TEST.read_text(encoding='utf8')
+        self.assertIn('StoragePlanner.downloadPlan(root, null)', content)
+        self.assertIn('assertNull(budget.payloadBytes)', content)
+        self.assertIn('assertNull(budget.requiredBytes)', content)
+        self.assertIn('assertFalse(budget.sufficient == true)', content)
+        self.assertNotIn('assertNull(budget.sufficient)', content)
+
     def test_existing_instrumentation_junit_dependency_remains(self):
         self.assertIn('androidTestImplementation("androidx.test.ext:junit:1.2.1")',
                       GRADLE.read_text(encoding='utf8'))
