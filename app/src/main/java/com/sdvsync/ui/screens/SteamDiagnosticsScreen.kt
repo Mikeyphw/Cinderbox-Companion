@@ -31,6 +31,15 @@ fun SteamDiagnosticsScreen(onBack: () -> Unit) {
             } }
         }
     }
+    // Preserve the read-only M3G Steam connection export alongside M7B's
+    // broader allowlisted bug report. Both are user-initiated SAF documents.
+    val steamExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) {
+            runCatching { context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use {
+                it.write(SteamDiagnostics.exportJson())
+            } }
+        }
+    }
     Scaffold(topBar = { StardewTopAppBar("Steam diagnostics", navigationIcon = {
         TextButton(onClick = onBack) { Text("Back") }
     }) }) { padding ->
@@ -60,6 +69,8 @@ fun SteamDiagnosticsScreen(onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(20.dp))
             Button(onClick = { export.launch("cinderbox-sanitized-bug-report.json") }) { Text("Export sanitized bug report") }
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = { steamExport.launch("cinderbox-steam-diagnostics.json") }) { Text("Export Steam connection history") }
             Text("Includes app version, Android API, network state, Steam status and categorical sync failures. No raw logs, filenames, credentials, device IDs, URLs, tokens or SSIDs.",
                 style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(16.dp))
