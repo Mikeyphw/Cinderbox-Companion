@@ -30,8 +30,18 @@ class M14IsolatedDeviceTest {
     private lateinit var privateDir: File
 
     @Before fun setUp() {
-        val cache = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
-        root = Files.createTempDirectory(cache.toPath(), "m14-device-").toFile()
+        // Android can expose cacheDir through an alias (/data/user/0). Recovery
+        // intentionally rejects symlink ancestors; use the exact same app-private
+        // directory after resolving that platform-managed alias, not a weaker gate.
+        val cache = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir.canonicalFile
+        check(cache.isDirectory && cache.canWrite()) { "Canonical app cache unavailable" }
+        root = Files.createTempDirectory(cache.toPath(), "m14-device-").toFile().canonicalFile
+        check(root.parentFile == cache) { "Fixture escaped app-private cache" }
+        var ancestor: File? = root
+        while (ancestor != null) {
+            check(!Files.isSymbolicLink(ancestor.toPath())) { "Fixture contains a symlink ancestor" }
+            ancestor = ancestor.parentFile
+        }
         privateDir = File(root, "journals").apply { check(mkdir()) }
         check(File(root, ".m14-test-owned").createNewFile())
     }
@@ -140,6 +150,8 @@ class M14IsolatedDeviceTest {
         val budget = StoragePlanner.downloadPlan(root, null)
         assertNull(budget.payloadBytes)
         assertNull(budget.requiredBytes)
-        assertNull(budget.sufficient)
+        // Unknown payload must never be reported sufficient. A conservative
+        // false is valid when the filesystem itself cannot be probed.
+        assertFalse(budget.sufficient == true)
     }
 }

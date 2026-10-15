@@ -26,6 +26,29 @@ class M14HostQualification(unittest.TestCase):
         with self.assertRaises(m14.DeviceGateError):
             m14.parse_instrumentation(sample+'INSTRUMENTATION_STATUS_CODE: -2\n')
 
+    def test_device_failure_report_carries_only_allowlisted_case_results(self):
+        output = ''.join(
+            'INSTRUMENTATION_STATUS: test=' + name + '\n' +
+            'INSTRUMENTATION_STATUS_CODE: ' + ('-2' if i == 0 else '0') + '\n'
+            for i, name in enumerate(sorted(m14.TESTS))
+        ) + 'INSTRUMENTATION_STATUS: stack=/private/data/SECRET\nINSTRUMENTATION_CODE: -1\n'
+        with self.assertRaises(m14.DeviceGateError) as ctx:
+            m14.parse_instrumentation(output)
+        report = ctx.exception.case_summary
+        self.assertEqual('FAILED_OR_BLOCKED', report['status'])
+        self.assertEqual('FAIL', report['cases'][sorted(m14.TESTS)[0]])
+        self.assertEqual(7, report['completed'])
+        self.assertNotIn('SECRET', json.dumps(report))
+        self.assertNotIn('stack', json.dumps(report))
+
+    def test_device_missing_test_or_runner_failure_stays_incomplete(self):
+        only = sorted(m14.TESTS)[0]
+        sample = 'INSTRUMENTATION_STATUS: test=' + only + '\nINSTRUMENTATION_STATUS_CODE: 0\nINSTRUMENTATION_CODE: -1\n'
+        with self.assertRaises(m14.DeviceGateError) as ctx:
+            m14.parse_instrumentation(sample)
+        self.assertEqual('NOT_COMPLETED', ctx.exception.case_summary['cases'][sorted(m14.TESTS)[1]])
+        self.assertEqual(1, ctx.exception.case_summary['completed'])
+
     def test_ci_gate_rejects_nonfinal_or_missing_m14_checks(self):
         from unittest.mock import patch
         sha='a'*40
@@ -92,6 +115,26 @@ class M14HostQualification(unittest.TestCase):
             with self.assertRaisesRegex(m14.DeviceGateError,'CI_HEAD_MISMATCH'):
                 m14.verified_ci_checkout(record,'d'*40)
             f.assert_not_called()
+
+    def test_reviewed_m14_maintenance_pr_branch_is_accepted_with_exact_parents(self):
+        from unittest.mock import patch
+        branch='feature/m14-postmerge-device-provenance'
+        head='b'*40; base='a'*40; merge='c'*40
+        steps={'jobs':[{'steps':[{'name':name,'conclusion':'success'} for name in (
+            'M14 device qualification runner regressions',
+            'M14 compile isolated Android instrumentation APK',
+            'M14 upload isolated instrumentation APK')]}]}
+        record={'event':'pull_request','head_sha':head,'head_branch':branch,
+                'pull_requests':[{'number':19,'head':{'sha':head,'ref':branch},'base':{'sha':base}}]}
+        pr={'number':19,'state':'open','head':{'sha':head,'ref':branch},
+            'base':{'sha':base},'merge_commit_sha':merge}
+        ref={'ref':'refs/pull/19/merge','object':{'sha':merge}}
+        commit={'sha':merge,'parents':[{'sha':base},{'sha':head}]}
+        with patch('m13_qualification.assess_ci',return_value={}), patch.object(
+                m14,'json_from_gh',side_effect=[pr,ref,commit]):
+            m14.verify_ci(record,steps,head)
+            self.assertEqual((merge,'refs/pull/19/merge'),m14.verified_ci_checkout(record,head,
+                artifact_commit=merge,artifact_ref='refs/pull/19/merge'))
 
     def test_push_checkout_needs_exact_branch_identity(self):
         from unittest.mock import patch

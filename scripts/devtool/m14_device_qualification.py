@@ -35,8 +35,9 @@ SHA40 = re.compile('[0-9a-f]{40}\\Z')
 SHA64 = re.compile('[0-9a-f]{64}\\Z')
 
 class DeviceGateError(Exception):
-    def __init__(self, code):
+    def __init__(self, code, *, case_summary=None):
         self.code = code
+        self.case_summary = case_summary
         super().__init__(code)
 
 def require(condition, code):
@@ -85,8 +86,9 @@ def verify_ci(run, jobs, commit):
         assess_ci(run, jobs, commit)
     except Exception:
         raise DeviceGateError('CI_QUALIFICATION_FAILED') from None
-    require(run.get('head_branch') == 'feature/m14-isolated-device-qualification' or
-            run.get('head_branch') == 'master', 'WRONG_CI_BRANCH')
+    require(run.get('head_branch') in (
+        'feature/m14-isolated-device-qualification',
+        'feature/m14-postmerge-device-provenance', 'master'), 'WRONG_CI_BRANCH')
     steps = jobs.get('jobs', [{}])[0].get('steps', [])
     successful = {s.get('name') for s in steps if s.get('conclusion') == 'success'}
     require({'M14 device qualification runner regressions',
@@ -116,7 +118,8 @@ def verified_ci_checkout(run, branch_commit, *, artifact_commit=None, artifact_r
         return branch_commit, expected_ref
     require(run.get('event') == 'pull_request', 'UNEXPECTED_CI_EVENT')
     branch_name = run.get('head_branch')
-    require(branch_name == 'feature/m14-isolated-device-qualification',
+    require(branch_name in ('feature/m14-isolated-device-qualification',
+                            'feature/m14-postmerge-device-provenance'),
             'UNEXPECTED_PR_BRANCH')
     linked = run.get('pull_requests')
     require(type(linked) is list, 'PR_ASSOCIATION_AMBIGUOUS')
@@ -287,19 +290,34 @@ class Transport:
         return {'api_level':int(sdk),'abi':abi}  # no serial, phone ID or path
 
 def parse_instrumentation(output):
-    # Delimited AndroidJUnitRunner STATUS records, never persist raw device logs.
-    completed=set()
-    for m in re.finditer(r'INSTRUMENTATION_STATUS: test=([A-Za-z][A-Za-z0-9_]*)',output):
-        tail=output[m.end():]
-        status=re.search(r'INSTRUMENTATION_STATUS_CODE:\s*(-?\d+)',tail)
-        if status and int(status.group(1)) == 0 and m.group(1) in TESTS:
-            completed.add(m.group(1))
-    failed=bool(re.search(r'INSTRUMENTATION_STATUS_CODE:\s*-(?:2|1)\b',output))
-    code=re.search(r'INSTRUMENTATION_CODE:\s*(-?\d+)',output)
-    require(not failed and code is not None and code.group(1)=='-1' and completed==TESTS,
-            'INSTRUMENTATION_INCOMPLETE_OR_FAILED')
-    return {'status':'PASS','completed':len(completed),'expected':len(TESTS),
-            'cases':{name:'PASS' for name in sorted(TESTS)}}
+    """Parse AndroidJUnitRunner status blocks without saving raw device output."""
+    cases = {name: 'NOT_COMPLETED' for name in sorted(TESTS)}
+    current = None
+    failed_event = False
+    for line in output.splitlines():
+        match = re.match(r'INSTRUMENTATION_STATUS: test=([A-Za-z][A-Za-z0-9_]*)\s*$', line)
+        if match:
+            current = match.group(1)
+            continue
+        match = re.match(r'INSTRUMENTATION_STATUS_CODE:\s*(-?\d+)\s*$', line)
+        if match:
+            status = int(match.group(1))
+            if status in (-1, -2):
+                failed_event = True
+            if current in cases and status in (0, -1, -2):
+                cases[current] = {0: 'PASS', -1: 'ERROR', -2: 'FAIL'}[status]
+            current = None
+    final_codes = re.findall(r'(?m)^INSTRUMENTATION_CODE:\s*(-?\d+)\s*$', output)
+    final_code = int(final_codes[-1]) if final_codes else None
+    complete = sum(value == 'PASS' for value in cases.values())
+    accepted = (not failed_event and final_code == -1 and
+                complete == len(TESTS) and len(final_codes) == 1)
+    summary = {'status': 'PASS' if accepted else 'FAILED_OR_BLOCKED',
+               'completed': complete, 'expected': len(TESTS),
+               'cases': cases, 'final_code': final_code}
+    if not accepted:
+        raise DeviceGateError('INSTRUMENTATION_INCOMPLETE_OR_FAILED', case_summary=summary)
+    return summary
 
 def write_report(path, doc):
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -379,6 +397,8 @@ def run(args):
             report['overall']='PASS_ISOLATED_DEVICE_AUTOMATION'
     except DeviceGateError as error:
         report['failure_code']=error.code
+        if error.case_summary is not None:
+            report['instrumentation']=error.case_summary
         report['overall']='FAILED_OR_BLOCKED'
     except Exception:
         report['failure_code']='UNEXPECTED_FAILURE'
