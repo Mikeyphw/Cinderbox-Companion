@@ -84,6 +84,52 @@ def verify_ci(run, jobs, commit):
              'M14 upload isolated instrumentation APK'} <= successful,
             'M14_CI_STEPS_INCOMPLETE')
 
+def verified_ci_checkout(run, branch_commit):
+    """Resolve immutable CI checkout identity without confusing a PR merge with HEAD.
+
+    GitHub `pull_request` builds compile refs/pull/N/merge (GITHUB_SHA), while
+    Actions run.head_sha refers to the feature tip. A merge is trusted only if
+    its current GitHub ref, PR association, and both Git parents agree.
+    If a PR or base moved after CI, fail closed and require a fresh run.
+    """
+    require(run.get('head_sha') == branch_commit, 'CI_HEAD_MISMATCH')
+    if run.get('event') == 'push':
+        branch = run.get('head_branch')
+        require(branch in ('master', 'feature/m14-isolated-device-qualification'),
+                'UNEXPECTED_PUSH_BRANCH')
+        return branch_commit, f'refs/heads/{branch}'
+    require(run.get('event') == 'pull_request', 'UNEXPECTED_CI_EVENT')
+    linked = run.get('pull_requests')
+    require(type(linked) is list and len(linked) == 1, 'PR_ASSOCIATION_AMBIGUOUS')
+    linked_pr = linked[0]
+    number = linked_pr.get('number')
+    require(type(number) is int and number > 0, 'INVALID_PR_NUMBER')
+    head = linked_pr.get('head') or {}
+    base = linked_pr.get('base') or {}
+    base_sha = base.get('sha')
+    require(head.get('sha') == branch_commit and head.get('ref') == run.get('head_branch') and
+            SHA40.fullmatch(base_sha or '') is not None,
+            'PR_HEAD_OR_BASE_MISMATCH')
+    pr = json_from_gh([f'repos/{REPO}/pulls/{number}'])
+    require(pr.get('number') == number and
+            (pr.get('head') or {}).get('sha') == branch_commit and
+            (pr.get('base') or {}).get('sha') == base_sha and
+            (pr.get('head') or {}).get('ref') == run.get('head_branch'),
+            'PR_CHANGED_SINCE_CI')
+    merge_sha = pr.get('merge_commit_sha')
+    require(isinstance(merge_sha, str) and SHA40.fullmatch(merge_sha) is not None,
+            'PR_MERGE_COMMIT_UNAVAILABLE')
+    ref = json_from_gh([f'repos/{REPO}/git/ref/pull/{number}/merge'])
+    require(ref.get('ref') == f'refs/pull/{number}/merge' and
+            (ref.get('object') or {}).get('sha') == merge_sha,
+            'PR_MERGE_REF_MISMATCH')
+    merge = json_from_gh([f'repos/{REPO}/git/commits/{merge_sha}'])
+    parents = merge.get('parents') or []
+    require(merge.get('sha') == merge_sha and len(parents) == 2 and
+            [p.get('sha') for p in parents] == [base_sha, branch_commit],
+            'PR_MERGE_PARENTS_MISMATCH')
+    return merge_sha, f'refs/pull/{number}/merge'
+
 def sha256(path):
     h = hashlib.sha256()
     with path.open('rb') as f:
@@ -117,13 +163,17 @@ def validate_apk(apk, *, expected_digest=None):
         require(digest == expected_digest, 'APK_DIGEST_MISMATCH')
     return digest
 
-def verify_artifacts(main_dir, test_dir, commit):
+def verify_artifacts(main_dir, test_dir, commit, *, source_ref=None, run_id=None):
     prov=read_json(main_dir/'M3_PROVENANCE.json')
     qual=read_json(main_dir/'M13_QUALIFICATION.json')
     require(prov.get('repository') == REPO and prov.get('source_commit') == commit and
             prov.get('variant')=='debug' and prov.get('format')=='apk' and
             prov.get('qualified_release') is False and prov.get('publication_allowed') is False,
             'M3_SOURCE_MISMATCH')
+    if source_ref is not None:
+        require(prov.get('source_ref') == source_ref, 'M3_REF_MISMATCH')
+    if run_id is not None:
+        require(prov.get('github_run_id') == str(run_id), 'M3_RUN_MISMATCH')
     info=prov.get('apk', {})
     require(type(info) is dict and SHA64.fullmatch(info.get('sha256','')) is not None and
             info.get('package_name') == PACKAGE and info.get('debug_signed') is True and
@@ -216,7 +266,8 @@ def write_report(path, doc):
 def run(args):
     report={'schema_version':1,'producer':'cinderbox-m14-device',
             'scope':'explicit-debug-real-device-isolated-fixtures',
-            'repository':REPO,'source_commit':None,'github_run_id':args.run_id,
+            'repository':REPO,'source_commit':None,'ci_checkout_commit':None,'ci_checkout_ref':None,
+            'github_run_id':args.run_id,
             'ci':'NOT_RUN','apk_sha256':None,'test_apk_sha256':None,
             'transport':args.transport,'device':None,'install':'NOT_RUN',
             'instrumentation':'NOT_RUN','launch':'NOT_RUN',
@@ -232,14 +283,18 @@ def run(args):
         run_data=json_from_gh([f'repos/{REPO}/actions/runs/{args.run_id}'])
         jobs=json_from_gh([f'repos/{REPO}/actions/runs/{args.run_id}/jobs?per_page=100'])
         verify_ci(run_data,jobs,head)
+        ci_commit, ci_ref = verified_ci_checkout(run_data, head)
         report['ci']='PASS'
+        report['ci_checkout_commit']=ci_commit
+        report['ci_checkout_ref']=ci_ref
         with tempfile.TemporaryDirectory(prefix='cinderbox-m14-') as directory:
             temp=Path(directory)
             main=temp/'debug';test=temp/'instrumentation'
             main.mkdir();test.mkdir()
             command(['gh','run','download',str(args.run_id),'--repo',REPO,'--name','debug-apk','--dir',str(main)],timeout=240)
             command(['gh','run','download',str(args.run_id),'--repo',REPO,'--name','m14-androidtest-apk','--dir',str(test)],timeout=240)
-            apk,test_apk,digest,test_digest=verify_artifacts(main,test,head)
+            apk,test_apk,digest,test_digest=verify_artifacts(
+                main,test,ci_commit,source_ref=ci_ref,run_id=args.run_id)
             report['apk_sha256']=digest
             report['test_apk_sha256']=test_digest
             device=Transport(args.transport)

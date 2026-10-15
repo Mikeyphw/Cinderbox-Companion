@@ -63,6 +63,81 @@ class M14HostQualification(unittest.TestCase):
             with self.assertRaises(m14.DeviceGateError):
                 m14.verify_artifacts(main,tests,commit)
 
+    def test_pr_merge_commit_is_bound_to_head_base_ref_and_parents(self):
+        from unittest.mock import patch
+        head='b'*40; base='a'*40; merge='c'*40
+        record={'event':'pull_request','head_sha':head,
+                'head_branch':'feature/m14-isolated-device-qualification',
+                'pull_requests':[{'number':18,'head':{'sha':head,'ref':'feature/m14-isolated-device-qualification'},
+                                  'base':{'sha':base}}]}
+        pr={'number':18,'head':{'sha':head,'ref':record['head_branch']},
+            'base':{'sha':base},'merge_commit_sha':merge}
+        git_ref={'ref':'refs/pull/18/merge','object':{'sha':merge}}
+        commit={'sha':merge,'parents':[{'sha':base},{'sha':head}]}
+        with patch.object(m14,'json_from_gh',side_effect=[pr,git_ref,commit]) as f:
+            self.assertEqual((merge,'refs/pull/18/merge'), m14.verified_ci_checkout(record,head))
+            self.assertEqual(3,f.call_count)
+        wrong_parents={'sha':merge,'parents':[{'sha':head},{'sha':base}]}
+        with patch.object(m14,'json_from_gh',side_effect=[pr,git_ref,wrong_parents]):
+            with self.assertRaisesRegex(m14.DeviceGateError,'PR_MERGE_PARENTS_MISMATCH'):
+                m14.verified_ci_checkout(record,head)
+        with patch.object(m14,'json_from_gh',side_effect=[pr,
+                {'ref':'refs/pull/18/merge','object':{'sha':'d'*40}},commit]):
+            with self.assertRaisesRegex(m14.DeviceGateError,'PR_MERGE_REF_MISMATCH'):
+                m14.verified_ci_checkout(record,head)
+        with patch.object(m14,'json_from_gh',side_effect=[{**pr,'head':{'sha':'d'*40}},git_ref,commit]):
+            with self.assertRaisesRegex(m14.DeviceGateError,'PR_CHANGED_SINCE_CI'):
+                m14.verified_ci_checkout(record,head)
+        with patch.object(m14,'json_from_gh') as f:
+            with self.assertRaisesRegex(m14.DeviceGateError,'CI_HEAD_MISMATCH'):
+                m14.verified_ci_checkout(record,'d'*40)
+            f.assert_not_called()
+
+    def test_push_checkout_needs_exact_branch_identity(self):
+        from unittest.mock import patch
+        head='b'*40
+        with patch.object(m14,'json_from_gh') as f:
+            self.assertEqual((head,'refs/heads/master'),m14.verified_ci_checkout(
+                {'event':'push','head_sha':head,'head_branch':'master'},head))
+            with self.assertRaisesRegex(m14.DeviceGateError,'UNEXPECTED_PUSH_BRANCH'):
+                m14.verified_ci_checkout({'event':'push','head_sha':head,'head_branch':'unknown'},head)
+            f.assert_not_called()
+
+    def test_pr_merge_evidence_must_match_ci_checkout_and_run(self):
+        with tempfile.TemporaryDirectory() as work:
+            root=Path(work);main=root/'debug';tests=root/'test';main.mkdir();tests.mkdir()
+            a=main/'debug.apk';b=tests/'test.apk'
+            for path in (a,b):
+                with zipfile.ZipFile(path,'w') as z:
+                    z.writestr('AndroidManifest.xml',b'x'*4096)
+                    z.writestr('classes.dex',b'Y'*300)
+            digest=m14.sha256(a);head='b'*40; merge='c'*40
+            prov={'repository':m14.REPO,'source_commit':merge,
+                  'source_ref':'refs/pull/18/merge','github_run_id':'38794689936',
+                  'variant':'debug','format':'apk','qualified_release':False,
+                  'publication_allowed':False,'apk':{'filename':'debug.apk','size_bytes':a.stat().st_size,
+                  'sha256':digest,'package_name':m14.PACKAGE,
+                  'signature_verified':True,'debug_signed':True}}
+            qual={'producer':'cinderbox-m13','source_commit':merge,'source_contract':'PASS',
+                  'apk_integrity':'PASS_SHA256_MATCHES_M3','artifact_sha256':digest,
+                  'release_qualified':False,'publication_allowed':False}
+            (main/'M3_PROVENANCE.json').write_text(json.dumps(prov))
+            (main/'M13_QUALIFICATION.json').write_text(json.dumps(qual))
+            self.assertEqual(digest,m14.verify_artifacts(main,tests,merge,
+                source_ref='refs/pull/18/merge',run_id=38794689936)[2])
+            for changes in ({'source_commit':head},{'source_ref':'refs/heads/master'},
+                            {'github_run_id':'38787031168'}):
+                tampered={**prov,**changes}
+                (main/'M3_PROVENANCE.json').write_text(json.dumps(tampered))
+                with self.assertRaises(m14.DeviceGateError):
+                    m14.verify_artifacts(main,tests,merge,source_ref='refs/pull/18/merge',
+                                         run_id=38794689936)
+            (main/'M3_PROVENANCE.json').write_text(json.dumps(prov))
+            with a.open('ab') as f:f.write(b'tampered')
+            with self.assertRaises(m14.DeviceGateError):
+                m14.verify_artifacts(main,tests,merge,source_ref='refs/pull/18/merge',
+                                     run_id=38794689936)
+
     def test_explicit_install_and_existing_install_guard_are_part_of_runner(self):
         script=MODULE.read_text()
         self.assertIn("require(args.install,'INSTALL_REQUIRES_EXPLICIT_FLAG')",script)
