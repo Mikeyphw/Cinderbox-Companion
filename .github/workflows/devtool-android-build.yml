@@ -122,6 +122,11 @@ jobs:
       - name: M12 operation center and safe export regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m12_*.py' -v
 
+      - name: M13 integration and release-gate regressions
+        run: |
+          python3 scripts/devtool/m13_qualification.py source
+          python3 -m unittest discover -s scripts/devtool -p 'test_m13_*.py' -v
+
       - name: Enforce M3B non-publishing policy and regressions
         run: |
           python3 scripts/devtool/m3b_release_candidate.py policy
@@ -177,6 +182,18 @@ jobs:
             --apk-dir "$RUNNER_TEMP/cinderbox-devtool-debug" \
             --output "$RUNNER_TEMP/cinderbox-devtool-debug/M3_PROVENANCE.json"
 
+      - name: Generate M13 debug qualification evidence
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/devtool/m13_qualification.py finalize \
+            --source-sha "$GITHUB_SHA" \
+            --provenance "$RUNNER_TEMP/cinderbox-devtool-debug/M3_PROVENANCE.json" \
+            --apk "$RUNNER_TEMP/cinderbox-devtool-debug/debug.apk" \
+            --output "$RUNNER_TEMP/cinderbox-devtool-debug/M13_QUALIFICATION.json"
+
       - name: Upload debug APK for Devtool Actions collection
         uses: actions/upload-artifact@v4
         with:
@@ -186,5 +203,6 @@ jobs:
             ${{ runner.temp }}/cinderbox-devtool-debug/SHA256SUMS
             ${{ runner.temp }}/cinderbox-devtool-debug/BUILD_INFO.txt
             ${{ runner.temp }}/cinderbox-devtool-debug/M3_PROVENANCE.json
+            ${{ runner.temp }}/cinderbox-devtool-debug/M13_QUALIFICATION.json
           if-no-files-found: error
           retention-days: 14

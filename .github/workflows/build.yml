@@ -73,6 +73,11 @@ jobs:
       - name: M12 operation center and safe export regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m12_*.py' -v
 
+      - name: M13 integration and release-gate regressions
+        run: |
+          python3 scripts/devtool/m13_qualification.py source
+          python3 -m unittest discover -s scripts/devtool -p 'test_m13_*.py' -v
+
       - name: Enforce M3B non-publishing policy and regressions
         run: |
           python3 scripts/devtool/m3b_release_candidate.py policy
@@ -98,6 +103,21 @@ jobs:
             --apk-dir app/build/outputs/apk/debug \
             --output app/build/outputs/apk/debug/M3_PROVENANCE.json
 
+      - name: Generate M13 debug qualification evidence
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apks=(app/build/outputs/apk/debug/*.apk)
+          test "${#apks[@]}" -eq 1
+          python3 scripts/devtool/m13_qualification.py finalize \
+            --source-sha "$GITHUB_SHA" \
+            --provenance app/build/outputs/apk/debug/M3_PROVENANCE.json \
+            --apk "${apks[0]}" \
+            --output app/build/outputs/apk/debug/M13_QUALIFICATION.json
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
@@ -106,4 +126,5 @@ jobs:
           path: |
             app/build/outputs/apk/debug/*.apk
             app/build/outputs/apk/debug/M3_PROVENANCE.json
+            app/build/outputs/apk/debug/M13_QUALIFICATION.json
           retention-days: 14
