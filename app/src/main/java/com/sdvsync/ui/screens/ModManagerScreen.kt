@@ -227,18 +227,20 @@ fun ModManagerScreen(
                     ) {
                         // M7: local manifest checks; never silently enable dependencies.
                         if (state.compatibilityIssues.isNotEmpty()) {
-                            StardewCard {
-                                Column(Modifier.padding(12.dp)) {
-                                    Text("Mod compatibility audit", style = MaterialTheme.typography.titleMedium)
-                                    state.compatibilityIssues.take(8).forEach { issue ->
-                                        Text("${if (issue.blocking) "Action needed" else "Check"}: ${issue.mod} — ${issue.message}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = if (issue.blocking) MaterialTheme.colorScheme.error
-                                                else MaterialTheme.colorScheme.onSurfaceVariant)
+                            item {
+                                StardewCard {
+                                    Column(Modifier.padding(12.dp)) {
+                                        Text("Mod compatibility audit", style = MaterialTheme.typography.titleMedium)
+                                        state.compatibilityIssues.take(8).forEach { issue ->
+                                            Text("${if (issue.blocking) "Action needed" else "Check"}: ${issue.mod} — ${issue.message}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = if (issue.blocking) MaterialTheme.colorScheme.error
+                                                    else MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
                                     }
                                 }
+                                Spacer(Modifier.height(12.dp))
                             }
-                            Spacer(Modifier.height(12.dp))
                         }
 
                         // Profiles section
