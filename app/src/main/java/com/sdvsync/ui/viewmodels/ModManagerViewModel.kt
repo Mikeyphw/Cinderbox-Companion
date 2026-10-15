@@ -8,6 +8,9 @@ import com.sdvsync.cinderbox.CinderboxLayoutEvents
 import com.sdvsync.logging.AppLogger
 import com.sdvsync.mods.ModDataStore
 import com.sdvsync.mods.ModFileManager
+import com.sdvsync.mods.ModCompatibility
+import com.sdvsync.mods.ModCompatibilityIssue
+import com.sdvsync.mods.ModProfilePreview
 import com.sdvsync.mods.ModArchivePreview
 import com.sdvsync.mods.ModReviewQueue
 import com.sdvsync.mods.ModSnapshot
@@ -46,6 +49,7 @@ data class ModManagerState(
     val profiles: List<ModProfile> = emptyList(),
     val activeProfileName: String? = null,
     val isApplyingProfile: Boolean = false,
+    val compatibilityIssues: List<ModCompatibilityIssue> = emptyList(),
     val profileMessage: String? = null
 )
 
@@ -80,7 +84,8 @@ class ModManagerViewModel(
                 val mods = fileManager.listInstalledMods()
                 val updates = dataStore.getUpdateCache()
                 _state.update {
-                    it.copy(installedMods = mods, updates = updates, isLoading = false)
+                    it.copy(installedMods = mods, updates = updates, isLoading = false,
+                        compatibilityIssues = ModCompatibility.audit(mods))
                 }
                 updateDisplayedMods()
                 loadProfiles()
@@ -283,33 +288,22 @@ class ModManagerViewModel(
         }
     }
 
-    fun applyProfile(profile: ModProfile) {
+    fun previewProfile(profile: ModProfile): ModProfilePreview =
+        ModCompatibility.preview(_state.value.installedMods, profile)
+
+    fun applyProfile(profile: ModProfile, approvedFingerprint: String) {
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isApplyingProfile = true) }
             try {
-                val mods = _state.value.installedMods
-                for (mod in mods) {
-                    val shouldEnable = mod.manifest.uniqueID in profile.enabledModIds
-                    if (mod.enabled != shouldEnable) {
-                        if (shouldEnable) {
-                            fileManager.enableMod(mod.folderName)
-                        } else {
-                            fileManager.disableMod(mod.folderName)
-                        }
-                    }
-                }
-                _state.update {
-                    it.copy(
-                        isApplyingProfile = false,
-                        profileMessage = "Profile \"${profile.name}\" applied"
-                    )
-                }
+                val count = fileManager.applyProfileSafely(profile, approvedFingerprint)
+                _state.update { it.copy(isApplyingProfile = false,
+                    profileMessage = "Profile \"${profile.name}\" applied ($count changes)") }
                 loadInstalledMods()
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Failed to apply profile", e)
-                _state.update {
-                    it.copy(isApplyingProfile = false, profileMessage = "Failed to apply profile")
-                }
+                _state.update { it.copy(isApplyingProfile = false,
+                    profileMessage = "Profile not applied: ${e.message ?: "review required"}") }
+                loadInstalledMods()
             }
         }
     }

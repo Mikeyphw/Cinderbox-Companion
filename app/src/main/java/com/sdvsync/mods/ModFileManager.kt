@@ -5,6 +5,7 @@ import com.sdvsync.cinderbox.CinderboxPaths
 import com.sdvsync.logging.AppLogger
 import com.sdvsync.mods.models.InstallResult
 import com.sdvsync.mods.models.InstalledMod
+import com.sdvsync.mods.models.ModProfile
 import com.sdvsync.util.ZipBudget
 import java.io.File
 import java.nio.file.Files
@@ -127,12 +128,52 @@ class ModFileManager(
         )
     }
 
-    fun enableMod(folderName: String): Boolean {
+    /** Guarded, all-or-rollback profile rename transaction. No user files are deleted. */
+    @Synchronized fun applyProfileSafely(profile: ModProfile, expectedFingerprint: String): Int {
+        check(safety.recover()) { "An interrupted mod operation needs recovery" }
+        val current = listInstalledMods()
+        val preview = ModCompatibility.preview(current, profile)
+        check(preview.fingerprint == expectedFingerprint) {
+            "Mod folders changed since profile review. Please review again"
+        }
+        check(preview.blockers.isEmpty()) {
+            preview.blockers.joinToString("; ") { it.message }
+        }
+        // Fail before any rename if a destination is occupied or a source is unsafe.
+        for (step in preview.steps) {
+            val from = safeFolder(step.fromFolder)
+            val to = safeFolder(step.toFolder)
+            check(from.isDirectory && !Files.isSymbolicLink(from.toPath()) && !to.exists()) {
+                "Profile rename collision: ${step.name}"
+            }
+        }
+        val completed = mutableListOf<Pair<File, File>>()
+        try {
+            for (step in preview.steps) {
+                val from = safeFolder(step.fromFolder)
+                val to = safeFolder(step.toFolder)
+                check(from.renameTo(to)) { "Could not change ${step.name}" }
+                completed += from to to
+            }
+        } catch (failure: Exception) {
+            val failedRollback = mutableListOf<String>()
+            for ((original, applied) in completed.asReversed()) {
+                if (original.exists() || !applied.renameTo(original)) failedRollback += applied.name
+            }
+            check(failedRollback.isEmpty()) {
+                "Profile partially applied; manual recovery needed for: ${failedRollback.joinToString()}"
+            }
+            throw IllegalStateException("Profile rejected; previous folder states restored", failure)
+        }
+        return completed.size
+    }
+
+    @Synchronized fun enableMod(folderName: String): Boolean {
         if (!folderName.startsWith(".")) return true
         return renameMod(folderName, folderName.removePrefix("."))
     }
 
-    fun disableMod(folderName: String): Boolean {
+    @Synchronized fun disableMod(folderName: String): Boolean {
         if (folderName.startsWith(".")) return true
         // SMAPI only skips folders whose names start with a dot.
         return renameMod(folderName, ".$folderName")
