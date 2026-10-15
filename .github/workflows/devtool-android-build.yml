@@ -119,6 +119,9 @@ jobs:
       - name: M11 capacity and save recovery regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m11_*.py' -v
 
+      - name: M12 operation center and safe export regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m12_*.py' -v
+
       - name: Enforce M3B non-publishing policy and regressions
         run: |
           python3 scripts/devtool/m3b_release_candidate.py policy

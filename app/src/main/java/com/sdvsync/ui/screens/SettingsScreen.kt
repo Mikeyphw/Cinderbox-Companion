@@ -76,6 +76,7 @@ fun SettingsScreen(
     preLogin: Boolean = false,
     onOpenDeveloperDiagnostics: () -> Unit = {},
     onOpenInstallationHealth: () -> Unit = {},
+    onOpenOperationCenter: () -> Unit = {},
     viewModel: SettingsViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -555,6 +556,14 @@ fun SettingsScreen(
                 }
             }
 
+            SettingsSectionGap()
+
+            // Local-first unified operation history; no Steam session required.
+            SectionHeader("Operation center")
+            Spacer(Modifier.height(8.dp))
+            StardewOutlinedButton(onClick = onOpenOperationCenter, modifier = Modifier.fillMaxWidth()) {
+                Text("View downloads, mod reviews, sync outcomes and recovery guidance")
+            }
             SettingsSectionGap()
 
             // Local-first installation assessment is available without a Steam session.
