@@ -78,6 +78,9 @@ jobs:
           python3 scripts/devtool/m13_qualification.py source
           python3 -m unittest discover -s scripts/devtool -p 'test_m13_*.py' -v
 
+      - name: M14 device qualification runner regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m14_*.py' -v
+
       - name: Enforce M3B non-publishing policy and regressions
         run: |
           python3 scripts/devtool/m3b_release_candidate.py policy
@@ -128,3 +131,14 @@ jobs:
             app/build/outputs/apk/debug/M3_PROVENANCE.json
             app/build/outputs/apk/debug/M13_QUALIFICATION.json
           retention-days: 14
+      - name: M14 compile isolated Android instrumentation APK
+        run: ./gradlew --no-daemon --max-workers=2 :app:assembleDebugAndroidTest
+
+      - name: M14 upload isolated instrumentation APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: m14-androidtest-apk
+          if-no-files-found: error
+          path: app/build/outputs/apk/androidTest/debug/*.apk
+          retention-days: 14
+
