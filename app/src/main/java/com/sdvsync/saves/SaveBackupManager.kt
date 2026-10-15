@@ -30,6 +30,16 @@ class SaveBackupManager(private val context: Context) {
     private val backupRoot: File
         get() = File(context.filesDir, "backups").also { it.mkdirs() }
 
+    private val restoreTransaction = SaveRestoreTransaction(context.filesDir)
+
+    /** Block unrelated backup writes while an interrupted local restore needs review. */
+    @Synchronized fun recoverInterruptedLocalRestore(): Boolean = restoreTransaction.recover()
+
+    private fun safeName(name: String) {
+        require(name.isNotBlank() && name != "." && name != ".." &&
+            '/' !in name && '\\' !in name && '\u0000' !in name) { "Unsafe backup name" }
+    }
+
     /**
      * Update the max backup count and immediately prune all save folders.
      */
@@ -54,7 +64,23 @@ class SaveBackupManager(private val context: Context) {
      * Returns the backup directory path.
      */
     fun backupSave(saveDir: File): File? {
+        check(recoverInterruptedLocalRestore()) { "Previous save restore needs review" }
+        safeName(saveDir.name)
+        var sourcePart: File? = saveDir.absoluteFile
+        while (sourcePart != null) {
+            require(!java.nio.file.Files.isSymbolicLink(sourcePart.toPath())) { "Save path contains a symlink" }
+            sourcePart = sourcePart.parentFile
+        }
         if (!saveDir.exists() || !saveDir.isDirectory) return null
+        val sources = saveDir.listFiles() ?: error("Cannot read save folder")
+        val bytesNeeded = sources.fold(0L) { total, file ->
+            require(file.isFile && !java.nio.file.Files.isSymbolicLink(file.toPath())) {
+                "Source save contains an unsafe file"
+            }
+            Math.addExact(total, file.length())
+        }
+        val space = com.sdvsync.local.StoragePlanner.plan(backupRoot, bytesNeeded)
+        check(space.sufficient == true) { "Insufficient storage for backup: ${space.detail}" }
 
         AppLogger.d(TAG, "backupSave: starting backup of ${saveDir.name}")
         val backupDir = createBackupDirectory(saveDir.name)
@@ -81,6 +107,12 @@ class SaveBackupManager(private val context: Context) {
      * Cleans up partial writes on failure.
      */
     fun backupSaveData(saveFolderName: String, files: Map<String, ByteArray>): File {
+        check(recoverInterruptedLocalRestore()) { "Previous save restore needs review" }
+        safeName(saveFolderName)
+        files.keys.forEach(::safeName)
+        val bytesNeeded = files.values.fold(0L) { total, data -> Math.addExact(total, data.size.toLong()) }
+        val space = com.sdvsync.local.StoragePlanner.plan(backupRoot, bytesNeeded)
+        check(space.sufficient == true) { "Insufficient storage for backup: ${space.detail}" }
         AppLogger.d(TAG, "backupSaveData: starting backup of $saveFolderName (${files.size} files)")
         require(files.isNotEmpty()) { "Cannot back up an empty save" }
         val backupDir = createBackupDirectory(saveFolderName)
@@ -111,6 +143,7 @@ class SaveBackupManager(private val context: Context) {
      * List available backups for a save, newest first.
      */
     fun listBackups(saveFolderName: String): List<File> {
+        safeName(saveFolderName)
         val saveBackupDir = File(backupRoot, saveFolderName)
         if (!saveBackupDir.exists()) return emptyList()
 
@@ -123,22 +156,48 @@ class SaveBackupManager(private val context: Context) {
     /**
      * Restore a backup to a target directory.
      */
-    fun restoreBackup(backupDir: File, targetDir: File): Boolean {
+    @Synchronized fun restoreBackup(backupDir: File, targetDir: File): Boolean {
+        check(recoverInterruptedLocalRestore()) { "Previous restore needs manual recovery" }
         if (!backupDir.exists()) return false
-
-        targetDir.mkdirs()
-
-        // Clear existing files in target
-        targetDir.listFiles()?.forEach { it.delete() }
-
-        // Copy backup files to target
-        backupDir.listFiles()?.forEach { file ->
-            if (file.isFile) {
-                file.copyTo(File(targetDir, file.name), overwrite = true)
+        val root = backupRoot.canonicalFile
+        val source = backupDir.canonicalFile
+        require(source.path.startsWith(root.path + File.separator)) { "Backup outside retained storage" }
+        safeName(targetDir.name)
+        for (folder in listOf(backupDir, targetDir)) {
+            var part: File? = folder.absoluteFile
+            while (part != null) {
+                require(!java.nio.file.Files.isSymbolicLink(part.toPath())) {
+                    "Restore path contains a symlink"
+                }
+                part = part.parentFile
             }
         }
-
-        return true
+        // Retain an additional pre-restore snapshot before direct filesystem replacement.
+        if (targetDir.isDirectory && !targetDir.listFiles().isNullOrEmpty()) {
+            // Keep the chosen old backup until it has been read, even if retention is full.
+            // This explicit pre-restore snapshot is pruned *after* the repair succeeds.
+            val snapshotDir = createBackupDirectory(targetDir.name)
+            try {
+                val originals = targetDir.listFiles() ?: error("Cannot list current save")
+                val backupSize = originals.fold(0L) { total, file ->
+                    require(file.isFile && !java.nio.file.Files.isSymbolicLink(file.toPath())) {
+                        "Current save contains an unsafe entry"
+                    }
+                    Math.addExact(total, file.length())
+                }
+                val space = com.sdvsync.local.StoragePlanner.plan(backupRoot, backupSize)
+                check(space.sufficient == true) { "Insufficient storage for pre-restore snapshot: ${space.detail}" }
+                originals.forEach { file ->
+                    file.copyTo(File(snapshotDir, file.name), overwrite = false)
+                }
+            } catch (e: Exception) {
+                snapshotDir.deleteRecursively()
+                throw e
+            }
+        }
+        val restored = restoreTransaction.restore(source, targetDir)
+        pruneBackups(targetDir.name)
+        return restored
     }
 
     private fun pruneBackups(saveFolderName: String) {

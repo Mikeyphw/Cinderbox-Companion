@@ -30,6 +30,8 @@ import com.sdvsync.ui.components.StardewOutlinedButton
 import com.sdvsync.ui.components.StardewTopAppBar
 import com.sdvsync.ui.components.installCinderboxApk
 import com.sdvsync.ui.formatBytes
+import com.sdvsync.local.StoragePlanner
+import java.io.File
 import com.sdvsync.ui.viewmodels.GameDownloadViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -308,6 +310,45 @@ fun GameDownloadScreen(onBack: () -> Unit, viewModel: GameDownloadViewModel = ko
                 Text("Download blocked: ${state.storageDetail}", color = MaterialTheme.colorScheme.error)
                 Spacer(Modifier.height(12.dp))
             }
+            // Steam depot size is not known in advance. Optional user estimate is conservative.
+            StardewCard {
+                Column(Modifier.padding(12.dp)) {
+                    Text("Storage budget", style = MaterialTheme.typography.titleSmall)
+                    OutlinedTextField(
+                        value = state.estimatedGameSizeGiB,
+                        onValueChange = viewModel::updateStorageEstimate,
+                        label = { Text("Estimated game download size (GiB, optional)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    val budget = remember(state.installDirectory, state.estimatedGameSizeGiB) {
+                        runCatching { StoragePlanner.downloadPlan(File(state.installDirectory),
+                            StoragePlanner.parseGiB(state.estimatedGameSizeGiB)) }
+                    }
+                    if (budget.isSuccess) {
+                        val plan = budget.getOrThrow()
+                        Text("Available: ${plan.availableBytes?.let(::formatBytes) ?: "unknown"}",
+                            style = MaterialTheme.typography.bodySmall)
+                        Text("Temporary workspace allowance: ${formatBytes(plan.temporaryBytes)}",
+                            style = MaterialTheme.typography.bodySmall)
+                        Text("Safety reserve: ${formatBytes(plan.reserveBytes)}",
+                            style = MaterialTheme.typography.bodySmall)
+                        plan.requiredBytes?.let { needed ->
+                            Text("Estimated required: ${formatBytes(needed)}",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                        Text(plan.detail, style = MaterialTheme.typography.bodySmall,
+                            color = if (plan.sufficient == false) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        Text(budget.exceptionOrNull()?.message ?: "Invalid estimate",
+                            color = MaterialTheme.colorScheme.error)
+                    }
+                    Text("Capacity estimates do not verify Steam depot size, unpacking overhead, or future device use.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
             // Verification toggle
             StardewCard {
                 Row(

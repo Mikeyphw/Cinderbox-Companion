@@ -67,6 +67,9 @@ jobs:
       - name: M10 selective verified game repair regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m10_*.py' -v
 
+      - name: M11 capacity and save recovery regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m11_*.py' -v
+
       - name: Enforce M3B non-publishing policy and regressions
         run: |
           python3 scripts/devtool/m3b_release_candidate.py policy
