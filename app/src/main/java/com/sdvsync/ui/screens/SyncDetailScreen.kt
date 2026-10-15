@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.sdvsync.R
 import com.sdvsync.sync.SyncDirection
+import com.sdvsync.sync.SyncPreviewDirection
 import com.sdvsync.sync.SyncResult
 import com.sdvsync.ui.components.ArrowLeftData
 import com.sdvsync.ui.components.PixelIconButton
@@ -51,8 +52,6 @@ fun SyncDetailScreen(
     viewModel: SyncDetailViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsState()
-    var showPullConfirm by remember { mutableStateOf(false) }
-    var showPushConfirm by remember { mutableStateOf(false) }
 
     val safLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -140,15 +139,11 @@ fun SyncDetailScreen(
             ) {
                 StardewButton(
                     onClick = {
-                        if (hasLocal) {
-                            showPullConfirm = true
-                        } else {
-                            viewModel.pullSave(saveFolderName)
-                        }
+                        viewModel.requestSyncPreview(saveFolderName, SyncPreviewDirection.PULL)
                     },
                     modifier = Modifier.weight(1f),
                     variant = StardewButtonVariant.Primary,
-                    enabled = !state.isSyncing
+                    enabled = !state.isSyncing && !state.isPreviewLoading
                 ) {
                     PixelSyncIcon(direction = SyncDirection.PULL, size = 18.dp)
                     Spacer(Modifier.width(8.dp))
@@ -157,15 +152,11 @@ fun SyncDetailScreen(
 
                 StardewButton(
                     onClick = {
-                        if (hasCloud) {
-                            showPushConfirm = true
-                        } else {
-                            viewModel.pushSave(saveFolderName)
-                        }
+                        viewModel.requestSyncPreview(saveFolderName, SyncPreviewDirection.PUSH)
                     },
                     modifier = Modifier.weight(1f),
                     variant = StardewButtonVariant.Action,
-                    enabled = !state.isSyncing
+                    enabled = !state.isSyncing && !state.isPreviewLoading
                 ) {
                     PixelSyncIcon(direction = SyncDirection.PUSH, size = 18.dp)
                     Spacer(Modifier.width(8.dp))
@@ -185,7 +176,7 @@ fun SyncDetailScreen(
                         onClick = onViewSaveClick,
                         modifier = Modifier.weight(1f),
                         variant = StardewButtonVariant.Gold,
-                        enabled = !state.isSyncing
+                        enabled = !state.isSyncing && !state.isPreviewLoading
                     ) {
                         Text(stringResource(R.string.save_viewer_button))
                     }
@@ -193,7 +184,7 @@ fun SyncDetailScreen(
                     StardewOutlinedButton(
                         onClick = onBackupsClick,
                         modifier = Modifier.weight(1f),
-                        enabled = !state.isSyncing
+                        enabled = !state.isSyncing && !state.isPreviewLoading
                     ) {
                         Text(stringResource(R.string.backups_view))
                     }
@@ -204,7 +195,7 @@ fun SyncDetailScreen(
                 StardewOutlinedButton(
                     onClick = { viewModel.exportSave(saveFolderName) },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !state.isSyncing && !state.isExporting
+                    enabled = !state.isSyncing && !state.isPreviewLoading && !state.isExporting
                 ) {
                     if (state.isExporting) {
                         CircularProgressIndicator(
@@ -373,7 +364,7 @@ fun SyncDetailScreen(
                                     StardewOutlinedButton(
                                         onClick = {
                                             viewModel.clearResult()
-                                            viewModel.pullSave(saveFolderName, force = true)
+                                            viewModel.requestSyncPreview(saveFolderName, SyncPreviewDirection.PULL, force = true)
                                         }
                                     ) {
                                         Text(stringResource(R.string.sync_keep_cloud))
@@ -381,7 +372,7 @@ fun SyncDetailScreen(
                                     StardewButton(
                                         onClick = {
                                             viewModel.clearResult()
-                                            viewModel.pushSave(saveFolderName, force = true)
+                                            viewModel.requestSyncPreview(saveFolderName, SyncPreviewDirection.PUSH, force = true)
                                         },
                                         variant = StardewButtonVariant.Action
                                     ) {
@@ -476,43 +467,37 @@ fun SyncDetailScreen(
         }
     }
 
-    if (showPullConfirm) {
-        StardewDialog(
-            onDismissRequest = { showPullConfirm = false },
-            title = stringResource(R.string.sync_confirm_pull_title),
-            text = stringResource(R.string.sync_confirm_pull_message),
-            confirmButton = {
-                StardewButton(onClick = {
-                    showPullConfirm = false
-                    viewModel.pullSave(saveFolderName)
-                }) {
-                    Text(stringResource(R.string.sync_confirm_continue))
-                }
-            },
-            dismissButton = {
-                StardewOutlinedButton(onClick = { showPullConfirm = false }) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            }
-        )
+    if (state.isPreviewLoading) {
+        StardewDialog(onDismissRequest = {}, title = "Inspecting cloud and local files",
+            text = "Read-only preview in progress. No save files have been modified.",
+            confirmButton = {}, dismissButton = {})
     }
-
-    if (showPushConfirm) {
+    state.previewError?.let { message ->
+        StardewDialog(onDismissRequest = { viewModel.discardSyncPreview() },
+            title = "Sync preview unavailable", text = message,
+            confirmButton = { StardewOutlinedButton(onClick = { viewModel.discardSyncPreview() }) {
+                Text("Close")
+            } })
+    }
+    state.pendingPreview?.let { preview ->
         StardewDialog(
-            onDismissRequest = { showPushConfirm = false },
-            title = stringResource(R.string.sync_confirm_push_title),
-            text = stringResource(R.string.sync_confirm_push_message),
-            confirmButton = {
-                StardewButton(onClick = {
-                    showPushConfirm = false
-                    viewModel.pushSave(saveFolderName)
-                }) {
-                    Text(stringResource(R.string.sync_confirm_continue))
+            onDismissRequest = { viewModel.discardSyncPreview() },
+            title = "Review ${if (preview.direction == SyncPreviewDirection.PULL) "cloud → device" else "device → cloud"}",
+            text = buildString {
+                append("${preview.writeCount} files may be added or overwritten.\n")
+                preview.files.take(20).forEach { file ->
+                    append("${file.action}: ${file.name}\n")
                 }
+                if (preview.files.size > 20) append("More entries omitted from display.\n")
+                preview.warnings.forEach { append("$it\n") }
+            },
+            confirmButton = {
+                StardewButton(onClick = { viewModel.approveSyncPreview() },
+                    enabled = !state.isSyncing) { Text("Approve reviewed sync") }
             },
             dismissButton = {
-                StardewOutlinedButton(onClick = { showPushConfirm = false }) {
-                    Text(stringResource(R.string.action_cancel))
+                StardewOutlinedButton(onClick = { viewModel.discardSyncPreview() }) {
+                    Text("Cancel")
                 }
             }
         )

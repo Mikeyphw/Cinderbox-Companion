@@ -11,6 +11,7 @@ import com.sdvsync.saves.SaveMetadata
 import com.sdvsync.saves.SaveMetadataParser
 import com.sdvsync.saves.SaveValidator
 import com.sdvsync.steam.SteamCloudService
+import kotlinx.coroutines.CancellationException
 import com.sdvsync.widget.WidgetUpdateWorker
 
 enum class SyncErrorCategory {
@@ -278,6 +279,37 @@ class SyncEngine(
                 context.getString(R.string.sync_error_push_failed, e.message ?: "Unknown error"),
                 categorizeException(e)
             )
+        }
+    }
+
+    /** Read-only, exact file-content + cloud-manifest preview. No backup or writes. */
+    suspend fun previewChanges(saveFolderName: String, direction: SyncPreviewDirection,
+                               force: Boolean = false): SyncChangePreview {
+        val cloud = cloudService.listCloudSaves()[saveFolderName].orEmpty().map { file ->
+            CloudFileStamp(file.baseName, file.size.toLong(),
+                file.sha.joinToString("") { "%02x".format(it) }, file.timestamp, file.fullPath)
+        }
+        val local = saveFileManager.readLocalSave(saveFolderName)
+        return SyncChangePreviewBuilder.build(saveFolderName, direction, force, local, cloud)
+    }
+
+    /** Recheck all previewed files immediately before delegating to existing sync safety gates. */
+    suspend fun executeReviewedSync(preview: SyncChangePreview,
+                                    onProgress: ((String) -> Unit)? = null): SyncResult {
+        val live = try {
+            previewChanges(preview.saveFolder, preview.direction, preview.force)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return SyncResult.Error("Cannot recheck preview; sync was not started", SyncErrorCategory.UNKNOWN)
+        }
+        if (live.fingerprint != preview.fingerprint) {
+            return SyncResult.Error("Save files changed since preview; review the changes again",
+                SyncErrorCategory.UNKNOWN)
+        }
+        return when (preview.direction) {
+            SyncPreviewDirection.PULL -> pullSave(preview.saveFolder, preview.force, onProgress)
+            SyncPreviewDirection.PUSH -> pushSave(preview.saveFolder, preview.force, onProgress)
         }
     }
 
