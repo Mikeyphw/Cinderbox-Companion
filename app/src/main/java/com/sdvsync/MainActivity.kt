@@ -56,6 +56,7 @@ import com.sdvsync.ui.screens.LoginScreen
 import com.sdvsync.ui.screens.ModBrowseScreen
 import com.sdvsync.ui.screens.ModDetailScreen
 import com.sdvsync.ui.screens.ModManagerScreen
+import com.sdvsync.ui.screens.OperationCenterScreen
 import com.sdvsync.ui.screens.SaveViewerScreen
 import com.sdvsync.ui.screens.SettingsScreen
 import com.sdvsync.ui.screens.SteamDiagnosticsScreen
@@ -290,7 +291,22 @@ fun SdvSyncNavGraph(navController: NavHostController) {
                 onLogout = { navController.popBackStack() },
                 preLogin = true,
                 onOpenDeveloperDiagnostics = { navController.navigate("steam_diagnostics") },
-                onOpenInstallationHealth = { navController.navigate("installation_health") }
+                onOpenInstallationHealth = { navController.navigate("installation_health") },
+                onOpenOperationCenter = { navController.navigate("operation_center") }
+            )
+        }
+        composable("operation_center") {
+            OperationCenterScreen(
+                onBack = { navController.popBackStack() },
+                onOpenHealth = { navController.navigate("installation_health") },
+                onOpenSyncLog = { navController.navigate("sync_log") },
+                onOpenTab = { tab ->
+                    // Work from both pre-login and authenticated Settings without Steam auth.
+                    navController.popBackStack("main", inclusive = false).let { hadMain ->
+                        if (!hadMain) navController.navigate("main")
+                    }
+                    navController.currentBackStackEntry?.savedStateHandle?.set("switchToTab", tab)
+                }
             )
         }
         composable("installation_health") {
@@ -540,7 +556,8 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
                         }
                     },
                     onOpenDeveloperDiagnostics = { parentNavController.navigate("steam_diagnostics") },
-                    onOpenInstallationHealth = { parentNavController.navigate("installation_health") }
+                    onOpenInstallationHealth = { parentNavController.navigate("installation_health") },
+                    onOpenOperationCenter = { parentNavController.navigate("operation_center") }
                 )
             }
         }
