@@ -78,9 +78,14 @@ class M14IsolatedDeviceTest {
         val second = File(incoming, "beta").apply { check(mkdir()) }
         File(second, "new.txt").writeText("new-beta")
         val tx = ModBatchTransaction(privateDir, mods)
-        assertThrows(IllegalStateException::class.java) {
+        // androidx.test.ext:junit 1.2.1 does not expose JUnit 4.13 assertThrows here.
+        // Use the JUnit 4 fail/try/catch pattern instead; only the expected failure passes.
+        try {
             tx.install(listOf(BatchModEntry("alpha", first), BatchModEntry("beta", second)),
                 snapshot = {}, afterStep = { i -> if (i == 0) error("M14 simulated interruption") })
+            fail("Expected the interrupted multi-mod transaction to fail")
+        } catch (_: IllegalStateException) {
+            // Transaction failure is expected; assertions below verify full rollback.
         }
         assertEquals("kept", File(mods, "alpha/old.txt").readText())
         assertFalse(File(mods, "alpha/new.txt").exists())
