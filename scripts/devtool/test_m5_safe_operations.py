@@ -22,8 +22,13 @@ class M5SafeOperationsTest(unittest.TestCase):
         src=read('app/src/main/java/com/sdvsync/mods/ModFileManager.kt')
         self.assertIn('fun installFromZip(zipFile: File): InstallResult = InstallResult.Error',src)
         self.assertIn('currentReview.approvalKey == approvedReviewKey',src)
-        self.assertIn('safety.snapshot(targetDir)',src)
-        self.assertIn('safety.begin(targetDir.name, snapshot, "install")',src)
+        self.assertIn('batchTransactions.install(entries, snapshot =',src)
+        self.assertIn('safety.snapshot(target)',src)
+        batch=read('app/src/main/java/com/sdvsync/mods/ModBatchTransaction.kt')
+        for term in ('m9-mod-batch.properties', 'fun recover(): Boolean',
+                     'private fun treeHash(', 'snapshot(existing)', 'journal.delete()',
+                     'originalFolder(workspace, i)', 'states[i]'):
+            self.assertIn(term,batch)
     def test_mod_removal_is_snapshot_backed(self):
         src=read('app/src/main/java/com/sdvsync/mods/ModFileManager.kt')
         self.assertIn('safety.snapshot(folder)',src)

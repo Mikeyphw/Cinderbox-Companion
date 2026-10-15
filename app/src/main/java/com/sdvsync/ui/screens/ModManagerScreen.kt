@@ -93,7 +93,9 @@ fun ModManagerScreen(
                     Text("Add ${c.added}, replace ${c.replaced}, remove ${c.removed} files",
                         style = MaterialTheme.typography.bodySmall)
                 } ?: Text("Archive cannot be safely inspected. Discard it; no files were installed.")
-                Text("Existing mod versions are retained as restorable snapshots before replacement.",
+                Text("All mods in this archive install together, or the whole batch rolls back. " +
+                    "Original versions remain available as snapshots. A crash during installation " +
+                    "will trigger recovery before other mod operations.",
                     style = MaterialTheme.typography.bodySmall)
             } },
             confirmButton = { TextButton(onClick = viewModel::confirmPendingReview,

@@ -29,18 +29,21 @@ class ModFileManager(
 
     private val safety = ModSafety(context.filesDir, modsDir)
     private val profileTransactions = ModProfileTransaction(context.filesDir, modsDir)
+    private val batchTransactions = ModBatchTransaction(context.filesDir, modsDir)
 
     fun isModsDirAccessible(): Boolean = modsDir.exists() && modsDir.isDirectory && modsDir.canRead()
 
     fun listRetainedSnapshots(): List<ModSnapshot> = safety.list()
 
     @Synchronized fun restoreSnapshot(id: String): Boolean {
+        check(batchTransactions.recover()) { "Mod batch recovery requires manual inspection" }
         check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         return safety.restore(id)
     }
 
     /** A read-only review of all destination changes. ZIP extraction uses existing budgets. */
     @Synchronized fun previewFromZip(zipFile: File): ModArchivePreview {
+        check(batchTransactions.recover()) { "Mod batch recovery requires manual inspection" }
         check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         check(safety.recover()) { "An interrupted mod operation needs manual recovery" }
         val digest = safety.digest(zipFile)
@@ -55,16 +58,23 @@ class ModFileManager(
                 ?.mapNotNull { parseMod(it) } ?: emptyList()
             val ids = mutableSetOf<String>()
             val targets = mutableSetOf<String>()
+            val sourceFolders = manifests.map { requireNotNull(it.parentFile).canonicalFile }
+            check(sourceFolders.distinct().size == sourceFolders.size &&
+                sourceFolders.none { parent -> sourceFolders.any { it != parent &&
+                    it.path.startsWith(parent.path + File.separator) } }) {
+                "Nested or repeated mod manifests in archive are ambiguous"
+            }
             val changes = manifests.map { manifestFile ->
                 val manifest = requireNotNull(parser.parse(manifestFile.readText())) { "Invalid mod manifest" }
                 require(ids.add(manifest.uniqueID.lowercase(Locale.ROOT))) { "Duplicate mod ID in archive" }
                 val source = requireNotNull(manifestFile.parentFile)
                 val name = source.name.takeIf { it != temporary.name }
                     ?: manifest.name.replace(Regex("[^a-zA-Z0-9._\\- ]"), "")
-                val existing = currentMods.firstOrNull { it.manifest.uniqueID.equals(manifest.uniqueID, true) }
-                val target = safeFolder(existing?.folderName ?: name)
+                val matches = currentMods.filter { it.manifest.uniqueID.equals(manifest.uniqueID, true) }
+                require(matches.size <= 1) { "Duplicate installed mod ID: ${manifest.uniqueID}" }
+                val target = safeFolder(matches.singleOrNull()?.folderName ?: name)
                 require(targets.add(target.name.lowercase(Locale.ROOT))) { "Conflicting destinations in archive" }
-                check(!target.exists() || existing != null) { "Different mod already occupies ${target.name}" }
+                check(!target.exists() || matches.isNotEmpty()) { "Different mod already occupies ${target.name}" }
                 check(!target.exists() || target.isDirectory) { "Invalid existing mod directory" }
                 // Do not follow symbolic links inside the target or inside staging.
                 val original = if (target.isDirectory) target.walkTopDown().filter { it.isFile }.map {
@@ -81,7 +91,8 @@ class ModFileManager(
                     (incoming - original).size, (incoming intersect original).size,
                     ((original - incoming) - preserved).size)
             }
-            return ModArchivePreview(digest, changes)
+            return ModArchivePreview(digest, changes,
+                batchTransactions.destinationFingerprint(changes.map { it.folder }))
         } finally { temporary.deleteRecursively() }
     }
 
@@ -89,6 +100,7 @@ class ModFileManager(
      * Scan the Mods/ directory and parse all installed mods.
      */
     @Synchronized fun listInstalledMods(): List<InstalledMod> {
+        check(batchTransactions.recover()) { "Mod batch recovery requires manual inspection" }
         check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         if (!modsDir.exists()) return emptyList()
 
@@ -136,6 +148,7 @@ class ModFileManager(
 
     /** Journaled before the first rename; recovery reverses interrupted profile changes. */
     @Synchronized fun applyProfileSafely(profile: ModProfile, expectedFingerprint: String): Int {
+        check(batchTransactions.recover()) { "Mod batch recovery requires manual inspection" }
         check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         check(safety.recover()) { "An interrupted mod operation needs recovery" }
         val current = listInstalledMods()
@@ -160,12 +173,14 @@ class ModFileManager(
     }
 
     @Synchronized fun enableMod(folderName: String): Boolean {
+        check(batchTransactions.recover()) { "Mod batch recovery requires manual inspection" }
         check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         if (!folderName.startsWith(".")) return true
         return renameMod(folderName, folderName.removePrefix("."))
     }
 
     @Synchronized fun disableMod(folderName: String): Boolean {
+        check(batchTransactions.recover()) { "Mod batch recovery requires manual inspection" }
         check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         if (folderName.startsWith(".")) return true
         // SMAPI only skips folders whose names start with a dot.
@@ -191,6 +206,7 @@ class ModFileManager(
 
     /** Remove one validated direct child, never an arbitrary path. */
     @Synchronized fun removeMod(folderName: String): Boolean {
+        check(batchTransactions.recover()) { "Mod batch recovery requires manual inspection" }
         check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         val folder = safeFolder(folderName)
         check(safety.recover()) { "An interrupted mod transaction needs recovery" }
@@ -218,78 +234,57 @@ class ModFileManager(
     @Deprecated("Use previewFromZip then approved install")
     fun installFromZip(zipFile: File): InstallResult = InstallResult.Error("Preview and confirm the archive in Mods first")
 
+    /** A multi-mod archive is one durable transaction, never a partially installed subset. */
     @Synchronized fun installFromZip(zipFile: File, approvedReviewKey: String): InstallResult {
-        // Re-scan destinations immediately before mutation to reject stale previews.
-        val currentReview = previewFromZip(zipFile)
-        check(currentReview.approvalKey == approvedReviewKey) { "Mod archive or installed files changed since review" }
-        val tempDir = Files.createTempDirectory(context.cacheDir.toPath(), "mod_extract_").toFile()
+        val tempDir = Files.createTempDirectory(context.cacheDir.toPath(), "m9_extract_").toFile()
         try {
-            // Extract zip to temp directory
-            tempDir.mkdirs()
+            // The approval includes ZIP bytes, all target actions AND original folder bytes.
+            val currentReview = previewFromZip(zipFile)
+            check(currentReview.approvalKey == approvedReviewKey) {
+                "Mod archive or installed files changed since review; review again"
+            }
             extractZip(zipFile, tempDir)
-
-            // Find all manifest.json files
-            val manifests = tempDir.walk()
-                .filter { it.name.equals("manifest.json", ignoreCase = true) && it.isFile }
-                .toList()
-
-            if (manifests.isEmpty()) {
-                return InstallResult.Error("No manifest.json found in archive")
+            val manifestFiles = tempDir.walkTopDown().filter {
+                it.isFile && it.name.equals("manifest.json", ignoreCase = true)
+            }.toList()
+            check(manifestFiles.isNotEmpty()) { "No mod manifests in archive" }
+            val folders = manifestFiles.map { requireNotNull(it.parentFile).canonicalFile }
+            check(folders.distinct().size == folders.size &&
+                folders.none { parent -> folders.any { it != parent &&
+                    it.path.startsWith(parent.path + File.separator) } }) {
+                "Nested or duplicate mod manifests are not safe to install together"
             }
-
-            val installed = mutableListOf<InstalledMod>()
-
-            for (manifestFile in manifests) {
-                val modFolder = manifestFile.parentFile ?: continue
-                val manifest = parser.parse(manifestFile.readText()) ?: continue
-
-                // Determine the target folder name
-                val targetName = modFolder.name.takeIf { it != tempDir.name }
+            val current = listInstalledMods()
+            val seenIds = mutableSetOf<String>()
+            val entries = manifestFiles.map { manifestFile ->
+                val manifest = requireNotNull(parser.parse(manifestFile.readText())) {
+                    "Invalid mod manifest"
+                }
+                check(seenIds.add(manifest.uniqueID.lowercase(Locale.ROOT))) {
+                    "Duplicate mod identity in archive"
+                }
+                val existing = current.filter { it.manifest.uniqueID.equals(manifest.uniqueID, true) }
+                check(existing.size <= 1) { "Duplicate installed mod identity" }
+                val source = requireNotNull(manifestFile.parentFile)
+                val folder = source.name.takeIf { it != tempDir.name }
                     ?: manifest.name.replace(Regex("[^a-zA-Z0-9._\\- ]"), "")
-
-                require(targetName.isNotBlank() && targetName != "." && targetName != "..") {
-                    "Invalid mod folder name"
-                }
-                val existing = modsDir.listFiles()?.filter { it.isDirectory }
-                    ?.mapNotNull { parseMod(it) }?.firstOrNull {
-                        it.manifest.uniqueID.equals(manifest.uniqueID, ignoreCase = true)
-                    }
-                val targetDir = safeFolder(existing?.folderName ?: targetName)
-                check(!targetDir.exists() || existing != null) { "A different mod already uses $targetName" }
-                Files.createDirectories(modsDir.toPath())
-                val staged = Files.createTempDirectory(modsDir.toPath(), ".install-").toFile()
-                val previous = File(modsDir, ".m5-hold-${UUID.randomUUID()}")
-                val snapshot = safety.snapshot(targetDir)
-                safety.begin(targetDir.name, snapshot, "install")
-                try {
-                    check(modFolder.copyRecursively(staged, overwrite = true)) { "Could not stage mod files" }
-                    val config = File(targetDir, "config.json")
-                    if (config.isFile) config.copyTo(File(staged, "config.json"), overwrite = true)
-                    if (targetDir.exists()) Files.move(targetDir.toPath(), previous.toPath())
-                    try {
-                        Files.move(staged.toPath(), targetDir.toPath())
-                    } catch (e: Exception) {
-                        if (previous.exists()) Files.move(previous.toPath(), targetDir.toPath())
-                        throw e
-                    }
-                    safety.complete()
-                    if (previous.exists()) previous.deleteRecursively()
-                } finally {
-                    staged.deleteRecursively()
-                }
-
-                parseMod(targetDir)?.let { installed.add(it) }
-                AppLogger.d(TAG, "Installed mod: ${manifest.name} to ${targetDir.name}")
+                val targetName = safeFolder(existing.singleOrNull()?.folderName ?: folder).name
+                BatchModEntry(targetName, source)
             }
-
-            return if (installed.isEmpty()) {
-                InstallResult.Error("Failed to install any mods from archive")
-            } else {
-                InstallResult.Success(installed)
+            // The second extraction must resolve exactly the same reviewed destinations.
+            check(entries.map { it.targetName } == currentReview.changes.map { it.folder }) {
+                "Archive destinations changed since review"
             }
+            val count = batchTransactions.install(entries, snapshot = { target ->
+                check(safety.snapshot(target) != null) { "Unable to retain pre-install mod snapshot" }
+            }, expectedExistingDigest = currentReview.existingDigest)
+            check(count == entries.size) { "Incomplete mod batch installation" }
+            val installed = entries.mapNotNull { parseMod(safeFolder(it.targetName)) }
+            AppLogger.i(TAG, "Installed mod archive as an atomic batch ($count mods)")
+            return InstallResult.Success(installed)
         } catch (e: Exception) {
-            AppLogger.e(TAG, "Failed to install from zip", e)
-            return InstallResult.Error(e.message ?: "Unknown error")
+            AppLogger.e(TAG, "Atomic mod archive installation rejected", e)
+            return InstallResult.Error(e.message ?: "Batch installation failed")
         } finally {
             tempDir.deleteRecursively()
         }

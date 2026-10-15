@@ -17,8 +17,9 @@ data class ModReviewChange(
     val removed: Int
 )
 
-data class ModArchivePreview(val sha256: String, val changes: List<ModReviewChange>) {
-    val approvalKey: String get() = sha256 + ":" + changes.joinToString("|") {
+data class ModArchivePreview(val sha256: String, val changes: List<ModReviewChange>,
+                             val existingDigest: String = "") {
+    val approvalKey: String get() = sha256 + ":" + existingDigest + ":" + changes.joinToString("|") {
         "${it.uniqueId}:${it.folder}:${it.action}:${it.added}:${it.replaced}:${it.removed}"
     }
 }
