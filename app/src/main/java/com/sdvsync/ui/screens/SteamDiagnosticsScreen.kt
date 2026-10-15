@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.sdvsync.steam.SteamDiagnostics
+import com.sdvsync.diagnostics.SanitizedBugReport
 import com.sdvsync.ui.components.StardewTopAppBar
 import kotlinx.coroutines.delay
 
@@ -26,7 +27,7 @@ fun SteamDiagnosticsScreen(onBack: () -> Unit) {
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) {
             runCatching { context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use {
-                it.write(SteamDiagnostics.exportJson())
+                it.write(SanitizedBugReport.exportJson())
             } }
         }
     }
@@ -58,8 +59,8 @@ fun SteamDiagnosticsScreen(onBack: () -> Unit) {
             Text("Green: online  •  Blue: connecting  •  Amber: retry  •  Red: offline  •  Gray: no data",
                 style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(20.dp))
-            Button(onClick = { export.launch("cinderbox-steam-diagnostics.json") }) { Text("Export sanitized JSON") }
-            Text("Event timestamps and network capability booleans only; no credentials, device IDs, URLs, tokens or SSIDs.",
+            Button(onClick = { export.launch("cinderbox-sanitized-bug-report.json") }) { Text("Export sanitized bug report") }
+            Text("Includes app version, Android API, network state, Steam status and categorical sync failures. No raw logs, filenames, credentials, device IDs, URLs, tokens or SSIDs.",
                 style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(16.dp))
             snapshot.events.asReversed().take(90).forEach { event ->

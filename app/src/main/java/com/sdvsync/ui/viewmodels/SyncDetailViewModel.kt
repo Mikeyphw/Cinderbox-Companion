@@ -19,6 +19,11 @@ import com.sdvsync.saves.ValidationResult
 import com.sdvsync.sync.SyncEngine
 import com.sdvsync.sync.SyncHistoryStore
 import com.sdvsync.sync.SyncResult
+import com.sdvsync.sync.SyncChangePreview
+import com.sdvsync.sync.SyncPreviewDirection
+import com.sdvsync.diagnostics.SyncOperationDiagnostics
+import com.sdvsync.diagnostics.SyncTelemetryDirection
+import com.sdvsync.diagnostics.SyncTelemetryOutcome
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,7 +51,10 @@ data class SyncDetailState(
     val exportError: String? = null,
     val lastOperation: SyncOperation? = null,
     val lastSaveFolderName: String? = null,
-    val showStoragePermissionPrompt: Boolean = false
+    val showStoragePermissionPrompt: Boolean = false,
+    val isPreviewLoading: Boolean = false,
+    val pendingPreview: SyncChangePreview? = null,
+    val previewError: String? = null
 )
 
 class SyncDetailViewModel(
@@ -68,8 +76,10 @@ class SyncDetailViewModel(
 
     private val _state = MutableStateFlow(SyncDetailState(isStagingMode = saveFileManager.isStaging))
     val state: StateFlow<SyncDetailState> = _state.asStateFlow()
+    private var reviewedEngine: SyncEngine = syncEngine
 
-    fun pullSave(saveFolderName: String, force: Boolean = false, engine: SyncEngine = syncEngine) {
+    fun pullSave(saveFolderName: String, force: Boolean = false, engine: SyncEngine = syncEngine,
+                 approvedPreview: SyncChangePreview? = null) {
         if (fileAccessDetector.needsStoragePermission()) {
             _state.update {
                 it.copy(
@@ -88,13 +98,13 @@ class SyncDetailViewModel(
                 lastSaveFolderName = saveFolderName
             )
 
-            val result = engine.pullSave(
-                saveFolderName = saveFolderName,
-                force = force,
-                onProgress = { msg ->
-                    _state.update { it.copy(progressMessage = msg) }
-                }
-            )
+            val progress: (String) -> Unit = { msg ->
+                _state.update { it.copy(progressMessage = msg) }
+            }
+            val result = if (approvedPreview != null) {
+                engine.executeReviewedSync(approvedPreview, progress)
+            } else engine.pullSave(saveFolderName, force, progress)
+            recordSyncResult(SyncPreviewDirection.PULL, result)
 
             _state.update { it.copy(isSyncing = false, result = result) }
 
@@ -112,7 +122,8 @@ class SyncDetailViewModel(
         }
     }
 
-    fun pushSave(saveFolderName: String, force: Boolean = false, engine: SyncEngine = syncEngine) {
+    fun pushSave(saveFolderName: String, force: Boolean = false, engine: SyncEngine = syncEngine,
+                 approvedPreview: SyncChangePreview? = null) {
         if (fileAccessDetector.needsStoragePermission()) {
             _state.update {
                 it.copy(
@@ -131,13 +142,13 @@ class SyncDetailViewModel(
                 lastSaveFolderName = saveFolderName
             )
 
-            val result = engine.pushSave(
-                saveFolderName = saveFolderName,
-                force = force,
-                onProgress = { msg ->
-                    _state.update { it.copy(progressMessage = msg) }
-                }
-            )
+            val progress: (String) -> Unit = { msg ->
+                _state.update { it.copy(progressMessage = msg) }
+            }
+            val result = if (approvedPreview != null) {
+                engine.executeReviewedSync(approvedPreview, progress)
+            } else engine.pushSave(saveFolderName, force, progress)
+            recordSyncResult(SyncPreviewDirection.PUSH, result)
 
             _state.update { it.copy(isSyncing = false, result = result) }
 
@@ -155,13 +166,67 @@ class SyncDetailViewModel(
         }
     }
 
+    /** Preview every manually initiated sync, including retries and forced conflict resolutions. */
+    fun requestSyncPreview(saveFolderName: String, direction: SyncPreviewDirection,
+                           force: Boolean = false, engine: SyncEngine = syncEngine) {
+        if (_state.value.isSyncing || _state.value.isPreviewLoading) return
+        if (fileAccessDetector.needsStoragePermission()) {
+            _state.update { it.copy(lastOperation = if (direction == SyncPreviewDirection.PULL)
+                SyncOperation.PULL else SyncOperation.PUSH,
+                lastSaveFolderName = saveFolderName, showStoragePermissionPrompt = true) }
+            return
+        }
+        reviewedEngine = engine
+        _state.update { it.copy(pendingPreview = null, previewError = null,
+            isPreviewLoading = true, result = null,
+            lastOperation = if (direction == SyncPreviewDirection.PULL) SyncOperation.PULL else SyncOperation.PUSH,
+            lastSaveFolderName = saveFolderName) }
+        viewModelScope.launch {
+            try {
+                val preview = engine.previewChanges(saveFolderName, direction, force)
+                _state.update { it.copy(isPreviewLoading = false, pendingPreview = preview) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLogger.w(TAG, "Sync preview unavailable", e)
+                _state.update { it.copy(isPreviewLoading = false,
+                    previewError = "Cannot safely preview sync. Nothing was changed.") }
+            }
+        }
+    }
+
+    fun discardSyncPreview() {
+        _state.update { it.copy(pendingPreview = null, previewError = null) }
+    }
+
+    fun approveSyncPreview() {
+        if (_state.value.isSyncing || _state.value.isPreviewLoading) return
+        val preview = _state.value.pendingPreview ?: return
+        _state.update { it.copy(pendingPreview = null) }
+        when (preview.direction) {
+            SyncPreviewDirection.PULL -> pullSave(preview.saveFolder, preview.force, reviewedEngine,
+                approvedPreview = preview)
+            SyncPreviewDirection.PUSH -> pushSave(preview.saveFolder, preview.force, reviewedEngine,
+                approvedPreview = preview)
+        }
+    }
+
+    private fun recordSyncResult(direction: SyncPreviewDirection, result: SyncResult) {
+        val type = if (direction == SyncPreviewDirection.PULL) SyncTelemetryDirection.PULL else SyncTelemetryDirection.PUSH
+        when (result) {
+            is SyncResult.Success -> SyncOperationDiagnostics.record(type, SyncTelemetryOutcome.SUCCESS)
+            is SyncResult.NeedsConflictResolution -> SyncOperationDiagnostics.record(type, SyncTelemetryOutcome.CONFLICT)
+            is SyncResult.Error -> SyncOperationDiagnostics.record(type, SyncTelemetryOutcome.ERROR, result.category.name)
+        }
+    }
+
     fun retrySync() {
         if (_state.value.isSyncing) return
         val folder = _state.value.lastSaveFolderName ?: return
         when (_state.value.lastOperation) {
-            SyncOperation.PULL -> pullSave(folder)
-            SyncOperation.PUSH -> pushSave(folder)
-            null -> {}
+            SyncOperation.PULL -> requestSyncPreview(folder, SyncPreviewDirection.PULL)
+            SyncOperation.PUSH -> requestSyncPreview(folder, SyncPreviewDirection.PUSH)
+            null -> Unit
         }
     }
 
@@ -169,9 +234,9 @@ class SyncDetailViewModel(
         if (_state.value.isSyncing) return
         val folder = _state.value.lastSaveFolderName ?: return
         when (_state.value.lastOperation) {
-            SyncOperation.PULL -> pullSave(folder, force = true)
-            SyncOperation.PUSH -> pushSave(folder, force = true)
-            null -> {}
+            SyncOperation.PULL -> requestSyncPreview(folder, SyncPreviewDirection.PULL, force = true)
+            SyncOperation.PUSH -> requestSyncPreview(folder, SyncPreviewDirection.PUSH, force = true)
+            null -> Unit
         }
     }
 
@@ -211,9 +276,9 @@ class SyncDetailViewModel(
         val folder = _state.value.lastSaveFolderName ?: return
         val freshEngine: SyncEngine = get()
         when (_state.value.lastOperation) {
-            SyncOperation.PULL -> pullSave(folder, engine = freshEngine)
-            SyncOperation.PUSH -> pushSave(folder, engine = freshEngine)
-            null -> {}
+            SyncOperation.PULL -> requestSyncPreview(folder, SyncPreviewDirection.PULL, engine = freshEngine)
+            SyncOperation.PUSH -> requestSyncPreview(folder, SyncPreviewDirection.PUSH, engine = freshEngine)
+            null -> Unit
         }
     }
 
