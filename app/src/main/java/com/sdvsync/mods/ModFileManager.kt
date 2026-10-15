@@ -28,15 +28,20 @@ class ModFileManager(
     }
 
     private val safety = ModSafety(context.filesDir, modsDir)
+    private val profileTransactions = ModProfileTransaction(context.filesDir, modsDir)
 
     fun isModsDirAccessible(): Boolean = modsDir.exists() && modsDir.isDirectory && modsDir.canRead()
 
     fun listRetainedSnapshots(): List<ModSnapshot> = safety.list()
 
-    @Synchronized fun restoreSnapshot(id: String): Boolean = safety.restore(id)
+    @Synchronized fun restoreSnapshot(id: String): Boolean {
+        check(profileTransactions.recover()) { "Profile recovery needs manual review" }
+        return safety.restore(id)
+    }
 
     /** A read-only review of all destination changes. ZIP extraction uses existing budgets. */
-    fun previewFromZip(zipFile: File): ModArchivePreview {
+    @Synchronized fun previewFromZip(zipFile: File): ModArchivePreview {
+        check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         check(safety.recover()) { "An interrupted mod operation needs manual recovery" }
         val digest = safety.digest(zipFile)
         val temporary = Files.createTempDirectory(context.cacheDir.toPath(), "mod_preview_").toFile()
@@ -83,7 +88,8 @@ class ModFileManager(
     /**
      * Scan the Mods/ directory and parse all installed mods.
      */
-    fun listInstalledMods(): List<InstalledMod> {
+    @Synchronized fun listInstalledMods(): List<InstalledMod> {
+        check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         if (!modsDir.exists()) return emptyList()
 
         return modsDir.listFiles()
@@ -128,8 +134,9 @@ class ModFileManager(
         )
     }
 
-    /** Guarded, all-or-rollback profile rename transaction. No user files are deleted. */
+    /** Journaled before the first rename; recovery reverses interrupted profile changes. */
     @Synchronized fun applyProfileSafely(profile: ModProfile, expectedFingerprint: String): Int {
+        check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         check(safety.recover()) { "An interrupted mod operation needs recovery" }
         val current = listInstalledMods()
         val preview = ModCompatibility.preview(current, profile)
@@ -139,7 +146,7 @@ class ModFileManager(
         check(preview.blockers.isEmpty()) {
             preview.blockers.joinToString("; ") { it.message }
         }
-        // Fail before any rename if a destination is occupied or a source is unsafe.
+        // Preflight the validated direct children, then journal before the first rename.
         for (step in preview.steps) {
             val from = safeFolder(step.fromFolder)
             val to = safeFolder(step.toFolder)
@@ -147,33 +154,19 @@ class ModFileManager(
                 "Profile rename collision: ${step.name}"
             }
         }
-        val completed = mutableListOf<Pair<File, File>>()
-        try {
-            for (step in preview.steps) {
-                val from = safeFolder(step.fromFolder)
-                val to = safeFolder(step.toFolder)
-                check(from.renameTo(to)) { "Could not change ${step.name}" }
-                completed += from to to
-            }
-        } catch (failure: Exception) {
-            val failedRollback = mutableListOf<String>()
-            for ((original, applied) in completed.asReversed()) {
-                if (original.exists() || !applied.renameTo(original)) failedRollback += applied.name
-            }
-            check(failedRollback.isEmpty()) {
-                "Profile partially applied; manual recovery needed for: ${failedRollback.joinToString()}"
-            }
-            throw IllegalStateException("Profile rejected; previous folder states restored", failure)
-        }
-        return completed.size
+        return profileTransactions.apply(preview.steps.map {
+            ProfileFolderMove(it.fromFolder, it.toFolder)
+        })
     }
 
     @Synchronized fun enableMod(folderName: String): Boolean {
+        check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         if (!folderName.startsWith(".")) return true
         return renameMod(folderName, folderName.removePrefix("."))
     }
 
     @Synchronized fun disableMod(folderName: String): Boolean {
+        check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         if (folderName.startsWith(".")) return true
         // SMAPI only skips folders whose names start with a dot.
         return renameMod(folderName, ".$folderName")
@@ -198,6 +191,7 @@ class ModFileManager(
 
     /** Remove one validated direct child, never an arbitrary path. */
     @Synchronized fun removeMod(folderName: String): Boolean {
+        check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         val folder = safeFolder(folderName)
         check(safety.recover()) { "An interrupted mod transaction needs recovery" }
         if (!folder.exists()) return true

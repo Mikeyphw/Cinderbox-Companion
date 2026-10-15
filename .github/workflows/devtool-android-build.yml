@@ -107,6 +107,9 @@ jobs:
       - name: M7B preview and sanitized report regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m7b_*.py' -v
 
+      - name: M8 crash-safe mod profile regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m8_*.py' -v
+
       - name: Enforce M3B non-publishing policy and regressions
         run: |
           python3 scripts/devtool/m3b_release_candidate.py policy

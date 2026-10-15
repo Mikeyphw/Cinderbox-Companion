@@ -12,9 +12,15 @@ class M7ProfileSafetyTest(unittest.TestCase):
  def test_source_guard_and_rollback(self):
   s=read('app/src/main/java/com/sdvsync/mods/ModFileManager.kt')
   for term in ('@Synchronized fun applyProfileSafely', 'expectedFingerprint',
-               'preview.blockers.isEmpty()', 'completed.asReversed()',
-               'Files.isSymbolicLink(from.toPath())','safeFolder(step.fromFolder)'):
+               'preview.blockers.isEmpty()', 'Files.isSymbolicLink(from.toPath())',
+               'safeFolder(step.fromFolder)', 'profileTransactions.apply(',
+               'profileTransactions.recover()'):
    self.assertIn(term,s)
+  transaction=read('app/src/main/java/com/sdvsync/mods/ModProfileTransaction.kt')
+  for term in ('journal.delete()', 'moves.indices.reversed()',
+               'source.renameTo(target)', 'target.renameTo(source)',
+               'private fun safe(', 'fun recover(): Boolean'):
+   self.assertIn(term,transaction)
  def test_review_and_dependency_audit_visible(self):
   s=read('app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt')
   self.assertIn('Mod compatibility audit',s)
