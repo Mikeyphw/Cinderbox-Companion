@@ -71,7 +71,7 @@ class M14HostQualification(unittest.TestCase):
                 'pull_requests':[{'number':18,'head':{'sha':head,'ref':'feature/m14-isolated-device-qualification'},
                                   'base':{'sha':base}}]}
         pr={'number':18,'head':{'sha':head,'ref':record['head_branch']},
-            'base':{'sha':base},'merge_commit_sha':merge}
+            'base':{'sha':base},'merge_commit_sha':merge,'state':'open'}
         git_ref={'ref':'refs/pull/18/merge','object':{'sha':merge}}
         commit={'sha':merge,'parents':[{'sha':base},{'sha':head}]}
         with patch.object(m14,'json_from_gh',side_effect=[pr,git_ref,commit]) as f:
@@ -180,5 +180,61 @@ class M14HostQualification(unittest.TestCase):
             self.assertNotIn('serial',text)
             self.assertNotIn('stdout',text)
             self.assertEqual('COMMAND_FAILED',json.loads(text)['failure_code'])
+
+    def test_merged_pr_without_run_association_checks_immutable_ci_parents(self):
+        from unittest.mock import patch
+        head='7'*40; base='4'*40; checkout='b'*40
+        created='2026-10-15T20:33:00Z'; merged='2026-10-15T20:39:26Z'
+        run={'event':'pull_request','head_sha':head,'head_branch':'feature/m14-isolated-device-qualification',
+             'pull_requests':[],'created_at':created}
+        association={'number':18,'head':{'sha':head,'ref':run['head_branch']},
+                     'base':{'sha':base},'merged_at':merged}
+        pr={**association,'state':'closed','merge_commit_sha':'a'*40}
+        commit={'sha':checkout,'parents':[{'sha':base},{'sha':head}]}
+        with patch.object(m14,'list_from_gh',return_value=[association]) as assoc, \
+             patch.object(m14,'json_from_gh',side_effect=[pr,commit]) as api:
+            self.assertEqual((checkout,'refs/pull/18/merge'),
+                m14.verified_ci_checkout(run,head,artifact_commit=checkout,
+                                         artifact_ref='refs/pull/18/merge'))
+            self.assertEqual(2,api.call_count)  # No deleted PR merge ref lookup
+            assoc.assert_called_once()
+            self.assertIn('/commits/'+head+'/pulls',assoc.call_args.args[0][0])
+
+    def test_merged_pr_provenance_negative_cases_fail_closed(self):
+        from unittest.mock import patch
+        h='7'*40;b='4'*40;c='b'*40
+        merged='2026-10-15T20:39:26Z'
+        run={'event':'pull_request','head_sha':h,'head_branch':'feature/m14-isolated-device-qualification',
+             'pull_requests':[],'created_at':'2026-10-15T20:33:00Z'}
+        assoc={'number':18,'head':{'sha':h,'ref':run['head_branch']},'base':{'sha':b},'merged_at':merged}
+        pr={**assoc,'state':'closed','merge_commit_sha':'a'*40}
+        for linked in ([],[assoc,assoc], [{**assoc,'head':{'sha':'0'*40,'ref':run['head_branch']}}]):
+            with patch.object(m14,'list_from_gh',return_value=linked), \
+                 patch.object(m14,'json_from_gh') as api:
+                with self.assertRaisesRegex(m14.DeviceGateError,'PR_ASSOCIATION_AMBIGUOUS'):
+                    m14.verified_ci_checkout(run,h,artifact_commit=c,artifact_ref='refs/pull/18/merge')
+                api.assert_not_called()
+        for sha,ref,commit in ((c,'refs/heads/master',{'sha':c,'parents':[{'sha':b},{'sha':h}]}),
+                               ('d'*40,'refs/pull/18/merge',{'sha':c,'parents':[{'sha':b},{'sha':h}]}),
+                               (c,'refs/pull/18/merge',{'sha':c,'parents':[{'sha':h},{'sha':b}]})):
+            with patch.object(m14,'list_from_gh',return_value=[assoc]), \
+                 patch.object(m14,'json_from_gh',side_effect=[pr,commit]):
+                with self.assertRaises(m14.DeviceGateError):
+                    m14.verified_ci_checkout(run,h,artifact_commit=sha,artifact_ref=ref)
+        with patch.object(m14,'list_from_gh',return_value=[assoc]), \
+             patch.object(m14,'json_from_gh',return_value=pr):
+            with self.assertRaisesRegex(m14.DeviceGateError,'PR_TIMELINE_UNVERIFIABLE'):
+                m14.verified_ci_checkout({**run,'created_at':'2026-10-16T01:00:00Z'},h,
+                    artifact_commit=c,artifact_ref='refs/pull/18/merge')
+
+    def test_historic_run_requires_explicit_ci_head_override(self):
+        source=MODULE.read_text()
+        self.assertIn("head=args.ci_head or local_head",source)
+        self.assertIn("report['runner_source_commit']=local_head",source)
+        self.assertIn("--ci-head",source)
+        self.assertIn("run_data,head,artifact_commit=provenance.get('source_commit')",source)
+        self.assertIn('verify_artifacts(\n                main,test,ci_commit,source_ref=ci_ref,run_id=args.run_id)',source)
+        self.assertNotIn('pm uninstall',source)
+        self.assertNotIn('pm clear',source)
 
 if __name__=='__main__':unittest.main()
