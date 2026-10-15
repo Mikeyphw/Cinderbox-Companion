@@ -78,38 +78,54 @@ class BackupListViewModel(
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // Read backup files
+                check(backupManager.recoverInterruptedLocalRestore()) {
+                    "Unresolved local save restore requires manual inspection"
+                }
+                require(backupManager.listBackups(saveFolderName).any {
+                    it.canonicalFile == backupDir.canonicalFile
+                }) { "Backup is not in the retained snapshots for this save" }
                 val backupFiles = mutableMapOf<String, ByteArray>()
-                backupDir.listFiles()?.filter { it.isFile }?.forEach { file ->
+                backupDir.listFiles()?.forEach { file ->
+                    require(file.isFile && !java.nio.file.Files.isSymbolicLink(file.toPath())) {
+                        "Backup contains unsafe files"
+                    }
+                    saveFileManager.requireSafeName(file.name)
                     backupFiles[file.name] = file.readBytes()
                 }
+                check(backupFiles.isNotEmpty()) { "Backup is empty" }
 
-                if (backupFiles.isEmpty()) {
-                    _state.update { it.copy(isRestoring = false, restoreResult = "Backup is empty") }
+                val currentFiles = saveFileManager.readLocalSave(saveFolderName)
+                check(currentFiles.isNotEmpty()) {
+                    "Cannot safely restore to a missing or unreadable save; inspect it manually"
+                }
+                // SAF/root/Shizuku paths cannot use local rename transactions. Retain the
+                // original data and attempt compensating restore on write or verify failure.
+                backupManager.backupSaveData(saveFolderName, currentFiles)
+                AppLogger.d(TAG, "Preserved current save before restore")
+                val restored = runCatching {
+                    check(saveFileManager.writeLocalSave(saveFolderName, backupFiles)) { "Save write failed" }
+                    val readBack = saveFileManager.readLocalSave(saveFolderName)
+                    check(backupFiles.all { (name, data) ->
+                        readBack[name]?.contentEquals(data) == true
+                    }) { "Restored save did not verify against backup" }
+                }
+                if (restored.isFailure) {
+                    val rollback = runCatching {
+                        check(saveFileManager.writeLocalSave(saveFolderName, currentFiles)) {
+                            "Original save recovery write failed"
+                        }
+                        val recovered = saveFileManager.readLocalSave(saveFolderName)
+                        check(currentFiles.all { (name, data) ->
+                            recovered[name]?.contentEquals(data) == true
+                        }) { "Original save recovery did not verify" }
+                    }
+                    _state.update { it.copy(isRestoring = false,
+                        restoreResult = if (rollback.isSuccess) "Restore failed; original save restored and verified"
+                        else "Restore failed; current-save snapshot retained. Manual recovery required") }
                     return@launch
                 }
-
-                // Backup current save first
-                val currentFiles = saveFileManager.readLocalSave(saveFolderName)
-                if (currentFiles.isNotEmpty()) {
-                    backupManager.backupSaveData(saveFolderName, currentFiles)
-                    AppLogger.d(TAG, "Backed up current save before restore")
-                }
-
-                // Write backup files to save directory
-                val success = saveFileManager.writeLocalSave(saveFolderName, backupFiles)
-
-                _state.update {
-                    it.copy(
-                        isRestoring = false,
-                        restoreResult = if (success) "Restore complete" else "Restore failed"
-                    )
-                }
-
-                if (success) {
-                    // Reload backups to refresh current metadata
-                    loadBackups(saveFolderName)
-                }
+                _state.update { it.copy(isRestoring = false, restoreResult = "Restore complete and verified") }
+                loadBackups(saveFolderName)
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Restore failed", e)
                 _state.update {

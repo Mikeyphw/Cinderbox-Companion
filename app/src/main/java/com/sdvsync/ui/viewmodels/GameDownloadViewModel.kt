@@ -14,6 +14,7 @@ import com.sdvsync.local.InstallationScanner
 import com.sdvsync.local.InstallAssessment
 import com.sdvsync.local.InstallHealth
 import com.sdvsync.local.StoragePreflight
+import com.sdvsync.local.StoragePlanner
 import java.io.File
 import com.sdvsync.download.GitHubReleaseChecker
 import com.sdvsync.download.SmapiSetupProgress
@@ -58,6 +59,7 @@ data class GameDownloadState(
     val selectedInstallHealth: InstallAssessment? = null,
     val storageReady: Boolean = false,
     val storageDetail: String = "Storage not checked",
+    val estimatedGameSizeGiB: String = "",
     val verifyAfterDownload: Boolean = true,
     val hasRecoverableDownload: Boolean = false,
     val downloadProgress: DownloadProgress = DownloadProgress(),
@@ -315,6 +317,11 @@ class GameDownloadViewModel(
         _state.value = _state.value.copy(branchPassword = password)
     }
 
+    fun updateStorageEstimate(value: String) {
+        // User-specified guess only. Steam may require more; no inferred depot size.
+        _state.update { it.copy(estimatedGameSizeGiB = value.take(4)) }
+    }
+
     fun toggleVerification() {
         _state.value = _state.value.copy(verifyAfterDownload = !_state.value.verifyAfterDownload)
     }
@@ -338,6 +345,17 @@ class GameDownloadViewModel(
 
         val selectedHealth = InstallationScanner.game(File(current.installDirectory))
         val storage = StoragePreflight.check(File(current.installDirectory))
+        val capacity = runCatching {
+            StoragePlanner.downloadPlan(File(current.installDirectory),
+                StoragePlanner.parseGiB(current.estimatedGameSizeGiB))
+        }.getOrElse { problem ->
+            _state.update { it.copy(error = problem.message ?: "Invalid capacity estimate") }
+            return
+        }
+        if (capacity.sufficient == false) {
+            _state.update { it.copy(error = capacity.detail) }
+            return
+        }
         val resume = try {
             downloadManager.canResume(File(current.installDirectory), current.selectedBranch,
                 current.selectedOs, current.verifyAfterDownload)

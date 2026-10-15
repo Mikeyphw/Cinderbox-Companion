@@ -5,6 +5,7 @@ import com.sdvsync.cinderbox.CinderboxPaths
 import com.sdvsync.local.InstallationScanner
 import com.sdvsync.local.InstallHealth
 import com.sdvsync.local.StoragePreflight
+import com.sdvsync.local.StoragePlanner
 import com.sdvsync.logging.AppLogger
 import java.io.File
 import java.nio.file.Files
@@ -357,6 +358,14 @@ class GameDownloadManager(
                 val relativePath = file.relativeTo(srcDir).path
                 filesToCopy.add(file to File(destDir, relativePath))
             }
+        }
+
+        // Existing source files provide an exact minimum copy-size budget, unlike a
+        // not-yet-queried Steam depot. Refuse a copy when available space is insufficient.
+        val copyBudget = StoragePlanner.copyPlan(destDir, filesToCopy.map { it.first })
+        if (copyBudget.sufficient != true) {
+            setCopyError("Game copy blocked: ${copyBudget.detail}")
+            return@withContext
         }
 
         val smapiCacheFile = File(context.cacheDir, SMAPI_CACHE_FILENAME)
