@@ -74,7 +74,7 @@ class ModFileManager(
                 require(matches.size <= 1) { "Duplicate installed mod ID: ${manifest.uniqueID}" }
                 val target = safeFolder(matches.singleOrNull()?.folderName ?: name)
                 require(targets.add(target.name.lowercase(Locale.ROOT))) { "Conflicting destinations in archive" }
-                check(!target.exists() || existing != null) { "Different mod already occupies ${target.name}" }
+                check(!target.exists() || matches.isNotEmpty()) { "Different mod already occupies ${target.name}" }
                 check(!target.exists() || target.isDirectory) { "Invalid existing mod directory" }
                 // Do not follow symbolic links inside the target or inside staging.
                 val original = if (target.isDirectory) target.walkTopDown().filter { it.isFile }.map {
