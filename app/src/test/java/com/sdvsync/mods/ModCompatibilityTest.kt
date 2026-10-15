@@ -12,7 +12,7 @@ class ModCompatibilityTest {
     private fun mod(id: String, version: String = "1.0.0", enabled: Boolean = true,
                     deps: List<ModDependency> = emptyList(),
                     pack: ContentPackFor? = null): InstalledMod = InstalledMod(
-        manifest = ModManifest(id, "Test", version, id, dependencies = deps, contentPackFor = pack),
+        manifest = ModManifest(id, "Test", version, id, description = "", dependencies = deps, contentPackFor = pack),
         folderName = if (enabled) id else ".$id", folderPath = "/mods/$id", enabled = enabled
     )
     @Test fun missingRequiredDependencyBlocksProfile() {
