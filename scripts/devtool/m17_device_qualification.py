@@ -35,6 +35,63 @@ def verify_m17_ci(run, jobs, head):
                 'M17_WRONG_CI_BRANCH')
 
 
+
+def sanitized_failure_sites(output: str):
+    """Summarize only allowlisted failure categories and M17 test line numbers.
+
+    No raw Android instrumentation output, stack traces, user data, device IDs,
+    file paths, credentials, or assertion messages are persisted in the report.
+    """
+    import re
+    categories = (
+        ('NO_COMPOSE_HIERARCHY', ('No compose hierarchies found', 'No compose hierarchies')),
+        ('NODE_NOT_FOUND', ('NoMatchingNodeException', 'Failed to assert the following', 'No node found')),
+        ('NODE_OFFSCREEN', ('Failed to perform a click', 'not displayed', 'not visible', 'does not support scroll')),
+        ('ACTIVITY_LAUNCH', ('ActivityNotFoundException', 'Unable to resume activity', 'Failed to launch activity')),
+        ('TEST_ASSERTION', ('AssertionError', 'AssertionFailedError')),
+        ('TEST_EXCEPTION', ('Exception', 'Error')),
+    )
+    failures = {}
+    fields = []
+    reading_stack = False
+    def flush(status):
+        if status not in (-1, -2):
+            return
+        test = next((value for key, value in fields if key == 'test' and value in TESTS), None)
+        if test is None:
+            return
+        stack = ' '.join(value for key, value in fields if key == 'stack')
+        category = next((kind for kind, needles in categories
+                         if any(token in stack for token in needles)), 'UNKNOWN')
+        # Source-relative numeric line only; NEVER persist the stack text.
+        match = re.search(r'M17OfflineUiDeviceTest\.kt:(\d{1,4})', stack)
+        line = int(match.group(1)) if match else None
+        failures[test] = {'category': category, 'test_line': line}
+    for line in output.splitlines():
+        if line.startswith('INSTRUMENTATION_STATUS: '):
+            body = line[len('INSTRUMENTATION_STATUS: '):]
+            reading_stack = False
+            if '=' in body:
+                key, value = body.split('=', 1)
+                if key in ('test', 'stack'):
+                    fields.append((key, value))
+                reading_stack = key == 'stack'
+        elif line.startswith('INSTRUMENTATION_STATUS_CODE: '):
+            reading_stack = False
+            try:
+                code = int(line.rsplit(': ', 1)[-1])
+            except ValueError:
+                code = None
+            flush(code)
+            fields.clear()
+        elif reading_stack:
+            # JUnit emits multiline stack continuations without the STATUS prefix.
+            # Keep them only in memory, and discard everything except allowlisted
+            # category and M17 source-relative line number.
+            fields.append(('stack', line))
+    return failures
+
+
 def run(args):
     report = {
         'schema_version': 1, 'producer': 'cinderbox-m17-device',
@@ -110,8 +167,15 @@ def run(args):
             m14.require(device.installed(m14.TEST_PACKAGE), 'TEST_INSTALL_NOT_CONFIRMED')
             report['install'] = 'PASS'
             report['instrumentation'] = 'ATTEMPTED'
-            report['instrumentation'] = m14.parse_instrumentation(
-                device.instrument(test_class=CLASS), tests=TESTS)
+            raw_instrumentation = device.instrument(test_class=CLASS)
+            try:
+                report['instrumentation'] = m14.parse_instrumentation(
+                    raw_instrumentation, tests=TESTS)
+            except m14.DeviceGateError:
+                # Fail closed, retaining only sanitized error category and a
+                # test-local source line; never write raw instrumentation logs.
+                report['failure_diagnostics'] = sanitized_failure_sites(raw_instrumentation)
+                raise
             report['overall'] = 'PASS_REAL_UI_LIFECYCLE_AUTOMATION'
     except m14.DeviceGateError as error:
         report['failure_code'] = error.code

@@ -34,6 +34,28 @@ class M17HostTests(unittest.TestCase):
         self.assertNotIn('import androidx.compose.ui.test.assertExists', src)
         self.assertIn('.assertExists()', src)
 
+    def test_settings_control_scrolls_before_touch_click(self):
+        src=(ROOT/'app/src/androidTest/java/com/sdvsync/qualification/M17OfflineUiDeviceTest.kt').read_text()
+        self.assertIn('rule.onNodeWithText("Settings").performScrollTo().performClick()',src)
+        self.assertNotIn('rule.onNodeWithText("Settings").performClick()',src)
+
+    def test_failure_diagnostics_are_allowlisted_and_path_free(self):
+        sample = ("INSTRUMENTATION_STATUS: test=signedOutSettingsAreAccessibleWithoutSteamLogin\n"
+                  "INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: Failed to perform a click "
+                  "account=PRIVATE token=SECRET at /data/user/0/abc/secret "
+                  "\n at com.sdvsync.qualification.M17OfflineUiDeviceTest.settingsFromLogin(M17OfflineUiDeviceTest.kt:38)\n"
+                  "INSTRUMENTATION_STATUS_CODE: -2\n")
+        got=m17.sanitized_failure_sites(sample)
+        self.assertEqual(got,{'signedOutSettingsAreAccessibleWithoutSteamLogin':
+                              {'category':'NODE_OFFSCREEN','test_line':38}})
+        self.assertNotIn('PRIVATE',repr(got))
+        self.assertNotIn('SECRET',repr(got))
+        self.assertNotIn('/data/',repr(got))
+        self.assertEqual(m17.sanitized_failure_sites('INSTRUMENTATION_CODE: -1'),{})
+        self.assertEqual(m17.sanitized_failure_sites(
+            'INSTRUMENTATION_STATUS: test=otherTest\nINSTRUMENTATION_STATUS: stack=Error\n'
+            'INSTRUMENTATION_STATUS_CODE: -2\n'),{})
+
     def test_opt_in_fails_before_gh_or_install(self):
         with tempfile.TemporaryDirectory() as temp:
             result=Path(temp)/'result.json'

@@ -23,7 +23,9 @@ class M17OfflineUiDeviceTest {
     private fun settingsFromLogin() {
         // Fail closed if a signed-in session unexpectedly redirects the test.
         rule.onNodeWithText("Continue offline").assertExists()
-        rule.onNodeWithText("Settings").performClick()
+        // Login has a scrollable form: Settings may be below the visible viewport.
+        // Touch injection cannot reliably click an offscreen semantics node.
+        rule.onNodeWithText("Settings").performScrollTo().performClick()
         rule.waitForIdle()
         rule.onNodeWithText("Settings").assertExists()
     }
