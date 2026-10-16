@@ -13,6 +13,8 @@ local.properties
 *.apk
 *.aab
 *.jks
+*.p12
+*.pfx
 *.keystore
 .kotlin/
 smapi-internal.zip

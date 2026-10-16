@@ -78,6 +78,11 @@ jobs:
           python3 scripts/devtool/m13_qualification.py source
           python3 -m unittest discover -s scripts/devtool -p 'test_m13_*.py' -v
 
+      - name: M16 persistent debug signing regressions
+        run: |
+          python3 scripts/devtool/m16_debug_signing.py source
+          python3 -m unittest discover -s scripts/devtool -p 'test_m16_*.py' -v
+
       - name: M14 device qualification runner regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m14_*.py' -v
 
@@ -95,8 +100,24 @@ jobs:
       - name: Offline M0/M1 security source contract
         run: python3 scripts/devtool/check_security_contract.py
 
+      - name: M16 provision pinned debug signing key (CI only)
+        env:
+          CINDERBOX_DEBUG_KEYSTORE_B64: ${{ secrets.CINDERBOX_DEBUG_KEYSTORE_B64 }}
+          CINDERBOX_DEBUG_STORE_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_STORE_PASSWORD }}
+          CINDERBOX_DEBUG_KEY_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_KEY_PASSWORD }}
+          CINDERBOX_DEBUG_CERT_SHA256: ${{ vars.CINDERBOX_DEBUG_CERT_SHA256 }}
+        run: python3 scripts/devtool/m16_debug_signing.py provision --path "$RUNNER_TEMP/cinderbox-stable-debug.p12"
+
       - name: Test, lint, and build debug APK
+        env:
+          CINDERBOX_DEBUG_STORE_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_STORE_PASSWORD }}
+          CINDERBOX_DEBUG_KEY_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_KEY_PASSWORD }}
         run: ./gradlew testDebugUnitTest lintDebug assembleDebug
+
+      - name: M16 verify pinned application APK signer
+        env:
+          CINDERBOX_DEBUG_CERT_SHA256: ${{ vars.CINDERBOX_DEBUG_CERT_SHA256 }}
+        run: python3 scripts/devtool/m16_debug_signing.py verify --apk-dir app/build/outputs/apk/debug
 
       - name: Generate verified APK metadata and source evidence
         env:
@@ -135,7 +156,15 @@ jobs:
             app/build/outputs/apk/debug/M13_QUALIFICATION.json
           retention-days: 14
       - name: M14 compile isolated Android instrumentation APK
+        env:
+          CINDERBOX_DEBUG_STORE_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_STORE_PASSWORD }}
+          CINDERBOX_DEBUG_KEY_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_KEY_PASSWORD }}
         run: ./gradlew --no-daemon --max-workers=2 :app:assembleDebugAndroidTest
+
+      - name: M16 verify pinned instrumentation APK signer
+        env:
+          CINDERBOX_DEBUG_CERT_SHA256: ${{ vars.CINDERBOX_DEBUG_CERT_SHA256 }}
+        run: python3 scripts/devtool/m16_debug_signing.py verify --apk-dir app/build/outputs/apk/androidTest/debug
 
       - name: M14 upload isolated instrumentation APK
         uses: actions/upload-artifact@v4
