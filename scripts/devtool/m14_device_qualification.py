@@ -88,7 +88,8 @@ def verify_ci(run, jobs, commit):
         raise DeviceGateError('CI_QUALIFICATION_FAILED') from None
     require(run.get('head_branch') in (
         'feature/m14-isolated-device-qualification',
-        'feature/m14-postmerge-device-provenance', 'master'), 'WRONG_CI_BRANCH')
+        'feature/m14-postmerge-device-provenance',
+        'feature/m15-integrated-android-qualification', 'master'), 'WRONG_CI_BRANCH')
     steps = jobs.get('jobs', [{}])[0].get('steps', [])
     successful = {s.get('name') for s in steps if s.get('conclusion') == 'success'}
     require({'M14 device qualification runner regressions',
@@ -119,7 +120,8 @@ def verified_ci_checkout(run, branch_commit, *, artifact_commit=None, artifact_r
     require(run.get('event') == 'pull_request', 'UNEXPECTED_CI_EVENT')
     branch_name = run.get('head_branch')
     require(branch_name in ('feature/m14-isolated-device-qualification',
-                            'feature/m14-postmerge-device-provenance'),
+                            'feature/m14-postmerge-device-provenance',
+                            'feature/m15-integrated-android-qualification'),
             'UNEXPECTED_PR_BRANCH')
     linked = run.get('pull_requests')
     require(type(linked) is list, 'PR_ASSOCIATION_AMBIGUOUS')
@@ -277,8 +279,8 @@ class Transport:
         if self.kind=='adb':
             return command(['adb','-s',self.serial,'install',*flags,str(apk)],timeout=240)
         return self.shell('pm','install',*flags,str(apk),timeout=240)
-    def instrument(self):
-        return self.shell('am','instrument','-w','-r','-e','class',CLASS,RUNNER,timeout=600)
+    def instrument(self, *, test_class=CLASS):
+        return self.shell('am','instrument','-w','-r','-e','class',test_class,RUNNER,timeout=600)
     def launch(self):
         return self.shell('am','start','-W','-n',f'{PACKAGE}/.MainActivity',timeout=40)
     def device_info(self):
@@ -289,9 +291,9 @@ class Transport:
                 'UNSUPPORTED_ANDROID_DEVICE')
         return {'api_level':int(sdk),'abi':abi}  # no serial, phone ID or path
 
-def parse_instrumentation(output):
+def parse_instrumentation(output, tests=TESTS):
     """Parse AndroidJUnitRunner status blocks without saving raw device output."""
-    cases = {name: 'NOT_COMPLETED' for name in sorted(TESTS)}
+    cases = {name: 'NOT_COMPLETED' for name in sorted(tests)}
     current = None
     failed_event = False
     for line in output.splitlines():
@@ -311,9 +313,9 @@ def parse_instrumentation(output):
     final_code = int(final_codes[-1]) if final_codes else None
     complete = sum(value == 'PASS' for value in cases.values())
     accepted = (not failed_event and final_code == -1 and
-                complete == len(TESTS) and len(final_codes) == 1)
+                complete == len(tests) and len(final_codes) == 1)
     summary = {'status': 'PASS' if accepted else 'FAILED_OR_BLOCKED',
-               'completed': complete, 'expected': len(TESTS),
+               'completed': complete, 'expected': len(tests),
                'cases': cases, 'final_code': final_code}
     if not accepted:
         raise DeviceGateError('INSTRUMENTATION_INCOMPLETE_OR_FAILED', case_summary=summary)

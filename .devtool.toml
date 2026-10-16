@@ -55,6 +55,11 @@ description = "Run Kotlin lint formatting checks (does not alter source)"
 workflow = "format-check"
 target = "cinderbox"
 
+[wrapper.commands.m15-check]
+description = "M15 offline source and fail-closed integration runner regression checks"
+workflow = "m15-check"
+target = "cinderbox"
+
 [wrapper.commands.device]
 description = "Explicit on-device instrumentation lane; requires a connected test device"
 workflow = "device"
@@ -173,6 +178,12 @@ runner = "android"
 gradle_tasks = [":app:ktlintCheck"]
 metadata = { area = "format", modifies_source = false }
 
+[targets.cinderbox.jobs.m15-host]
+runner = "command"
+command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_m15_*.py", "-v"]
+inputs = ["scripts/devtool/m15_device_qualification.py", "scripts/devtool/m14_device_qualification.py", "scripts/devtool/test_m15_device_qualification.py", "app/src/androidTest/java/com/sdvsync/qualification/M15IntegratedDeviceTest.kt"]
+metadata = { read_only = true, area = "m15-qualification", root_required = false }
+
 [targets.cinderbox.jobs.connected-tests]
 runner = "android"
 gradle_tasks = [":app:connectedDebugAndroidTest"]
@@ -198,6 +209,7 @@ full = [
 ]
 format-check = ["job:ktlint-check"]
 device = ["job:connected-tests"]
+m15-check = ["job:m15-host"]
 
 [artifacts]
 output_directory = ".devtool/build-artifacts"
