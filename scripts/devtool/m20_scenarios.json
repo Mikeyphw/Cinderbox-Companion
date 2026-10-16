@@ -1,0 +1,124 @@
+{
+  "lanes": {
+    "A": {
+      "cases": [
+        "a01GameServiceIsNotExported",
+        "a02ModServiceIsNotExported",
+        "a03SyntheticWorkerIsNotExported",
+        "a04SyntheticForegroundWorkerWritesPrivateBytes",
+        "a05WorkerDuplicateStartCannotReplaceFile",
+        "a06DuplicateDownloadCheckpointRejected",
+        "a07MismatchedDownloadSelectionRejected",
+        "a08CancelledWorkerNeverTouchesUnrelatedFile"
+      ],
+      "class": "com.sdvsync.qualification.M20AServiceDeviceTest",
+      "force_stop": false,
+      "scope": "debug_synthetic_worker_and_production_service_boundaries",
+      "title": "service_lifecycle"
+    },
+    "B": {
+      "cases": [
+        "b01DeterministicChunkTransferCompletes",
+        "b02NetworkDropKeepsPartialBytes",
+        "b03CancelledSyntheticTransferRejectsMoreWrites",
+        "b04MatchingDigestAllowsExplicitResume",
+        "b05CorruptDigestBlocksResume",
+        "b06InterruptedTransferCannotClaimCompletion",
+        "b07ReplayDoesNotDuplicateTransferredBytes"
+      ],
+      "class": "com.sdvsync.qualification.M20BNetworkDeviceTest",
+      "force_stop": false,
+      "scope": "deterministic_synthetic_transport",
+      "title": "transfer_failures"
+    },
+    "C": {
+      "cases": [
+        "c01CheckpointSurvivesNewObject",
+        "c02CorruptJournalRejected",
+        "c03OwnershipMarkerTamperRejectsResume",
+        "c04DiscardKeepsPartialBytes",
+        "c05CompletedClearsOnlyMatchingCheckpoint",
+        "c06UnownedDirectoryCannotResume",
+        "c07SeedRunningWorkerBeforeForceStop",
+        "c08VerifyCheckpointAfterProcessDeath"
+      ],
+      "class": "com.sdvsync.qualification.M20CCrashDeviceTest",
+      "force_stop": true,
+      "scope": "production_checkpoint_and_debug_worker_with_force_stop",
+      "title": "process_crash_recovery"
+    },
+    "D": {
+      "cases": [
+        "d01ModProfileRollbackRestoresOriginal",
+        "d02InterruptedBatchRollsBack",
+        "d03CorruptModBatchJournalFailsClosed",
+        "d04SmapiBackupRestoredWhenTargetMissing",
+        "d05UnownedSmapiStagePreserved",
+        "d06ModReviewRequiresAction",
+        "d07RecoveryDoesNotMutateUnrelatedGameCheckpoint"
+      ],
+      "class": "com.sdvsync.qualification.M20DModsDeviceTest",
+      "force_stop": false,
+      "scope": "production_transaction_fixtures",
+      "title": "mods_smapi"
+    },
+    "E": {
+      "cases": [
+        "e01SaveRestorePreservesCustomFile",
+        "e02SaveRecoveryIdempotent",
+        "e03CorruptSaveJournalPreservesLiveFile",
+        "e04SaveAndDownloadJournalsRemainSeparate",
+        "e05CloudConflictRequiresManualReview",
+        "e06StaleSyncPreviewCannotBeReportedCompleted"
+      ],
+      "class": "com.sdvsync.qualification.M20ESavesDeviceTest",
+      "force_stop": false,
+      "scope": "production_save_transactions_and_sync_policy",
+      "title": "saves_cloud"
+    },
+    "F": {
+      "cases": [
+        "f01UnknownDownloadSizeNeverMarkedSufficient",
+        "f02EmptyGameInstallNotConsideredComplete",
+        "f03PartialGameFilesAreNotUsable",
+        "f04SymlinkDestinationRejected",
+        "f05SymlinkedPathDoesNotAlterTarget",
+        "f06WrongDestinationCannotReuseOwnershipToken"
+      ],
+      "class": "com.sdvsync.qualification.M20FStorageDeviceTest",
+      "force_stop": false,
+      "scope": "production_storage_safety",
+      "title": "storage_security"
+    },
+    "G": {
+      "cases": [
+        "g01SignedOutOfflineEntryVisible",
+        "g02SettingsAvailableWithoutSteam",
+        "g03OperationCenterShowsReadOnlyGuidance",
+        "g04ActivityRecreationStillAllowsOfflineSettings",
+        "g05OperationCenterRefreshIsNonDestructive"
+      ],
+      "class": "com.sdvsync.qualification.M20GUiDeviceTest",
+      "force_stop": false,
+      "scope": "signed_out_compose_ui",
+      "title": "real_ui_lifecycle"
+    },
+    "H": {
+      "cases": [
+        "h01ConcurrentCheckpointStartsAreSerialized",
+        "h02ConflictingOperationsShowDistinctReviewCards",
+        "h03EvidenceContainsNoFixtureSecrets",
+        "h04FixtureOwnershipCannotCrossCaseIds",
+        "h05InventoryIncludesCurrentOwnedFixtureOnlyByOpaqueId"
+      ],
+      "class": "com.sdvsync.qualification.M20HConcurrencyDeviceTest",
+      "force_stop": false,
+      "scope": "production_guards_and_test_inventory",
+      "title": "concurrency_evidence"
+    }
+  },
+  "milestone": "M20",
+  "producer": "cinderbox-m20-scenario-manifest",
+  "schema_version": 1,
+  "total": 52
+}
