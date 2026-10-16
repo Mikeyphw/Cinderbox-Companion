@@ -178,6 +178,10 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    // M17: Compose UI testing invokes Espresso internally. Pre-3.7 Espresso uses
+    // reflection on InputManager.getInstance(), absent on some Android versions/ROMs.
+    // Keep this test-only; production/runtime and release signing are unchanged.
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 

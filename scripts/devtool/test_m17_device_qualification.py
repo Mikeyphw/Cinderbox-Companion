@@ -56,6 +56,30 @@ class M17HostTests(unittest.TestCase):
             'INSTRUMENTATION_STATUS: test=otherTest\nINSTRUMENTATION_STATUS: stack=Error\n'
             'INSTRUMENTATION_STATUS_CODE: -2\n'),{})
 
+    def test_espresso_370_is_explicitly_instrumentation_only(self):
+        gradle=(ROOT/'app/build.gradle.kts').read_text()
+        pin='androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")'
+        self.assertIn(pin,gradle)
+        self.assertEqual(gradle.count(pin),1)
+        self.assertNotIn('debugImplementation("androidx.test.espresso:espresso-core',gradle)
+        self.assertNotIn('implementation("androidx.test.espresso:espresso-core',gradle)
+        self.assertIn('androidTestImplementation("androidx.compose.ui:ui-test-junit4")',gradle)
+
+    def test_framework_reflection_failure_is_classified_without_raw_details(self):
+        test='signedOutSettingsAreAccessibleWithoutSteamLogin'
+        head=f'INSTRUMENTATION_STATUS: test={test}\nINSTRUMENTATION_STATUS: stack='
+        tail='\nINSTRUMENTATION_STATUS_CODE: -2\n'
+        raw=head + ('java.util.concurrent.ExecutionException: java.lang.RuntimeException: '
+                     'java.lang.NoSuchMethodException: android.hardware.input.InputManager.getInstance() '
+                     'account=PRIVATE_KEY /data/user/0/secret') + tail
+        self.assertEqual(m17.sanitized_failure_sites(raw), {test: {
+            'category': 'ESPRESSO_INPUT_MANAGER_REFLECTION','test_line': None}})
+        generic=head+'java.lang.NoSuchMethodException: secret.Private.method()'+tail
+        self.assertEqual(m17.sanitized_failure_sites(generic), {test: {
+            'category':'FRAMEWORK_REFLECTIVE_METHOD_MISSING','test_line':None}})
+        self.assertNotIn('PRIVATE_KEY',repr(m17.sanitized_failure_sites(raw)))
+        self.assertNotIn('/data/',repr(m17.sanitized_failure_sites(raw)))
+
     def test_opt_in_fails_before_gh_or_install(self):
         with tempfile.TemporaryDirectory() as temp:
             result=Path(temp)/'result.json'

@@ -44,6 +44,9 @@ def sanitized_failure_sites(output: str):
     """
     import re
     categories = (
+        ('ESPRESSO_INPUT_MANAGER_REFLECTION',
+         ('NoSuchMethodException: android.hardware.input.InputManager.getInstance',)),
+        ('FRAMEWORK_REFLECTIVE_METHOD_MISSING', ('NoSuchMethodException',)),
         ('NO_COMPOSE_HIERARCHY', ('No compose hierarchies found', 'No compose hierarchies')),
         ('NODE_NOT_FOUND', ('NoMatchingNodeException', 'Failed to assert the following', 'No node found')),
         ('NODE_OFFSCREEN', ('Failed to perform a click', 'not displayed', 'not visible', 'does not support scroll')),
