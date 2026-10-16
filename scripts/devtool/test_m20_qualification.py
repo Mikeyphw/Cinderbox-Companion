@@ -93,6 +93,39 @@ class TestM20Campaign(TestCase):
         self.assertEqual(m20.diagnostic('INSTRUMENTATION_CODE: -1','other')['category'],
                          'INSTRUMENTATION_FAILED')
 
+    def test_diagnostics_isolate_per_test_in_batched_instrumentation(self):
+        # M20 device report previously assigned the same unrelated Kotlin line
+        # to G03 and G05 because it searched the entire raw batch for a line.
+        raw=('INSTRUMENTATION_STATUS: test=g03OperationCenterShowsReadOnlyGuidance\n'
+             'INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: /private/path\n'
+             ' at M20ConsolidatedDeviceTest.kt:355\n'
+             'INSTRUMENTATION_STATUS_CODE: -2\n'
+             'INSTRUMENTATION_STATUS: test=g04ActivityRecreationStillAllowsOfflineSettings\n'
+             'INSTRUMENTATION_STATUS_CODE: 0\n'
+             'INSTRUMENTATION_STATUS: test=g05OperationCenterRefreshIsNonDestructive\n'
+             'INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: PRIVATE\n'
+             ' at M20ConsolidatedDeviceTest.kt:364\n'
+             'INSTRUMENTATION_STATUS_CODE: -2\n')
+        self.assertEqual(m20.diagnostic(raw,'g03OperationCenterShowsReadOnlyGuidance'),
+                         {'category':'ASSERTION_FAILED','source_line':355})
+        self.assertEqual(m20.diagnostic(raw,'g05OperationCenterRefreshIsNonDestructive'),
+                         {'category':'ASSERTION_FAILED','source_line':364})
+        self.assertEqual(m20.diagnostic(raw,'g04ActivityRecreationStillAllowsOfflineSettings'),
+                         {'category':'INSTRUMENTATION_FAILED','source_line':None})
+
+    def test_g_navigation_uses_real_scrollable_button_not_settings_heading(self):
+        src=(ROOT/'app/src/androidTest/java/com/sdvsync/qualification/M20ConsolidatedDeviceTest.kt').read_text()
+        m17=(ROOT/'app/src/androidTest/java/com/sdvsync/qualification/M17OfflineUiDeviceTest.kt').read_text()
+        button='View downloads, mod reviews, sync outcomes and recovery guidance'
+        self.assertIn(button,m17)
+        self.assertIn('protected fun openOperationCenter()',src)
+        self.assertIn(button,src)
+        self.assertIn('.performScrollTo().performClick()',src)
+        self.assertIn('assertIsDisplayed()',src)
+        self.assertNotIn('onNodeWithText("Operation center").performClick()',src)
+        for method in ('g03OperationCenterShowsReadOnlyGuidance','g05OperationCenterRefreshIsNonDestructive'):
+            self.assertRegex(src,rf'@Test fun {method}\(\) \{{[\s\S]*?openOperationCenter\(\)')
+
     def test_no_side_effects_without_opt_in(self):
         with tempfile.TemporaryDirectory() as temp:
             args=Namespace(repo=ROOT,run_id=1,transport='termux-root',all=True,

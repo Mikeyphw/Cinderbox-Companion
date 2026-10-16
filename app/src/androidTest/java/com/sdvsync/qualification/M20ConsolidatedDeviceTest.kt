@@ -3,6 +3,7 @@ package com.sdvsync.qualification
 import android.content.ComponentName
 import android.content.Context
 import android.os.SystemClock
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -62,6 +63,17 @@ open class M20UiBase : M20Base() {
     protected fun settings() {
         signedOut()
         activity.onNodeWithText("Settings").performScrollTo().performClick()
+        activity.waitForIdle()
+    }
+    protected fun openOperationCenter() {
+        settings()
+        // The Settings section heading has no click handler. Scroll to the
+        // real navigation button, as qualified by the existing M17 UI tests.
+        activity.onNodeWithText("View downloads, mod reviews, sync outcomes and recovery guidance")
+            .performScrollTo().performClick()
+        activity.waitForIdle()
+        activity.onNodeWithText("Live, read-only status and recovery guidance")
+            .assertIsDisplayed()
     }
 }
 
@@ -352,16 +364,20 @@ class M20GUiDeviceTest : M20UiBase() {
     @Test fun g01SignedOutOfflineEntryVisible() { signedOut() }
     @Test fun g02SettingsAvailableWithoutSteam() { settings();activity.onNodeWithText("Operation center").assertExists() }
     @Test fun g03OperationCenterShowsReadOnlyGuidance() {
-        settings();activity.onNodeWithText("Operation center").performClick()
-        activity.onNodeWithText("Live, read-only status and recovery guidance").assertExists()
+        openOperationCenter()
+        activity.onNodeWithText("No automatic retry or recovery is performed here. Status may be incomplete after Android stops the app.")
+            .assertExists()
     }
     @Test fun g04ActivityRecreationStillAllowsOfflineSettings() {
         signedOut();activity.activityRule.scenario.recreate();settings()
     }
     @Test fun g05OperationCenterRefreshIsNonDestructive() {
         file("keep.txt","private-sentinel")
-        settings();activity.onNodeWithText("Operation center").performClick()
+        openOperationCenter()
         activity.onNodeWithText("Refresh checks").performClick()
+        activity.waitForIdle()
+        activity.onNodeWithText("Live, read-only status and recovery guidance")
+            .assertIsDisplayed()
         assertEquals("private-sentinel",File(work,"keep.txt").readText())
     }
 }

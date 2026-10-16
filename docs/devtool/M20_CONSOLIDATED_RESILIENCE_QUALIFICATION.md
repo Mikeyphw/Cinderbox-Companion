@@ -95,3 +95,27 @@ rearms only the app-private owned c07 fixture; it does not start production jobs
 The original 22 M20 passing case results remain historical evidence but must not
 be treated as a full, single-source 52/52 result. New CI source provenance is
 required after this source change. Do not rerun the older M14–M19 device suites.
+
+### Device finding: G03/G05 navigation failure, Oct 16, 2026
+
+Android 16 CI source `326d1045262c4be5955e96e2c3fdd614fb00fb0c`, CI
+`38923143537`: A=8/8, B=7/7, D=7/7, E=6/6, F=6/6, G=3/5,
+H=NOT_RUN; separately run C=8/8. Two failing G assertions had clicked
+`onNodeWithText("Operation center")`, a passive Settings section heading,
+not the real navigation button. M17 already qualified clicking the button
+`View downloads, mod reviews, sync outcomes and recovery guidance` after
+`performScrollTo()`. M20 G uses the same real button and checks the target
+screen is displayed before refresh. Production UI and real user files remain
+untouched by this repair.
+
+Host diagnostics must classify only the respective failed instrumentation
+status event: the previous implementation searched the *whole* multi-case
+output, incorrectly attributing line 364 to both G03 and G05. Privacy-safe
+exception categories and line numbers remain allowlisted; no path, raw stack,
+nonce, or account data is published.
+
+Preserve the C and A/B/D/E/F device results as historical evidence. For a
+final strict source-bound merged 52/52 report, newly produced lane reports must
+all share the updated source/CI checkout and APK identities; do not merge
+receipts from different commits. First retest G and H against the new CI,
+then execute other lanes for a final consolidated receipt if those pass.

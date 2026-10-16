@@ -24,3 +24,6 @@ This ledger is cumulative; append future Devtool gaps and campaign findings rath
   block force-stop if verification fails. Never substitute an
   Activity launch alone for proof of a running worker.
 - **Status:** Source correction implemented; new CI and real-device verification pending.
+
+| DEV-M20-G-UI-008 | Android 16 run at PR #25 `326d1045`, CI `38923143537`: G03/G05 both failed, while G01/G02/G04 passed. Test clicked passive Settings heading `Operation center` rather than the long CTA already qualified in M17. | Reuse M17's scroll-to navigation CTA; wait for Compose idle and confirm destination rendered before refresh. Preserve source-bound G-only retest. | Fixed in M20 targeted overlay; new CI/device check pending |
+| DEV-M20-DIAG-009 | The same failed run incorrectly reported `source_line:364` for both G03/G05 because instrumentation diagnostics searched the entire multi-case output, not the case's status event. | Group AndroidJUnitRunner events by `INSTRUMENTATION_STATUS_CODE` and matching test ID, classify only that event; retain allowlisted category/line, never publish raw stacks/paths. | Fixed in M20 targeted overlay; host tests added, device verification pending |

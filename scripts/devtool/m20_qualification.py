@@ -62,25 +62,39 @@ def verify_ci(run,jobs,head):
             'M20_HOST_CI_INCOMPLETE')
 
 
-def diagnostic(raw,case):
-    # Allowlist structural classifications and Kotlin test line numbers only.
-    records={}
-    current=None
+def diagnostic(raw, case):
+    """Only classify the failed instrumentation *event for this case*.
+
+    AndroidJUnitRunner emits status key/value records in an arbitrary order
+    followed by STATUS_CODE; multiline stack continuations belong to that
+    event. Never search an entire multi-case batch for a source line: it
+    incorrectly attributes another test's failure to this case.
+    """
+    event=[]
     for line in raw.splitlines():
-        if line.startswith('INSTRUMENTATION_STATUS: test='):
-            current=line.split('=',1)[1].strip()
-        if current==case and line.startswith('INSTRUMENTATION_STATUS: stack='):
-            start=line.split('stack=',1)[1]
-            category='ASSERTION_FAILED' if 'AssertionError' in start else 'TEST_EXCEPTION'
-            if 'SecurityException' in start: category='ANDROID_SECURITY_RESTRICTION'
-            elif 'ForegroundServiceStartNotAllowedException' in start: category='ANDROID_FOREGROUND_START_RESTRICTED'
-            elif 'NoSuchMethodException' in start: category='FRAMEWORK_REFLECTION_FAILURE'
-            elif 'M20_FIXTURE_' in start or 'M20_CANONICAL_' in start: category='OWNED_FIXTURE_SAFETY_GUARD'
-            records['category']=category
-    match=re.search(r'(?m)M20ConsolidatedDeviceTest\.kt:(\d{1,5})\b',raw)
-    records.setdefault('category','INSTRUMENTATION_FAILED')
-    records['source_line']=int(match.group(1)) if match else None
-    return records
+        if not line.startswith('INSTRUMENTATION_STATUS_CODE:'):
+            event.append(line)
+            continue
+        code=line.split(':',1)[1].strip()
+        current=[x.partition('=')[2].strip() for x in event
+                 if x.startswith('INSTRUMENTATION_STATUS: test=')]
+        if case in current and code in ('-2','-1'):
+            block='\n'.join(event)
+            match=re.search(r'(?m)^INSTRUMENTATION_STATUS: stack=',block)
+            stack=block[match.end():] if match else ''
+            next_status=re.search(r'(?m)^INSTRUMENTATION_STATUS:',stack)
+            if next_status: stack=stack[:next_status.start()]
+            category='ASSERTION_FAILED' if 'AssertionError' in stack else 'TEST_EXCEPTION'
+            if 'SecurityException' in stack: category='ANDROID_SECURITY_RESTRICTION'
+            elif 'ForegroundServiceStartNotAllowedException' in stack:
+                category='ANDROID_FOREGROUND_START_RESTRICTED'
+            elif 'NoSuchMethodException' in stack: category='FRAMEWORK_REFLECTION_FAILURE'
+            elif 'M20_FIXTURE_' in stack or 'M20_CANONICAL_' in stack:
+                category='OWNED_FIXTURE_SAFETY_GUARD'
+            location=re.search(r'M20ConsolidatedDeviceTest\.kt:(\d{1,5})\b',stack)
+            return {'category':category,'source_line':int(location.group(1)) if location else None}
+        event=[]
+    return {'category':'INSTRUMENTATION_FAILED','source_line':None}
 
 
 def pid(device):
