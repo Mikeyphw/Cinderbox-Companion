@@ -21,7 +21,27 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // M16: CI must opt in explicitly; local development retains Android's debug key.
+    // Never reuse release-signing secrets or permit a silent CI debug-key fallback.
+    val requireStableDebugSigner =
+        System.getenv("CINDERBOX_REQUIRE_PERSISTENT_DEBUG_SIGNING") == "true"
+    if (requireStableDebugSigner) {
+        require(System.getenv("CINDERBOX_DEBUG_KEYSTORE_PATH")?.isNotBlank() == true)
+        require(System.getenv("CINDERBOX_DEBUG_STORE_PASSWORD")?.isNotBlank() == true)
+        require(System.getenv("CINDERBOX_DEBUG_KEY_PASSWORD")?.isNotBlank() == true)
+        require(file(System.getenv("CINDERBOX_DEBUG_KEYSTORE_PATH")).isFile)
+    }
+
     signingConfigs {
+        if (requireStableDebugSigner) {
+            create("ciDebug") {
+                storeFile = file(System.getenv("CINDERBOX_DEBUG_KEYSTORE_PATH"))
+                storeType = "PKCS12"
+                storePassword = System.getenv("CINDERBOX_DEBUG_STORE_PASSWORD")
+                keyAlias = "androiddebugkey"
+                keyPassword = System.getenv("CINDERBOX_DEBUG_KEY_PASSWORD")
+            }
+        }
         val localProps = Properties()
         rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use {
             localProps.load(it)
@@ -36,6 +56,11 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            if (requireStableDebugSigner) {
+                signingConfig = signingConfigs.getByName("ciDebug")
+            }
+        }
         release {
             isMinifyEnabled = true
             signingConfig = signingConfigs.getByName("release")
