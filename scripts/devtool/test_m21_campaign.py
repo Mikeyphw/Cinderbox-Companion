@@ -89,11 +89,13 @@ class M21HostTests(unittest.TestCase):
             digest=hashlib.sha256(p.read_bytes()).hexdigest()
             signer='Signer #1 certificate SHA-256 digest: '+'a'*64+'\n'
             with patch.object(m21.shutil,'which',return_value='/opt/aapt'),\
+                 patch.object(m21.signing,'certificate_sha256',return_value='a'*64),\
                  patch.object(m21,'run_command',side_effect=[signer,"package: name='com.sdvsync' versionCode='14' versionName='0.1.1'\n"]):
                 result=m21.verify_release_apk(p,digest,'a'*64,'b'*64)
             self.assertEqual(set(result),set(m21.matrix()['R']['cases']))
             self.assertTrue(all(v=='PASS' for v in result.values()))
             with patch.object(m21.shutil,'which',return_value='/opt/aapt'),\
+                 patch.object(m21.signing,'certificate_sha256',return_value='a'*64),\
                  patch.object(m21,'run_command',side_effect=[signer,"package: name='com.sdvsync' versionCode='14'\napplication-debuggable\n"]):
                 with self.assertRaises(m14.DeviceGateError) as ctx:
                     m21.verify_release_apk(p,digest,'a'*64,'b'*64)

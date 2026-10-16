@@ -17,6 +17,7 @@ import subprocess
 import tempfile
 
 import m14_device_qualification as m14
+import m3_apk_signing as signing
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -210,12 +211,27 @@ def clean_sha(sha):
 
 
 def signer_certificate(apk):
-    require(shutil.which('apksigner') is not None,'M21_APKSIGNER_MISSING')
-    evidence=run_command(['apksigner','verify','--verbose','--print-certs',str(apk)],
-                         'M21_APK_SIGNATURE_INVALID')
-    matches=re.findall(r'(?im)^Signer #\d+ certificate SHA-256 digest:\s*([0-9a-fA-F:]{64,95})\s*$',evidence)
-    require(len(matches)==1,'M21_APK_SIGNER_AMBIGUOUS')
-    return clean_sha(matches[0])
+    """Cryptographically verify the same APK bytes before/after parsing its signer.
+
+    Do not depend on apksigner's version- and locale-sensitive console text.
+    The existing M3 signing parser rejects multiple/contradictory v2/v3 signers.
+    """
+    require(apk.is_file() and not apk.is_symlink(), 'M21_APK_INVALID')
+    require(shutil.which('apksigner') is not None, 'M21_APKSIGNER_MISSING')
+    with apk.open('rb') as stream:
+        before=hashlib.file_digest(stream,'sha256').hexdigest()
+    run_command(['apksigner','verify','--verbose','--print-certs',str(apk)],
+                'M21_APK_SIGNATURE_INVALID')
+    try:
+        cert=signing.certificate_sha256(apk)
+    except (signing.SigningBlockError, OSError, ValueError):
+        raise m14.DeviceGateError('M21_APK_SIGNING_BLOCK_INVALID') from None
+    with apk.open('rb') as stream:
+        after=hashlib.file_digest(stream,'sha256').hexdigest()
+    require(before==after, 'M21_APK_CHANGED_DURING_VERIFICATION')
+    require(isinstance(cert,str) and re.fullmatch(r'[0-9a-f]{64}',cert) is not None,
+            'M21_APK_CERTIFICATE_INVALID')
+    return cert
 
 
 def verify_release_apk(apk, candidate_sha, release_cert, debug_cert):

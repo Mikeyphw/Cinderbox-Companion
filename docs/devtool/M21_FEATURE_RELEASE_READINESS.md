@@ -96,3 +96,33 @@ M20 native Android 52/52 PASS, real force-stop and cold relaunch confirmed, CI `
 - CI application build, M16 APK signer verification, and M21 host regressions succeeded; instrumentation compilation failed at `app/src/androidTest/java/com/sdvsync/qualification/M21ReadinessDeviceTest.kt:5:33`: unresolved import `androidx.compose.ui.test.assertExists`.
 - `SemanticsNodeInteraction.assertExists()` is a member; delete **only** that invalid import and preserve the existing `.assertExists()` checks. Host tests now enforce the source contract.
 - This is a **compile error**, not device evidence or an authenticated Steam failure. Do not run M21 devices against run `38940534401`; qualify only after a new source-bound CI run successfully compiles, signs, and uploads `m14-androidtest-apk`.
+
+
+## M21 completion and integration (2026-10-16)
+
+The prepublication acceptance receipt on the reviewed commit
+`d93d21d2f569d947bce91099ef112e3b6a793452` is
+`PASS_M21_PREPUBLICATION_ACCEPTANCE` with 18/18 current cases PASS; 74
+historical M14–M20 cases remain preserved without rerun. Android API 36,
+arm64-v8a, CI debug run `38946596038`, synthetic checkout
+`dc7439617acaa10823a5e9bc95091bf8771f21f2`.
+
+A **separate, manual, non-publishing** GitHub Actions release-candidate
+build `38964234525` verified `:app:assembleRelease`, signature, distinct
+release certificate, non-debuggable package, and artifact publication to
+GitHub Actions artifacts only (not app distribution). Release candidate APK
+SHA-256: `8ad0de78abd3791d2c709ebcb17c2d78240c4038a301110643cdacd6605bc5f6`.
+Its signer SHA-256: `1a97bfe73fccba607b7816e50db0fa1c16850b3036c4bb156efe047e70046ca0`.
+
+M21 release audit recovered two tooling problems without altering that
+reviewed commit: GitHub may report a null live open-PR `merge_commit_sha`
+even when its signed CI receipt and historical merge Git object agree, and
+Termux `apksigner` can produce a valid signature with console text the
+original parser did not recognize. This follow-up integrates fail-closed
+checks into source (signed artifact provenance + exact Git ref/parents,
+`apksigner verify` + binary certificate extraction).
+
+**Qualification boundary:** Historical 18/18 acceptance applies to the
+original reviewed source/CI/APK. Reconciled integration commits require their
+own GitHub CI. They must not retroactively rewrite acceptance receipts or
+claim release_qualified/device_qualified/publication_allowed = true.
