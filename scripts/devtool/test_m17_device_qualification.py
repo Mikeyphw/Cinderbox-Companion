@@ -27,6 +27,13 @@ class M17HostTests(unittest.TestCase):
         for forbidden in ['clearApplicationUserData','pm uninstall','getExternalStorageDirectory','deleteRecursively','SteamAuthenticator.logout','grantRuntimePermission']:
             self.assertNotIn(forbidden,src)
 
+    def test_compose_assert_exists_is_interaction_method_not_top_level_import(self):
+        src=(ROOT/'app/src/androidTest/java/com/sdvsync/qualification/M17OfflineUiDeviceTest.kt').read_text()
+        # Compile-time contract: assertExists belongs to SemanticsNodeInteraction;
+        # importing androidx.compose.ui.test.assertExists breaks Kotlin compilation.
+        self.assertNotIn('import androidx.compose.ui.test.assertExists', src)
+        self.assertIn('.assertExists()', src)
+
     def test_opt_in_fails_before_gh_or_install(self):
         with tempfile.TemporaryDirectory() as temp:
             result=Path(temp)/'result.json'
