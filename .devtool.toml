@@ -60,6 +60,11 @@ description = "M17 offline UI qualification source and runner host tests"
 workflow = "m17-check"
 target = "cinderbox"
 
+[wrapper.commands.m18-check]
+description = "M18 process stop/relaunch qualification host tests (read-only)"
+workflow = "m18-check"
+target = "cinderbox"
+
 [wrapper.commands.m15-check]
 description = "M15 offline source and fail-closed integration runner regression checks"
 workflow = "m15-check"
@@ -189,6 +194,12 @@ command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p
 inputs = ["scripts/devtool/m17_device_qualification.py", "scripts/devtool/test_m17_device_qualification.py", "app/src/androidTest/java/com/sdvsync/qualification/M17OfflineUiDeviceTest.kt", "app/build.gradle.kts"]
 metadata = { read_only = true, area = "m17-ui-lifecycle", root_required = false }
 
+[targets.cinderbox.jobs.m18-host]
+runner = "command"
+command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_m18_*.py", "-v"]
+inputs = ["scripts/devtool/m18_device_qualification.py", "scripts/devtool/test_m18_device_qualification.py", "scripts/devtool/m14_device_qualification.py", "app/src/androidTest/java/com/sdvsync/qualification/M18ProcessRecoveryDeviceTest.kt"]
+metadata = { read_only = true, area = "m18-process-recovery", root_required = false }
+
 [targets.cinderbox.jobs.m15-host]
 runner = "command"
 command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_m15_*.py", "-v"]
@@ -222,6 +233,7 @@ format-check = ["job:ktlint-check"]
 device = ["job:connected-tests"]
 m15-check = ["job:m15-host"]
 m17-check = ["job:m17-host"]
+m18-check = ["job:m18-host"]
 
 [artifacts]
 output_directory = ".devtool/build-artifacts"
