@@ -63,3 +63,23 @@ The outcome remains `release_qualified=false` and `publication_allowed=false` ev
 ## Persistent Devtool improvement record
 
 **DEV-M21-REL-001 — Signed release candidate distinct from debug-oriented Devtool.** Existing `.devtool.toml` and `devtool-android-build.yml` intentionally support debug builds, so invoking a release variant through those would violate their source safety contracts. The resolution is a separate manual default-branch GitHub Actions workflow and independent signed-artifact verifier, preserving M16 source/CI gates and 14 completed M21 device tests. Status: **Implemented; release run pending**. This document is a standalone append-only campaign supplement to the cumulative `docs/devtool/DEVTOOL_IMPROVEMENTS.md`, to avoid a conflicting edit to that file while PR #26 is open.
+
+## M21 release candidate SDK verifier hotfix — run 38960889421
+
+The CI run on merged workflow source `8a0d733a1553c57186907e8847010f559da737e6`
+successfully validated the release key identity and ran `:app:assembleRelease`
+(53 tasks, BUILD SUCCESSFUL), but the standalone verifier stopped with
+`M21_RELEASE_APK_SIGNATURE_INVALID`. The original verifier suppressed any
+`FileNotFoundError` from the bare `apksigner` executable into the same error
+as a genuinely invalid cryptographic signature. The GitHub Android SDK setup
+installs build-tools 35.0.0 but does not promise to add its binaries to PATH.
+
+The revised verifier resolves `apksigner` and `aapt` from the CI-pinned
+`$ANDROID_HOME/build-tools/35.0.0/` (or the corresponding SDK root); without
+that SDK root, local execution falls back to PATH. A missing SDK binary
+gets a distinct fail-closed `M21_APKSIGNER_PINNED_SDK_TOOL_UNAVAILABLE` or
+`M21_AAPT_PINNED_SDK_TOOL_UNAVAILABLE` error, not a misleading invalid
+signature diagnosis. Signature checks and release certificate pinning are
+unchanged. Actual signature verification was blocked in the failed run, so a
+new manual CI build must pass before marking R complete. No secrets were
+rotated or changed, and the qualified app SHA is untouched.
