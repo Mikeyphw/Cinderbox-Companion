@@ -27,3 +27,22 @@ This ledger is cumulative; append future Devtool gaps and campaign findings rath
 
 | DEV-M20-G-UI-008 | Android 16 run at PR #25 `326d1045`, CI `38923143537`: G03/G05 both failed, while G01/G02/G04 passed. Test clicked passive Settings heading `Operation center` rather than the long CTA already qualified in M17. | Reuse M17's scroll-to navigation CTA; wait for Compose idle and confirm destination rendered before refresh. Preserve source-bound G-only retest. | Fixed in M20 targeted overlay; new CI/device check pending |
 | DEV-M20-DIAG-009 | The same failed run incorrectly reported `source_line:364` for both G03/G05 because instrumentation diagnostics searched the entire multi-case output, not the case's status event. | Group AndroidJUnitRunner events by `INSTRUMENTATION_STATUS_CODE` and matching test ID, classify only that event; retain allowlisted category/line, never publish raw stacks/paths. | Fixed in M20 targeted overlay; host tests added, device verification pending |
+
+### M21-CI-SDK-015 — Release verifier masked Android SDK tool discovery failures
+- **Evidence:** `Mikeyphw/Cinderbox-Companion` release candidate GitHub Actions run
+  `38960889421`, workflow commit `8a0d733a1553c57186907e8847010f559da737e6`;
+  release keystore/certificate provisioning PASS, `:app:assembleRelease` PASS (53
+  tasks), but verification emitted `M21_RELEASE_APK_SIGNATURE_INVALID`, hiding
+  whether `apksigner` was absent or cryptographic verification actually failed.
+- **Affected:** `scripts/devtool/m21_actions_release.py` and release candidate
+  workflow; `android-actions/setup-android` does not promise pinned build-tools
+  binaries are in PATH, while M16 already had SDK-directory fallback.
+- **Improvement:** Resolve both `apksigner` and `aapt` from the explicitly
+  installed `$ANDROID_HOME/build-tools/35.0.0/` (or `ANDROID_SDK_ROOT`);
+  use PATH fallback only for local runs without an SDK root; report distinct
+  fail-closed unavailable-tool errors without exposing credentials. Preserve
+  real signature, independent release cert, package and debuggability checks.
+  Add host regression coverage for pinned-tool selection and missing binaries.
+- **Status:** Fix implemented and nine focused host tests PASS; new CI and a
+  real signed APK verification required. The original failure cause is not
+  definitively confirmed until the corrected verifier executes in Actions.

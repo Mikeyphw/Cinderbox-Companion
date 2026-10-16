@@ -53,7 +53,8 @@ class ManualCandidateTests(unittest.TestCase):
             signature=f'Signer #1 certificate SHA-256 digest: {RELEASE}\n'
             with patch.dict(os.environ,{'CINDERBOX_RELEASE_CERT_SHA256':RELEASE,
                                         'CINDERBOX_DEBUG_CERT_SHA256':DEBUG}),\
-                 patch.object(m,'run',side_effect=[signature,badges]):
+                 patch.object(m,'run',side_effect=[signature,badges]),\
+                 patch.object(m,'android_build_tool',side_effect=lambda name:name):
                 m.verify(t,t/'out',SHA,'38946596038')
             a=t/'out'/'CinderboxCompanion-release-candidate.apk'
             self.assertEqual(a.read_bytes(),b'signed synthetic bytes')
@@ -72,10 +73,35 @@ class ManualCandidateTests(unittest.TestCase):
             signature=f'Signer #1 certificate SHA-256 digest: {RELEASE}\n'
             with patch.dict(os.environ,{'CINDERBOX_RELEASE_CERT_SHA256':RELEASE,
                                         'CINDERBOX_DEBUG_CERT_SHA256':DEBUG}),\
-                 patch.object(m,'run',side_effect=[signature,badges]):
+                 patch.object(m,'run',side_effect=[signature,badges]),\
+                 patch.object(m,'android_build_tool',side_effect=lambda name:name):
                 with self.assertRaisesRegex(m.GateError,'M21_RELEASE_APK_DEBUGGABLE'):
                     m.verify(t,t/'out',SHA,'38946596038')
             self.assertFalse((t/'out').exists())
+
+    def test_android_build_tool_uses_pinned_sdk_not_runner_path(self):
+        with tempfile.TemporaryDirectory() as temp:
+            sdk=Path(temp)
+            bt=sdk/'build-tools'/'35.0.0'
+            bt.mkdir(parents=True)
+            for tool in ('apksigner','aapt'):
+                binary=bt/tool
+                binary.write_text('tool')
+                binary.chmod(0o700)
+            with patch.dict(os.environ,{'ANDROID_HOME':str(sdk)},clear=False),\
+                 patch.object(m.shutil,'which',return_value='/other/sdk/tool'):
+                self.assertEqual(m.android_build_tool('apksigner'),str(bt/'apksigner'))
+                self.assertEqual(m.android_build_tool('aapt'),str(bt/'aapt'))
+
+    def test_missing_pinned_apksigner_is_explicit_not_false_signature_failure(self):
+        with tempfile.TemporaryDirectory() as temp,\
+             patch.dict(os.environ,{'ANDROID_HOME':str(Path(temp))},clear=False):
+            with self.assertRaisesRegex(m.GateError,'M21_APKSIGNER_PINNED_SDK_TOOL_UNAVAILABLE'):
+                m.android_build_tool('apksigner')
+
+    def test_no_unapproved_tool_selection(self):
+        with self.assertRaisesRegex(m.GateError,'M21_BUILD_TOOL_NOT_ALLOWLISTED'):
+            m.android_build_tool('zipalign')
 
     def test_manual_workflow_never_runs_from_pr_or_publishes(self):
         wf=(ROOT/'.github/workflows/cinderbox-release-candidate.yml').read_text()

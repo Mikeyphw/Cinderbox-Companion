@@ -38,6 +38,25 @@ def run(command, code, *, env=None, binary=False):
     return result.stdout
 
 
+def android_build_tool(name: str) -> str:
+    """Locate the pinned CI SDK build tool; do not depend on runner PATH.
+
+    android-actions/setup-android adds cmdline-tools and platform-tools to PATH,
+    but it does not guarantee that build-tools binaries (apksigner/aapt) are
+    addressable by bare name. Match the explicitly installed 35.0.0 release SDK.
+    """
+    require(name in ('apksigner', 'aapt'), 'M21_BUILD_TOOL_NOT_ALLOWLISTED')
+    sdk = os.getenv('ANDROID_HOME') or os.getenv('ANDROID_SDK_ROOT')
+    if sdk:
+        pinned = Path(sdk) / 'build-tools' / '35.0.0' / name
+        require(pinned.is_file() and os.access(pinned, os.X_OK),
+                'M21_' + name.upper() + '_PINNED_SDK_TOOL_UNAVAILABLE')
+        return str(pinned)
+    binary = shutil.which(name)
+    require(bool(binary), 'M21_' + name.upper() + '_UNAVAILABLE')
+    return binary
+
+
 def pin(value, code):
     require(re.fullmatch(r'[0-9a-fA-F]{64}', value or '') is not None, code)
     return value.lower()
@@ -98,14 +117,14 @@ def verify(source_dir: Path, stage_dir: Path, source_commit: str, workflow_run: 
     apk = candidates[0]
     require(apk.is_file() and not apk.is_symlink() and 0 < apk.stat().st_size <= 200*1024*1024,
             'M21_RELEASE_APK_INVALID')
-    output = run(['apksigner', 'verify', '--verbose', '--print-certs', str(apk)],
+    output = run([android_build_tool('apksigner'), 'verify', '--verbose', '--print-certs', str(apk)],
                  'M21_RELEASE_APK_SIGNATURE_INVALID')
     match = re.findall(r'(?im)^Signer #\d+ certificate SHA-256 digest:\s*([0-9a-fA-F:]{64,95})\s*$',output)
     require(len(match) == 1, 'M21_RELEASE_APK_SIGNER_AMBIGUOUS')
     actual_cert = match[0].replace(':','').lower()
     require(actual_cert == release_pin and actual_cert != debug_pin,
             'M21_RELEASE_APK_SIGNER_MISMATCH')
-    badges = run(['aapt','dump','badging',str(apk)],'M21_RELEASE_BADGING_FAILED')
+    badges = run([android_build_tool('aapt'),'dump','badging',str(apk)],'M21_RELEASE_BADGING_FAILED')
     require(re.search(r"(?m)^package: name='com\.sdvsync' versionCode='[1-9][0-9]*'", badges) is not None,
             'M21_RELEASE_PACKAGE_INVALID')
     require('application-debuggable' not in badges,'M21_RELEASE_APK_DEBUGGABLE')
