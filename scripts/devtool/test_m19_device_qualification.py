@@ -88,6 +88,37 @@ class M19HostTests(unittest.TestCase):
         self.assertIn('"download" to "Interrupted game download"',policy)
         self.assertIn('"Check the original destination and options before resuming.',policy)
 
+    def test_m19_fixture_canonicalizes_only_app_private_base(self):
+        src=(ROOT/'app/src/androidTest/java/com/sdvsync/qualification/M19InterruptedRecoveryDeviceTest.kt').read_text()
+        self.assertIn('targetContext.filesDir.canonicalFile',src)
+        self.assertIn('File(privateFiles, "m19-test-only-$hash")',src)
+        self.assertIn('M19_PRIVATE_FILES_UNSAFE',src)
+        self.assertIn('!java.nio.file.Files.isSymbolicLink(privateFiles.toPath())',src)
+        self.assertIn('!java.nio.file.Files.isSymbolicLink(root.toPath())',src)
+        prod=(ROOT/'app/src/main/java/com/sdvsync/download/GameDownloadRecovery.kt').read_text()
+        self.assertIn('Game directory contains a symbolic link',prod)
+        self.assertIn('Files.isSymbolicLink(part.toPath())',prod)
+
+    def test_sanitized_m19_failure_diagnostics_never_copy_paths_or_secrets(self):
+        test=m19.PREPARE
+        stack=('INSTRUMENTATION_STATUS: test='+test+'\n'
+               'INSTRUMENTATION_STATUS: stack=java.lang.IllegalArgumentException: '
+               'Game directory contains a symbolic link /data/user/0/com.sdvsync/files/SECRET\n'
+               ' at com.sdvsync.download.GameDownloadRecovery$Companion.safeDestination('
+               'GameDownloadRecovery.kt:44)\n'
+               ' at com.sdvsync.qualification.M19InterruptedRecoveryDeviceTest.seedInterruptedDownloadCheckpoint('
+               'M19InterruptedRecoveryDeviceTest.kt:58)\n'
+               'INSTRUMENTATION_STATUS_CODE: -2\n')
+        result=m19.sanitized_stage_failure(stack,test)
+        self.assertEqual(result,{'category':'PRIVATE_PATH_ALIAS_REJECTED',
+                                 'test_line':58,'recovery_line':44})
+        self.assertNotIn('/data/',repr(result))
+        self.assertNotIn('SECRET',repr(result))
+        self.assertEqual(m19.sanitized_stage_failure('INSTRUMENTATION_CODE: -1',test)['category'],
+                         'UNKNOWN')
+        self.assertEqual(m19.sanitized_stage_failure(stack,'other'),
+                         {'category':'UNKNOWN','test_line':None,'recovery_line':None})
+
     def test_ci_and_config_are_source_bound(self):
         for flow in ('build.yml','devtool-android-build.yml'):
             wf=(ROOT/'.github/workflows'/flow).read_text()

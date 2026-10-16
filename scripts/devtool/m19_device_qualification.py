@@ -54,11 +54,57 @@ def assert_launch(output):
             is not None, 'M19_ACTIVITY_LAUNCH_FAILED')
 
 
-def instrument_stage(device, method, nonce):
+def sanitized_stage_failure(output: str, method: str):
+    """Return only an allowlisted category and source line, never raw device output."""
+    if method not in TESTS:
+        return {'category': 'UNKNOWN', 'test_line': None, 'recovery_line': None}
+    categories = (
+        ('PRIVATE_PATH_ALIAS_REJECTED', ('Game directory contains a symbolic link',)),
+        ('PRIVATE_FIXTURE_UNSAFE', ('M19_PRIVATE_FILES_UNSAFE', 'M19_FIXTURE_UNSAFE')),
+        ('FIXTURE_COLLISION', ('Fixture collision',)),
+        ('GAME_RECOVERY_INVARIANT', ('IllegalStateException', 'Invalid interrupted download journal')),
+        ('TEST_ASSERTION', ('AssertionError', 'AssertionFailedError')),
+        ('COMPOSE_UI_FAILURE', ('NoMatchingNodeException', 'No compose hierarchies found')),
+        ('TEST_EXCEPTION', ('Exception', 'Error')),
+    )
+    import re
+    failure = []
+    active = False
+    reading = False
+    for line in output.splitlines():
+        if line.startswith('INSTRUMENTATION_STATUS: test='):
+            active = line.partition('test=')[2].strip() == method
+            reading = False
+        elif line.startswith('INSTRUMENTATION_STATUS: stack='):
+            reading = active
+            if active:
+                failure.append(line.partition('stack=')[2])
+        elif line.startswith('INSTRUMENTATION_STATUS: '):
+            reading = False
+        elif line.startswith('INSTRUMENTATION_STATUS_CODE:'):
+            reading = False
+        elif reading:
+            failure.append(line)
+    text = '\n'.join(failure)
+    category = next((key for key, tokens in categories if any(t in text for t in tokens)), 'UNKNOWN')
+    def source_line(filename):
+        found = re.search(re.escape(filename) + r':([1-9][0-9]{0,3})(?![0-9])', text)
+        return int(found.group(1)) if found else None
+    return {'category': category,
+            'test_line': source_line('M19InterruptedRecoveryDeviceTest.kt'),
+            'recovery_line': source_line('GameDownloadRecovery.kt')}
+
+
+def instrument_stage(device, method, nonce, report=None):
     raw = device.shell('am', 'instrument', '-w', '-r',
                        '-e', 'class', CLASS + '#' + method,
                        '-e', 'm19_nonce', nonce, m14.RUNNER, timeout=600)
-    return m14.parse_instrumentation(raw, tests=frozenset((method,)))
+    try:
+        return m14.parse_instrumentation(raw, tests=frozenset((method,)))
+    except m14.DeviceGateError:
+        if report is not None:
+            report['failure_diagnostics'] = sanitized_stage_failure(raw, method)
+        raise
 
 
 def run(args):
@@ -134,7 +180,7 @@ def run(args):
             report['install']='PASS'
             nonce=secrets.token_hex(16)  # never persisted in reports
             report['checkpoint_preparation']='ATTEMPTED'
-            pre=instrument_stage(device,PREPARE,nonce)
+            pre=instrument_stage(device,PREPARE,nonce,report)
             require(pre['status']=='PASS','M19_PREPARE_INSTRUMENTATION_FAILED')
             report['checkpoint_preparation']='PASS'
             report['pre_stop_launch']='ATTEMPTED'
@@ -151,7 +197,7 @@ def run(args):
             require(bool(pid_of(device)),'M19_PROCESS_NOT_RESTARTED')
             report['cold_relaunch']='PASS'
             report['checkpoint_recovery']='ATTEMPTED'
-            post=instrument_stage(device,VERIFY,nonce)
+            post=instrument_stage(device,VERIFY,nonce,report)
             require(post['status']=='PASS','M19_POST_RECOVERY_INSTRUMENTATION_FAILED')
             report['checkpoint_recovery']='PASS'
             report['fixture_cleanup']='PASS'

@@ -39,8 +39,17 @@ class M19InterruptedRecoveryDeviceTest {
         val hash = MessageDigest.getInstance("SHA-256")
             .digest(nonce.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }.take(24)
-        val root = File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir,
-            "m19-test-only-$hash")
+        // Android app-private filesDir may contain a platform-provided path alias
+        // (for example /data/user/0 -> /data/data). Production recovery rejects
+        // ANY symlink ancestor; resolve only the trusted app-private fixture base
+        // before passing the synthetic destination to that strict guard.
+        val privateFiles = InstrumentationRegistry.getInstrumentation()
+            .targetContext.filesDir.canonicalFile
+        require(privateFiles.isDirectory &&
+            !java.nio.file.Files.isSymbolicLink(privateFiles.toPath())) {
+            "M19_PRIVATE_FILES_UNSAFE"
+        }
+        val root = File(privateFiles, "m19-test-only-$hash")
         require(!root.isDirectory || !java.nio.file.Files.isSymbolicLink(root.toPath())) {
             "M19_FIXTURE_UNSAFE"
         }

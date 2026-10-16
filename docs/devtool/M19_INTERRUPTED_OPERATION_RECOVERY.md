@@ -56,3 +56,10 @@ Successful output: `overall: PASS_INTERRUPTED_OPERATION_RECOVERY_AUTOMATION`, bo
 - Keep source, GitHub PR and CI checkout SHA, APK hashes, and sanitized per-stage JSON, not raw personal paths or credentials.
 - Deferred: a separate milestone to simulate real DownloadManager/Service worker interruption under disposable file providers; another to qualify external real game/save operations with user-authored backups. Those cannot be inferred from M19's synthetic checkpoint.
 - If a Kotlin AndroidTest dependency/API compile error appears, fix via a source-bound Devtool hotfix and rerun CI before device execution; never claim host Python regressions prove Kotlin compilation.
+
+## M19 first device run / targeted remediation (2026-10-16)
+
+- PR #24 source `3439f92690230957aad79f1e213c35c86f5b2548`, CI run `38874701776`: CI passed, both APKs installed, but `seedInterruptedDownloadCheckpoint` failed (0/1) before force-stop, and the recovery stage did not run. Previous M14–M18 device evidence remains valid.
+- Plausible root cause: the synthetic test fixture was based on the raw Android `filesDir`; on Android a platform-owned `/data/user/0` path alias may be a symlink. `GameDownloadRecovery.safeDestination()` correctly rejects any symlink ancestor. The exact live stack was not captured in the original report, so treat this as a hypothesis until verified.
+- Remediation: use `filesDir.canonicalFile` **only for the nonce-scoped, app-private M19 fixture**, preserving production symlink rejection. Add host regression contracts and allowlisted category/source-line diagnostics for both M19 stages. Never print/store raw stack traces, private paths, or the random nonce.
+- Status: host validation pending at packaging time; Android compilation and real-device requalification must still pass. No automatic uninstall, data deletion, or force-stop on validation.
