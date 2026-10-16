@@ -1,0 +1,154 @@
+# M21: manual, non-publishing, source-pinned release-candidate build.
+# Separate from the debug-only M3/M16/Devtool CI workflows.
+name: Cinderbox Release Candidate (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      reviewed_source_sha:
+        description: 'Exact reviewed M21 commit (full 40-character SHA)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cinderbox-release-candidate
+  cancel-in-progress: false
+
+jobs:
+  release-candidate:
+    if: >-
+      github.repository == 'Mikeyphw/Cinderbox-Companion' &&
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/master'
+    environment: cinderbox-release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+
+    steps:
+      # The reviewed verifier is checked out separately from the application
+      # so this workflow does not require modifying M21's qualified PR head.
+      - name: Checkout trusted workflow verification tools
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          path: trusted
+          persist-credentials: false
+
+      - name: Checkout exact reviewed application source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.reviewed_source_sha }}
+          path: source
+          persist-credentials: false
+
+      - name: Refuse unreviewed source, wrong repository, or wrong event
+        shell: bash
+        env:
+          REVIEWED_SHA: ${{ inputs.reviewed_source_sha }}
+        run: |
+          set -euo pipefail
+          # One-off M21 acceptance pin. Update only through a reviewed PR.
+          expected='d93d21d2f569d947bce91099ef112e3b6a793452'
+          test "$REVIEWED_SHA" = "$expected"
+          test "$(git -C source rev-parse HEAD)" = "$expected"
+          test "$(git -C trusted rev-parse --abbrev-ref HEAD)" = 'master'
+          test "$GITHUB_REPOSITORY" = 'Mikeyphw/Cinderbox-Companion'
+          test "$GITHUB_REF" = 'refs/heads/master'
+          test ! -e source/keystore.jks && test ! -L source/keystore.jks
+          test ! -e source/local.properties
+          test -f trusted/scripts/devtool/m21_actions_release.py
+          test -f source/scripts/devtool/m21_campaign.py
+          test -f source/app/build.gradle.kts
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android build tools
+        uses: android-actions/setup-android@v4
+
+      - name: Install pinned Android 35 SDK and build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify existing M21 and debug-only source contracts
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s scripts/devtool -p 'test_m21_*.py' -q
+          python3 scripts/devtool/m3_build_evidence.py source
+          python3 scripts/devtool/m3b_release_candidate.py policy
+          python3 scripts/devtool/check_security_contract.py
+
+      - name: Restore and independently verify release signing identity
+        shell: bash
+        env:
+          CINDERBOX_RELEASE_KEYSTORE_B64: ${{ secrets.CINDERBOX_RELEASE_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.CINDERBOX_RELEASE_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.CINDERBOX_RELEASE_KEY_PASSWORD }}
+          CINDERBOX_RELEASE_CERT_SHA256: ${{ vars.CINDERBOX_RELEASE_CERT_SHA256 }}
+          CINDERBOX_DEBUG_CERT_SHA256: ${{ vars.CINDERBOX_DEBUG_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          set +x
+          python3 trusted/scripts/devtool/m21_actions_release.py provision \
+            --source-dir "$GITHUB_WORKSPACE/source" \
+            --runner-temp "$RUNNER_TEMP"
+
+      - name: Assemble independently signed release APK (never publish)
+        working-directory: source
+        shell: bash
+        env:
+          STORE_PASSWORD: ${{ secrets.CINDERBOX_RELEASE_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.CINDERBOX_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          set +x
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 --console=plain :app:assembleRelease
+
+      - name: Verify signed APK and produce source-bound public evidence
+        shell: bash
+        env:
+          REVIEWED_SHA: ${{ inputs.reviewed_source_sha }}
+          CINDERBOX_RELEASE_CERT_SHA256: ${{ vars.CINDERBOX_RELEASE_CERT_SHA256 }}
+          CINDERBOX_DEBUG_CERT_SHA256: ${{ vars.CINDERBOX_DEBUG_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          python3 trusted/scripts/devtool/m21_actions_release.py verify \
+            --source-dir "$GITHUB_WORKSPACE/source" \
+            --stage-dir "$RUNNER_TEMP/cinderbox-release-candidate" \
+            --source-commit "$REVIEWED_SHA" \
+            --workflow-run "$GITHUB_RUN_ID"
+
+      - name: Remove temporary signing keystore before artifact upload
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f -- source/keystore.jks
+          rm -f -- "$RUNNER_TEMP/cinderbox-release-signing/keystore.jks"
+
+      - name: Upload signed candidate and sanitized evidence (not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: m21-signed-release-candidate
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/cinderbox-release-candidate/CinderboxCompanion-release-candidate.apk
+            ${{ runner.temp }}/cinderbox-release-candidate/SHA256SUMS
+            ${{ runner.temp }}/cinderbox-release-candidate/M21_RELEASE_CANDIDATE.json
+          retention-days: 14
