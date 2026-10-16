@@ -132,6 +132,9 @@ jobs:
           python3 scripts/devtool/m16_debug_signing.py source
           python3 -m unittest discover -s scripts/devtool -p 'test_m16_*.py' -v
 
+      - name: M17 Android UI and lifecycle qualification regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m17_*.py' -v
+
       - name: M14 device qualification runner regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m14_*.py' -v
 
