@@ -138,6 +138,9 @@ jobs:
       - name: M18 genuine process recovery host regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m18_*.py' -v
 
+      - name: M20 consolidated 52-scenario host regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m20_*.py' -v
+
       - name: M19 interrupted download checkpoint recovery regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m19_*.py' -v
 

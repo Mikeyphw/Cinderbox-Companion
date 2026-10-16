@@ -65,6 +65,11 @@ description = "M18 process stop/relaunch qualification host tests (read-only)"
 workflow = "m18-check"
 target = "cinderbox"
 
+[wrapper.commands.m20-check]
+description = "M20 consolidated 52-scenario source and safety host tests"
+workflow = "m20-check"
+target = "cinderbox"
+
 [wrapper.commands.m19-check]
 description = "M19 interrupted operation and recovery host tests (read-only)"
 workflow = "m19-check"
@@ -205,6 +210,12 @@ command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p
 inputs = ["scripts/devtool/m18_device_qualification.py", "scripts/devtool/test_m18_device_qualification.py", "scripts/devtool/m14_device_qualification.py", "app/src/androidTest/java/com/sdvsync/qualification/M18ProcessRecoveryDeviceTest.kt"]
 metadata = { read_only = true, area = "m18-process-recovery", root_required = false }
 
+[targets.cinderbox.jobs.m20-host]
+runner = "command"
+command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_m20_*.py", "-v"]
+inputs = ["scripts/devtool/m20_qualification.py", "scripts/devtool/m20_scenarios.json", "scripts/devtool/test_m20_qualification.py", "app/src/androidTest/java/com/sdvsync/qualification/M20ConsolidatedDeviceTest.kt", "app/src/androidTest/java/com/sdvsync/qualification/M20OwnedFixtures.kt", "app/src/debug/**"]
+metadata = { read_only = true, area = "m20-resilience", root_required = false }
+
 [targets.cinderbox.jobs.m19-host]
 runner = "command"
 command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_m19_*.py", "-v"]
@@ -246,6 +257,7 @@ m15-check = ["job:m15-host"]
 m17-check = ["job:m17-host"]
 m18-check = ["job:m18-host"]
 m19-check = ["job:m19-host"]
+m20-check = ["job:m20-host"]
 
 [artifacts]
 output_directory = ".devtool/build-artifacts"
