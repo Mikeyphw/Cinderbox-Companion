@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "milestone": "M21",
+  "producer": "cinderbox-m21-acceptance-manifest",
+  "historical_android_passes_not_reexecuted": 74,
+  "lanes": {
+    "U": {"title":"real_offline_user_workflows", "class":"com.sdvsync.qualification.M21UWorkflowDeviceTest", "cases":["u01OfflineSavesTabVisible","u02OfflineModsTabNavigation","u03OfflineDownloadsTabNavigation","u04InstallationHealthReadOnlyFromSettings"]},
+    "T": {"title":"consented_authenticated_steam_read_only", "class":"com.sdvsync.qualification.M21TAuthenticatedDeviceTest", "cases":["t01ExistingEncryptedSteamSessionPresent","t02AuthenticatedSteamConnectionLive","t03SteamLicenseCallbackAvailable","t04SteamCloudMetadataReadOnlyRequest"]},
+    "I": {"title":"installation_and_upgrade_preservation", "class":"com.sdvsync.qualification.M21IInstallationDeviceTest", "cases":["i01MissingGameNotAcceptedAsInstalled","i02PartialGameFilesNeverMarkedUsable","i03SyntheticCoreStructureDetectedNotHashVerified","i04SeedOwnedUpgradeMarker","i05VerifyUpgradePreservesPrivateStateAndCleanup","i06InstalledCinderboxPackageRecognized"]},
+    "R": {"title":"separately_signed_release_candidate", "class":null, "cases":["r01CandidateDigestMatchesIndependentPin","r02ReleaseSignerDiffersFromPinnedDebugSigner","r03PackageIdentityAndNonDebuggable","r04ReleaseApkSignatureVerification"]}
+  }
+}
