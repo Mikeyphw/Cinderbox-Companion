@@ -48,3 +48,21 @@ This ledger is cumulative; append future Devtool gaps and campaign findings rath
 | DEV-M21-PR-HIST-016 | M21 acceptance lane R first failed `PR_MERGE_COMMIT_UNAVAILABLE`: GitHub PR #26 remained open but its live merge_commit_sha was null, while CI run 38946596038 provenance established synthetic checkout dc7439617acaa10823a5e9bc95091bf8771f21f2 with matching exact Git ref and two parents. | Recover only from the CI artifact's cryptographically anchored source checkout when live PR SHA is null; demand exact PR ref, current immutable ref and exact ordered parents; otherwise fail closed. | Source-bound fix and regression tests implemented for integration; historical recovery 18/18 PASS on original reviewed commit. |
 | DEV-M21-SIGNER-017 | M21 lane R failed `M21_APK_SIGNER_AMBIGUOUS` despite GitHub Actions release candidate run 38964234525 verifying the APK/signature. `m21_campaign.py` depended on a single exact human-readable apksigner digest line. | Keep `apksigner verify` mandatory, then parse sole consistent v2/v3 signer certificate with existing `m3_apk_signing.certificate_sha256`; assert unchanged APK bytes before/after. Reject ambiguous, missing, changed or invalid signatures. | Source-bound fix and regression tests implemented for integration; independently pinned release candidate 18/18 PASS on historical acceptance. |
 | DEV-M21-COMPLETE-018 | Signed release run 38964234525 SUCCESS; `cinderbox-m21-final.json` PASS_M21_PREPUBLICATION_ACCEPTANCE (U4 I6 T4 R4). 74 earlier Android cases were not reexecuted. | Preserve immutable final M21 evidence separately from integration changes; no automatic release publication or certification inferred. | 18/18 M21 acceptance PASS on tested commit d93d21d; integration and broader release qualification separate. |
+### M21-CI-SDK-015 — Release verifier masked Android SDK tool discovery failures
+- **Evidence:** `Mikeyphw/Cinderbox-Companion` release candidate GitHub Actions run
+  `38960889421`, workflow commit `8a0d733a1553c57186907e8847010f559da737e6`;
+  release keystore/certificate provisioning PASS, `:app:assembleRelease` PASS (53
+  tasks), but verification emitted `M21_RELEASE_APK_SIGNATURE_INVALID`, hiding
+  whether `apksigner` was absent or cryptographic verification actually failed.
+- **Affected:** `scripts/devtool/m21_actions_release.py` and release candidate
+  workflow; `android-actions/setup-android` does not promise pinned build-tools
+  binaries are in PATH, while M16 already had SDK-directory fallback.
+- **Improvement:** Resolve both `apksigner` and `aapt` from the explicitly
+  installed `$ANDROID_HOME/build-tools/35.0.0/` (or `ANDROID_SDK_ROOT`);
+  use PATH fallback only for local runs without an SDK root; report distinct
+  fail-closed unavailable-tool errors without exposing credentials. Preserve
+  real signature, independent release cert, package and debuggability checks.
+  Add host regression coverage for pinned-tool selection and missing binaries.
+- **Status:** Fix implemented and nine focused host tests PASS; new CI and a
+  real signed APK verification required. The original failure cause is not
+  definitively confirmed until the corrected verifier executes in Actions.
