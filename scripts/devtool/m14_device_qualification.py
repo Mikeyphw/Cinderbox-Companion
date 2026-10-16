@@ -89,7 +89,8 @@ def verify_ci(run, jobs, commit):
     require(run.get('head_branch') in (
         'feature/m14-isolated-device-qualification',
         'feature/m14-postmerge-device-provenance',
-        'feature/m15-integrated-android-qualification', 'master'), 'WRONG_CI_BRANCH')
+        'feature/m15-integrated-android-qualification',
+        'feature/m17-android-ui-lifecycle', 'master'), 'WRONG_CI_BRANCH')
     steps = jobs.get('jobs', [{}])[0].get('steps', [])
     successful = {s.get('name') for s in steps if s.get('conclusion') == 'success'}
     require({'M14 device qualification runner regressions',
@@ -121,7 +122,8 @@ def verified_ci_checkout(run, branch_commit, *, artifact_commit=None, artifact_r
     branch_name = run.get('head_branch')
     require(branch_name in ('feature/m14-isolated-device-qualification',
                             'feature/m14-postmerge-device-provenance',
-                            'feature/m15-integrated-android-qualification'),
+                            'feature/m15-integrated-android-qualification',
+                            'feature/m17-android-ui-lifecycle'),
             'UNEXPECTED_PR_BRANCH')
     linked = run.get('pull_requests')
     require(type(linked) is list, 'PR_ASSOCIATION_AMBIGUOUS')
