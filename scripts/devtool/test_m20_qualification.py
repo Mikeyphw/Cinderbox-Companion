@@ -156,15 +156,74 @@ class TestM20Campaign(TestCase):
             result=json.loads(args.output.read_text())
             self.assertEqual(result['failure_code'],'M20_MERGE_OVERLAPPING_LANES')
 
+    def test_host_side_lifecycle_failure_marks_active_lane_failed(self):
+        # Explicit guard against the original report's misleading C=RUNNING
+        # after an orchestrator-side PID failure. No device runs here.
+        source=(HERE/'m20_qualification.py').read_text()
+        self.assertIn("report['lanes'][failing_lane]['status']='FAILED_OR_BLOCKED'",source)
+        self.assertIn("failing_lane=next((k for k in selection if report['lanes'][k]['status']=='RUNNING')",source)
+        self.assertLess(source.index("report['lanes'][failing_lane]['status']='FAILED_OR_BLOCKED'"),
+                        source.index("if getattr(e,'case_summary',None):", source.index('except m14.DeviceGateError as e:')))
+
+    def test_live_worker_boundary_is_rearmed_after_instrumentation_teardown(self):
+        class Device:
+            def __init__(self):
+                self.live=False; self.armed=False; self.calls=[]
+            def launch(self):
+                self.calls.append('launch'); self.live=True
+                return 'Status: ok\nActivity: com.sdvsync/.MainActivity\n'
+            def shell(self,*args,**kw):
+                self.calls.append(args)
+                if args[:2]==('sh','-c'):return '12345' if self.live else ''
+                if args[:2]==('am','start-foreground-service'):
+                    self.armed=True
+                    return 'Starting service: Intent { cmp=com.sdvsync/.qualification.M20SyntheticWorkerService }'
+                if args[:3]==('dumpsys','activity','services'):
+                    return ('  * ServiceRecord{a1 u0 com.sdvsync/.qualification.M20SyntheticWorkerService}\n'
+                            '    app=ProcessRecord{a1 12345:com.sdvsync/u0a123}\n') if self.armed else ''
+                raise AssertionError(args)
+        dev=Device()
+        # Recreates the device failure: no process survives c07 instrumentation.
+        self.assertFalse(dev.live)
+        m20.arm_live_worker_before_force_stop(dev,'a'*32)
+        self.assertTrue(dev.armed)
+        self.assertEqual(dev.calls[0],'launch')
+        self.assertTrue(any(isinstance(x,tuple) and x[:2]==('am','start-foreground-service')
+                            for x in dev.calls))
+
+    def test_live_worker_boundary_fails_closed_without_active_service(self):
+        class Device:
+            def __init__(self):self.stops=0
+            def launch(self):return 'Status: ok\nActivity: com.sdvsync/.MainActivity\n'
+            def shell(self,*args,**kw):
+                if args[:2]==('sh','-c'):return '12345'
+                if args[:2]==('am','start-foreground-service'):
+                    return 'Starting service: Intent { cmp=com.sdvsync/.qualification.M20SyntheticWorkerService }'
+                if args[:3]==('dumpsys','activity','services'):return ''
+                if args[:2]==('am','force-stop'):
+                    self.stops+=1;return ''
+                raise AssertionError(args)
+        dev=Device()
+        with self.assertRaises(m14.DeviceGateError) as ctx:
+            m20.arm_live_worker_before_force_stop(dev,'f'*32)
+        self.assertEqual(ctx.exception.code,'M20_DEBUG_WORKER_NOT_RUNNING')
+        self.assertEqual(dev.stops,0)
+
     def test_all_52_mocked_scenarios_execute_without_rerunning_old_milestones(self):
         class FakeDevice:
-            def __init__(self):self.running=True;self.stops=0;self.invocations=[]
+            def __init__(self):self.running=True;self.stops=0;self.invocations=[];self.armed=False;self.starts=[]
             def device_info(self):return {'api_level':36,'abi':'arm64-v8a'}
             def installed(self,pkg):return True
             def install(self,*a,**kw):return 'Success'
             def launch(self):self.running=True;return 'Status: ok\nActivity: com.sdvsync/.MainActivity\n'
             def shell(self,*parts,**kw):
                 if parts[:2]==('sh','-c'):return '12345' if self.running else ''
+                if parts[:2]==('am','start-foreground-service'):
+                    self.starts.append(parts);self.armed=True
+                    return 'Starting service: Intent { cmp=com.sdvsync/.qualification.M20SyntheticWorkerService }'
+                if parts[:3]==('dumpsys','activity','services'):
+                    return ('* ServiceRecord{a u0 com.sdvsync/.qualification.M20SyntheticWorkerService}\n'
+                            '  app=ProcessRecord{b 12345:com.sdvsync/u0a123}\n') if self.armed else ''
                 if parts[:2]==('am','force-stop'):
                     self.running=False;self.stops+=1;return ''
                 if parts[:2]==('am','instrument'):
@@ -174,6 +233,11 @@ class TestM20Campaign(TestCase):
                     lane=next(v for v in m20.matrix().values() if v['class']==klass)
                     tests=[method] if method else lane['cases']
                     self.invocations.extend(tests)
+                    # Real device instrumentation can terminate its target app
+                    # when c07 ends; a passing test is NOT a live PID receipt.
+                    if method == 'c07SeedRunningWorkerBeforeForceStop':
+                        self.running=False
+                        self.armed=False
                     return ''.join('INSTRUMENTATION_STATUS: test='+x+'\nINSTRUMENTATION_STATUS_CODE: 0\n'
                                    for x in tests)+'INSTRUMENTATION_CODE: -1\n'
                 raise AssertionError(parts)
@@ -204,6 +268,7 @@ class TestM20Campaign(TestCase):
             report=json.loads(args.output.read_text())
             self.assertEqual(report['overall'],m20.SUCCESS)
             self.assertEqual(device.stops,1)
+            self.assertEqual(len(device.starts),1)
             self.assertEqual(len(device.invocations),52)
             self.assertEqual(len(set(device.invocations)),52)
             self.assertEqual(report['process_gone'],'PASS')

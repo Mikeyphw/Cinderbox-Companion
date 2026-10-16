@@ -14,6 +14,7 @@ import re
 import secrets
 import sys
 import tempfile
+import time
 
 import m14_device_qualification as m14
 
@@ -94,6 +95,48 @@ def launch(device):
             re.search(r'(?m)^Activity:\s*com\.sdvsync/\.MainActivity\s*$',text),
             'M20_LAUNCH_FAILED')
     require(bool(pid(device)),'M20_APP_NOT_STARTED')
+
+
+def arm_live_worker_before_force_stop(device, nonce):
+    """Re-establish the debug worker after AndroidJUnitRunner's lifecycle teardown.
+
+    An instrumentation PASS says c07 seeded its owned fixture, NOT that the app
+    process remains alive after the test process exits.  Android can terminate
+    that process at the test boundary. We explicitly launch the app and start
+    the existing non-exported, debug-only worker via the explicitly selected
+    privileged device transport, then require a live foreground ServiceRecord.
+    No operation touches production Steam, mods, saves, or external storage.
+    """
+    require(re.fullmatch(r'[0-9a-f]{32}', nonce) is not None, 'M20_WORKER_NONCE_INVALID')
+    launch(device)
+    before = pid(device)
+    require(bool(before), 'M20_PRE_STOP_PROCESS_ABSENT')
+    result = device.shell('am', 'start-foreground-service', '-n',
+        'com.sdvsync/.qualification.M20SyntheticWorkerService',
+        '--es', 'case_id', 'c07SeedRunningWorkerBeforeForceStop',
+        '--es', 'nonce', nonce, timeout=30)
+    require('Starting service:' in result and 'Error:' not in result,
+            'M20_DEBUG_WORKER_REARM_FAILED')
+    # Inspect service state only in memory. Never copy a dumpsys receipt into
+    # published evidence because its other entries may contain private data.
+    for probe in range(2):
+        # Two time-separated probes prevent a transient service-start receipt
+        # from being mistaken for a continuously active synthetic worker.
+        if probe:
+            time.sleep(0.3)
+        state = device.shell('dumpsys', 'activity', 'services', 'com.sdvsync', timeout=30)
+        service = re.search(
+            r'(?m)^\s*\*?\s*ServiceRecord\{[^\n]*'
+            r'com\.sdvsync/\.qualification\.M20SyntheticWorkerService[^\n]*',
+            state)
+        require(service is not None, 'M20_DEBUG_WORKER_NOT_RUNNING')
+        remainder = state[service.end():]
+        next_service = re.search(r'(?m)^\s*\*?\s*ServiceRecord\{', remainder)
+        owned_state = remainder[:next_service.start() if next_service else len(remainder)]
+        require(re.search(r'\bapp=ProcessRecord\{[^\n]*com\.sdvsync', owned_state)
+                is not None, 'M20_DEBUG_WORKER_NO_LIVE_PROCESS')
+        after = pid(device)
+        require(bool(after) and after == before, 'M20_DEBUG_WORKER_PROCESS_CHANGED')
 
 
 def instrument(device,klass,method,nonce,expect):
@@ -194,7 +237,11 @@ def execute(args):
                     for case in spec['cases'][:-1]:
                         result=instrument(device,spec['class'],case,nonce,[case])
                         report['lanes']['C']['cases'][case]='PASS'
-                    require(bool(pid(device)),'M20_PRE_STOP_PROCESS_ABSENT')
+                    # Instrumentation teardown is allowed to stop the app. The
+                    # c07 PASS is durable fixture evidence, not live-PID proof.
+                    # Arm and verify the non-exported debug worker in a live app
+                    # process before issuing the destructive force-stop.
+                    arm_live_worker_before_force_stop(device, nonce)
                     report['force_stop']='ATTEMPTED'
                     device.shell('am','force-stop',m14.PACKAGE,timeout=30)
                     report['force_stop']='PASS'
@@ -211,10 +258,12 @@ def execute(args):
                 report['overall']=SUCCESS if set(selection)==set(available) else 'PASS_SELECTED_M20_LANES'
     except m14.DeviceGateError as e:
         report.update(overall='FAILED_OR_BLOCKED',failure_code=e.code)
-        if getattr(e,'case_summary',None):
-            failing_lane=next((k for k in selection if report['lanes'][k]['status']=='RUNNING'),None)
-            if failing_lane:
-                report['lanes'][failing_lane]['status']='FAILED_OR_BLOCKED'
+        # Host-side lifecycle faults also fail the active lane. Otherwise a
+        # failed real-device campaign can misleadingly leave lane C RUNNING.
+        failing_lane=next((k for k in selection if report['lanes'][k]['status']=='RUNNING'),None)
+        if failing_lane:
+            report['lanes'][failing_lane]['status']='FAILED_OR_BLOCKED'
+            if getattr(e,'case_summary',None):
                 for name,value in e.case_summary.get('cases',{}).items():
                     report['lanes'][failing_lane]['cases'][name]=value
                 report['failure_diagnostics']=getattr(e,'m20_diagnostic',{})

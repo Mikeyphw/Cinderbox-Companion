@@ -10,3 +10,17 @@ This ledger is cumulative; append future Devtool gaps and campaign findings rath
 | DEV-M20-CASE-004 | Serial two-case Android campaigns cause repeated CI/device install cycles and risk incomplete result reporting. | One 52-case, eight-lane manifest; CI compile once, individually executable lanes and one source/provenance-bound consolidation, strict per-case totals. | Implemented M20 host checks, device qualification pending |
 | DEV-M20-SERVICE-005 | Production `GameDownloadService` has `START_NOT_STICKY`, coroutine jobs and connection to Steam; authenticated downloader cannot be safely tested under signed-out real-device fixture. | Preserve distinction between debug synthetic real Android foreground-worker lifecycle and actual Steam service. Future separately consented live-network integration required before stronger claims. | Explicit limitation / future work |
 | DEV-M20-MERGE-006 | Multiple lane reports can otherwise be accidentally combined across APKs or PRs. | Reject source/CI/APK/device mismatch, overlapping lanes, missing test cases and absent genuine process-stop evidence; never infer release qualification. | Implemented in M20 host suite, device qualification pending |
+
+
+### M20-IR-01 — Instrumentation teardown is not a worker-liveness receipt
+- **Evidence:** PR #25 first Android run, CI `38917076629`, source
+  `db985f5b0e19011a53b8911a3376c22ec53c53ec`: lanes A and B and C01–C07
+  passed; pre-force-stop `pidof com.sdvsync` returned empty. No force-stop ran.
+- **Affected:** `scripts/devtool/m20_qualification.py`; debug-only
+  `M20SyntheticWorkerService`; genuine process-death evidence gate.
+- **Improvement:** Re-arm and verify the non-exported synthetic foreground
+  worker after instrumentation teardown, require live `ServiceRecord` and stable
+  app PID, mark host-side lifecycle failures explicitly FAILED_OR_BLOCKED, and
+  block force-stop if verification fails. Never substitute an
+  Activity launch alone for proof of a running worker.
+- **Status:** Source correction implemented; new CI and real-device verification pending.

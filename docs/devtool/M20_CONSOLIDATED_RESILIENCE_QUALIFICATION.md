@@ -77,3 +77,21 @@ Real `am force-stop` kills the target process and can interrupt services. It req
 ### Acceptance and post-CI steps
 
 Successful CI must include M20 host regressions, complete unit/lint/build, one isolated androidTest APK compilation and two M16 signer gates. Device evidence must contain 52 distinct PASS cases across eight lanes, `force_stop=PASS`, `process_gone=PASS`, `cold_relaunch=PASS`, and all provenance hashes source-bound to the same successful PR run. If Kotlin compilation or Android restrictions cause a failure, do not merge or interpret the source-only host tests as device qualification. Preserve the original evidence and use a source-pinned Devtool hotfix; rerun only incomplete M20 work.
+
+## M20-C device lifecycle correction (post-first-device-run)
+
+The initial device run for PR #25, source `db985f5b0e19011a53b8911a3376c22ec53c53ec`,
+passed A (8), B (7), and C01–C07 (7). Before the planned force-stop,
+`pidof com.sdvsync` returned empty. No stop was attempted and C08/D–H were NOT_RUN.
+This is instrumentation-session teardown: an instrumentation PASS does not attest
+that a live foreground worker remains running after `am instrument -w` returns.
+
+The host now explicitly cold/warm launches the signed-out app, re-arms the existing
+non-exported debug-only synthetic foreground service using the explicitly selected
+privileged transport, and verifies a live service record + stable app PID. If Android
+rejects starting the private service, if the service is not running, or if the PID
+changes, force-stop is blocked with a precise non-sensitive error code. This
+rearms only the app-private owned c07 fixture; it does not start production jobs.
+The original 22 M20 passing case results remain historical evidence but must not
+be treated as a full, single-source 52/52 result. New CI source provenance is
+required after this source change. Do not rerun the older M14–M19 device suites.
