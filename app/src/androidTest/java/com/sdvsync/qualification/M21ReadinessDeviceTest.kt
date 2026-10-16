@@ -2,7 +2,6 @@ package com.sdvsync.qualification
 
 import android.os.SystemClock
 import android.content.pm.PackageManager
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText

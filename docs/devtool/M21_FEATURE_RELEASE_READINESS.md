@@ -89,3 +89,10 @@ The report becomes `PASS_M21_PREPUBLICATION_ACCEPTANCE` only when U, T, I, R all
 ## Evidence history / risk
 
 M20 native Android 52/52 PASS, real force-stop and cold relaunch confirmed, CI `38926722038`, PR #25 merged. Prior M14–M19 22 milestone-specific passes preserved. M21 does not reexecute those suites. No manual or credential-dependent lane is silently skipped or treated as a pass.
+
+## M21 AndroidTest compilation hotfix (2026-10-16)
+
+- Source: M21 PR #26 at `ac0c0f7d3d61b5a16ae572ee06e8bfa7e15b35d2`, GitHub Actions run `38940534401`.
+- CI application build, M16 APK signer verification, and M21 host regressions succeeded; instrumentation compilation failed at `app/src/androidTest/java/com/sdvsync/qualification/M21ReadinessDeviceTest.kt:5:33`: unresolved import `androidx.compose.ui.test.assertExists`.
+- `SemanticsNodeInteraction.assertExists()` is a member; delete **only** that invalid import and preserve the existing `.assertExists()` checks. Host tests now enforce the source contract.
+- This is a **compile error**, not device evidence or an authenticated Steam failure. Do not run M21 devices against run `38940534401`; qualify only after a new source-bound CI run successfully compiles, signs, and uploads `m14-androidtest-apk`.

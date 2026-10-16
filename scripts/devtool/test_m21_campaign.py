@@ -39,6 +39,13 @@ class M21HostTests(unittest.TestCase):
                           'pm clear','pm uninstall','getExternalStorageDirectory'):
             self.assertNotIn(forbidden,source)
 
+    def test_android_compose_node_assertions_are_member_calls(self):
+        """Guard the M21 AndroidTest compile failure seen in CI #38940534401."""
+        src=(ROOT/'app/src/androidTest/java/com/sdvsync/qualification/M21ReadinessDeviceTest.kt').read_text()
+        self.assertNotIn("import androidx.compose.ui.test.assertExists",src)
+        self.assertIn(".assertExists()",src)
+        self.assertIn("import androidx.compose.ui.test.junit4.createAndroidComposeRule",src)
+
     def test_cloud_diagnostics_never_log_names_or_payload(self):
         src=(ROOT/'app/src/main/java/com/sdvsync/steam/SteamCloudService.kt').read_text()
         self.assertNotIn('first50=',src)
