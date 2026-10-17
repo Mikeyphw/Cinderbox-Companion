@@ -105,6 +105,16 @@ description = "UI-D02 source and existing Android compile/lint/debug verificatio
 workflow = "earthy-d02-full"
 target = "cinderbox"
 
+[wrapper.commands.earthy-d03-check]
+description = "UI-D03 accessibility, contrast and synthetic screenshot source-bound DAG"
+workflow = "earthy-d03-check"
+target = "cinderbox"
+
+[wrapper.commands.earthy-d03-full]
+description = "UI-D03 source plus existing test/lint/debug verified APK DAG"
+workflow = "earthy-d03-full"
+target = "cinderbox"
+
 [wrapper.commands.device]
 description = "Explicit on-device instrumentation lane; requires a connected test device"
 workflow = "device"
@@ -271,6 +281,12 @@ command = ["python3", "scripts/devtool/ui_d02_gate.py"]
 inputs = ["scripts/devtool/ui_d02_source.py", "scripts/devtool/ui_d02_gate.py", "scripts/devtool/test_ui_d02.py", "app/src/main/java/com/sdvsync/ui/components/**", "app/src/main/java/com/sdvsync/ui/screens/SaveViewerScreen.kt", "app/src/androidTest/java/com/sdvsync/qualification/EarthyComponentsDeviceTest.kt", "docs/security/M3_RELEASE_POLICY.json"]
 metadata = { read_only = true, area = "earthy-ui-d02", root_required = false, device_required = false, evidence = "source-sha256-json", baseline = "ui-d01-pr29" }
 
+[targets.cinderbox.jobs.earthy-accessibility-host]
+runner = "command"
+command = ["python3", "scripts/devtool/ui_d03_gate.py"]
+inputs = ["scripts/devtool/ui_d03_source.py", "scripts/devtool/ui_d03_gate.py", "scripts/devtool/test_ui_d03.py", "scripts/devtool/ui_d03_device_capture.py", "app/src/main/java/com/sdvsync/ui/theme/EarthyColorSchemes.kt", "app/src/main/java/com/sdvsync/ui/components/StardewBottomBar.kt", "app/src/main/java/com/sdvsync/ui/components/PixelProgressBar.kt", "app/src/main/java/com/sdvsync/ui/components/PixelLoadingSpinner.kt", "app/src/androidTest/java/com/sdvsync/qualification/EarthyD03AccessibilityDeviceTest.kt", "docs/security/M3_RELEASE_POLICY.json"]
+metadata = { read_only = true, area = "earthy-ui-d03", device_required = false, evidence = "source-sha256-json", baseline = "ui-d02-ci-39006846654" }
+
 [targets.cinderbox.jobs.connected-tests]
 runner = "android"
 gradle_tasks = [":app:connectedDebugAndroidTest"]
@@ -325,6 +341,22 @@ earthy-d02-full = [
   { id = "d01", ref = "job:earthy-source", depends_on = ["security"] },
   { id = "d02", ref = "job:earthy-components-host", depends_on = ["d01"] },
   { id = "unit", ref = "job:unit-tests", depends_on = ["d02"] },
+  { id = "lint", ref = "job:android-lint", depends_on = ["unit"] },
+  { id = "apk", ref = "job:debug-apk", depends_on = ["lint"] },
+  { id = "verify", ref = "job:verify-debug-apk", depends_on = ["apk"] },
+]
+earthy-d03-check = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "d01", ref = "job:earthy-source", depends_on = ["security"] },
+  { id = "d02", ref = "job:earthy-components-host", depends_on = ["d01"] },
+  { id = "d03", ref = "job:earthy-accessibility-host", depends_on = ["d02"] },
+]
+earthy-d03-full = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "d01", ref = "job:earthy-source", depends_on = ["security"] },
+  { id = "d02", ref = "job:earthy-components-host", depends_on = ["d01"] },
+  { id = "d03", ref = "job:earthy-accessibility-host", depends_on = ["d02"] },
+  { id = "unit", ref = "job:unit-tests", depends_on = ["d03"] },
   { id = "lint", ref = "job:android-lint", depends_on = ["unit"] },
   { id = "apk", ref = "job:debug-apk", depends_on = ["lint"] },
   { id = "verify", ref = "job:verify-debug-apk", depends_on = ["apk"] },

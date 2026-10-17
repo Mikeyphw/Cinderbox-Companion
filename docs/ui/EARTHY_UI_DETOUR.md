@@ -51,3 +51,15 @@ PR #29 head `156bd65201a239b81ea7cd6f5a52e1ff68de8362` passed GitHub Actions run
 The initial Devtool artifact preflight for clean UI-D01 source was `ready`, structural/source checks passed with zero conflicts. The transactional apply ran six of six stages with zero errors and committed the synthetic test checkout; `earthy-d02-check` completed all three existing/new jobs. The full Python host regression suite finished with **294 tests, 0 failures, 1 skip**. No Android build/device test was run for D02.
 
 **Known Devtool bug:** Rechecking the already-applied artifact exposed `NameError: sha256_file` in `devtool/overlay/conflicts.py:38`, not a clean source-mismatch report. Source preflight against the intended untouched D01 worktree and the actual apply are unaffected. This is tracked as `DEV-OVERLAY-CONFLICT-UI-D02-04` in the Devtool improvements ledger; do not interpret the internal exception as evidence of a successful fail-closed conflict classification.
+
+## UI-D03 — accessible navigation + synthetic screenshot qualification (pending new CI/device)
+
+Source baseline: UI-D02 PR #30 head `9dd7b387b3cd5a2a4a47d63f69e3367f4bb4efa8`, GitHub Actions Devtool Android Build run `39006846654` **SUCCESS**. That success is for UI-D02 only. This UI-D03 patch is **not yet compiled/qualified on Android**.
+
+- Bottom navigation now provides `Role.Tab`, selected state, selectable group, 56dp minimum height and default visible interaction feedback instead of silent clickable targets.
+- Pixel progress exposes normalized progress semantics to accessibility services; loading spinner exposes a localized loading state. All variants inherit the same accessible behavior, while Classic styling/palette remains unchanged.
+- Source-bound host gate derives 16 WCAG 4.5:1 functional contrast ratios from the **actual Kotlin** Earthy light and dark Material schemes, not a separate static palette table.
+- Android synthetic instrumentation tests cover tab role/selected click, 65% progress information, light and dark 320dp + 160% font-scale preview screenshots. Synthetic fixtures never load real Steam credentials or files and do not modify game data.
+- Explicit `scripts/devtool/ui_d03_device_capture.py --execute-synthetic-device-tests --output-dir ...` can run tests on an already-provisioned debug device and export exactly two test-owned private PNG files via `run-as`. It never installs, uninstalls, signs, reboots, modifies permissions or claims to have verified the installed APK's source identity. PNG screenshots are synthetic, **not actual app screens**, and receipt `release_qualified` remains false. This is visual baseline evidence, not an automated pixel diff to DaisyNiko's assets.
+- Native Devtool DAGs `earthy-d03-check` and `earthy-d03-full` reuse existing D01, D02, security, unit, lint, debug APK and verifier jobs; both GitHub Actions flows upload the same host gate evidence JSON.
+- A real-device run and visual review are still required; post-D03 resume the M22–M29 roadmap unchanged.

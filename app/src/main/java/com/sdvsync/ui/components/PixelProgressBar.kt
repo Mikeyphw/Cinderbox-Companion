@@ -10,6 +10,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import com.sdvsync.ui.theme.GoldAmber
 import com.sdvsync.ui.theme.GoldBright
 import com.sdvsync.ui.theme.SdvSyncThemeExtras
@@ -26,6 +29,7 @@ fun PixelProgressBar(progress: Float, modifier: Modifier = Modifier) {
     Canvas(
         modifier = modifier
             .fillMaxWidth()
+            .semantics { progressBarRangeInfo = ProgressBarRangeInfo(progress.coerceIn(0f, 1f), 0f..1f) }
             .pixelBorderThin()
             .padding(4.dp) // inside the thin border
             .height(12.dp)
