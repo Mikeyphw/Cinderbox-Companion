@@ -125,6 +125,16 @@ description = "M22 checks plus existing unit, lint and verified debug APK jobs"
 workflow = "m22-full"
 target = "cinderbox"
 
+[wrapper.commands.m23-check]
+description = "M23 read-only installation recognition and source-bound evidence DAG"
+workflow = "m23-check"
+target = "cinderbox"
+
+[wrapper.commands.m23-full]
+description = "M23 discovery plus existing Android unit, lint and debug APK qualification DAG"
+workflow = "m23-full"
+target = "cinderbox"
+
 [wrapper.commands.device]
 description = "Explicit on-device instrumentation lane; requires a connected test device"
 workflow = "device"
@@ -309,6 +319,18 @@ command = ["python3", "scripts/devtool/m22_baseline.py"]
 inputs = ["scripts/devtool/m22_baseline.py", "scripts/devtool/m22_baseline_contract.json", ".devtool.toml", "docs/devtool/**", ".github/workflows/**", "app/src/main/java/com/sdvsync/download/**", "app/src/main/java/com/sdvsync/steam/**", "app/src/main/java/com/sdvsync/cinderbox/**", "app/src/main/java/com/sdvsync/local/**"]
 metadata = { read_only = true, area = "m22-postmerge-baseline", device_required = false, root_required = false, evidence = "source-bound-json" }
 
+[targets.cinderbox.jobs.m23-host-tests]
+runner = "command"
+command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_m23_discovery.py", "-v"]
+inputs = ["scripts/devtool/m23_discovery_gate.py", "scripts/devtool/test_m23_discovery.py", "docs/security/M3_RELEASE_POLICY.json", ".devtool.toml"]
+metadata = { read_only = true, area = "m23-installation-discovery", device_required = false, root_required = false }
+
+[targets.cinderbox.jobs.m23-discovery]
+runner = "command"
+command = ["python3", "scripts/devtool/m23_discovery_gate.py"]
+inputs = ["scripts/devtool/m23_discovery_gate.py", "app/src/main/java/com/sdvsync/local/M23InstallationDiscovery.kt", "app/src/main/java/com/sdvsync/local/InstallationScanner.kt", "app/src/main/java/com/sdvsync/ui/screens/InstallationHealthScreen.kt", "app/src/main/java/com/sdvsync/ui/viewmodels/GameDownloadViewModel.kt", "app/src/test/java/com/sdvsync/local/M23InstallationDiscoveryTest.kt", ".github/workflows/**", "docs/devtool/M23_INSTALLATION_DISCOVERY.md"]
+metadata = { read_only = true, area = "m23-installation-discovery", evidence = "source-bound-json", device_required = false, root_required = false }
+
 [targets.cinderbox.jobs.connected-tests]
 runner = "android"
 gradle_tasks = [":app:connectedDebugAndroidTest"]
@@ -394,6 +416,23 @@ m22-full = [
   { id = "tests", ref = "job:m22-host-tests", depends_on = ["security"] },
   { id = "baseline", ref = "job:m22-baseline", depends_on = ["tests"] },
   { id = "unit", ref = "job:unit-tests", depends_on = ["baseline"] },
+  { id = "lint", ref = "job:android-lint", depends_on = ["unit"] },
+  { id = "apk", ref = "job:debug-apk", depends_on = ["lint"] },
+  { id = "verify", ref = "job:verify-debug-apk", depends_on = ["apk"] },
+]
+
+m23-check = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "m22", ref = "job:m22-baseline", depends_on = ["security"] },
+  { id = "tests", ref = "job:m23-host-tests", depends_on = ["m22"] },
+  { id = "inventory", ref = "job:m23-discovery", depends_on = ["tests"] },
+]
+m23-full = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "m22", ref = "job:m22-baseline", depends_on = ["security"] },
+  { id = "tests", ref = "job:m23-host-tests", depends_on = ["m22"] },
+  { id = "inventory", ref = "job:m23-discovery", depends_on = ["tests"] },
+  { id = "unit", ref = "job:unit-tests", depends_on = ["inventory"] },
   { id = "lint", ref = "job:android-lint", depends_on = ["unit"] },
   { id = "apk", ref = "job:debug-apk", depends_on = ["lint"] },
   { id = "verify", ref = "job:verify-debug-apk", depends_on = ["apk"] },
