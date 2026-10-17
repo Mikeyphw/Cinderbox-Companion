@@ -59,3 +59,9 @@ source/signature provenance is separately verified, the best possible result
 is `PASS_10_SYNTHETIC_DEVICE_TESTS_UNBOUND`, with `device_qualified=false`.
 The runner does **not** install APKs, perform authentic game discovery,
 request permissions or clear any app state.
+
+## M23 test-runner diagnosis and repair (Oct 17, 2026)
+
+Initial manually-installed APK run reported all ten cases `NOT_COMPLETED` and code `INSTRUMENTATION_INCOMPLETE_OR_FAILED`. Code review found the Python runner passed six-character IDs (`m23_01`) into a parser that requires the full Android method name (`m23_01MissingPrivatePathsAreNotDownloadApproval`). The report cannot establish whether device tests passed or failed.
+
+The repair binds exactly ten full source-attested method names, accepts only a complete instrumentation success, converts the outcome back to stable case IDs, and persists only sanitized case statuses/final code, not raw device logs. Host regressions cover PASS, FAIL, missing cases, empty output, unexpected methods, and exit-code mismatch. No APK source changed; installed app and instrumentation APKs do not need replacement. Run the repaired script and inspect its result before any merge. Device provenance is still unverified without separate installed-APK digest checks.

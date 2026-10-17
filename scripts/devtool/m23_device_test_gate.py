@@ -8,10 +8,22 @@ import tomllib
 ROOT=Path(__file__).resolve().parents[2]
 CLASS='com.sdvsync.qualification.M23DiscoveryDeviceTest'
 TEST='app/src/androidTest/java/com/sdvsync/qualification/M23DiscoveryDeviceTest.kt'
-EXPECTED=tuple(f'm23_{i:02d}' for i in range(1,11))
+METHODS=(
+    'm23_01MissingPrivatePathsAreNotDownloadApproval',
+    'm23_02ModernCandidateCannotBecomeVerified',
+    'm23_03LegacyModernCollisionStaysUnresolved',
+    'm23_04StagingRequiresExplicitRecoveryReview',
+    'm23_05UntrustedZipIsOnlyPartial',
+    'm23_06SmapiStageNotMisreportedAsHealthy',
+    'm23_07SymlinkToFixtureIsRejected',
+    'm23_08BoundedEnumerationFailsClosed',
+    'm23_09HealthReadDoesNotWriteProbeOrMutateExisting',
+    'm23_10SelectedArchiveWrapperIsUnverified',
+)
+EXPECTED=tuple(m[:6] for m in METHODS)
 PATHS=(TEST,'app/src/main/java/com/sdvsync/local/M23InstallationDiscovery.kt',
        'app/src/main/java/com/sdvsync/local/InstallationScanner.kt',
-       'scripts/devtool/m23_device_test_gate.py', 'scripts/devtool/m23_device_run.py', '.devtool.toml',
+       'scripts/devtool/m23_device_test_gate.py', 'scripts/devtool/m23_device_run.py', 'scripts/devtool/test_m23_device_runner.py', '.devtool.toml',
        '.github/workflows/build.yml','.github/workflows/devtool-android-build.yml',
        'docs/security/M3_RELEASE_POLICY.json')
 class GateError(ValueError): pass
@@ -38,7 +50,7 @@ def generate(root:Path=ROOT,env:dict|None=None)->dict:
         if policy.get(field) is not False: raise GateError('RELEASE_POLICY_UNSAFE')
     kotlin=data[TEST].decode()
     methods=re.findall(r'@Test\s+fun\s+(m23_\d\d\w*)\s*\(',kotlin)
-    if len(methods)!=len(EXPECTED) or tuple(x[:6] for x in methods)!=EXPECTED:
+    if tuple(methods) != METHODS or len(set(METHODS)) != len(METHODS) or len(METHODS) != 10:
         raise GateError('ANDROID_TEST_MATRIX_CHANGED')
     for term in ('InstrumentationRegistry.getInstrumentation().targetContext',
                  'app.cacheDir.canonicalFile','m23-owned-',
@@ -50,6 +62,9 @@ def generate(root:Path=ROOT,env:dict|None=None)->dict:
         if term not in kotlin: raise GateError('FIXTURE_OR_TEST_SAFETY_CONTRACT_CHANGED')
     if re.search(r'\b(?:am\s+force-stop|pm\s+clear|System\.exit|SteamClientManager|/storage/emulated/0|deleteAll|downloadGame)\b',kotlin):
         raise GateError('DISALLOWED_DEVICE_TEST_OPERATION')
+    runner=data['scripts/devtool/m23_device_run.py'].decode()
+    if 'parse_m23_instrumentation(output)' not in runner or 'frozenset(METHODS)' not in runner:
+        raise GateError('DEVICE_RUNNER_METHOD_MAPPING_MISSING')
     cfg=tomllib.loads(data['.devtool.toml'].decode())
     job=cfg['targets']['cinderbox']['jobs'].get('m23-device-source',{})
     cmd=job.get('command',[])

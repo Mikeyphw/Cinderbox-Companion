@@ -25,6 +25,17 @@ class M23AndroidDeviceSourceTests(unittest.TestCase):
         with patch.object(Path,'read_bytes',changed):
             with self.assertRaises(gate.GateError):gate.generate(gate.ROOT,{})
 
+    def test_same_id_with_changed_method_name_rejected(self):
+        old=Path.read_bytes
+        def changed(self):
+            out=old(self)
+            if self.name=='M23DiscoveryDeviceTest.kt':
+                return out.replace(b'm23_01MissingPrivatePathsAreNotDownloadApproval',
+                                   b'm23_01DifferentMethodWithSameCaseId')
+            return out
+        with patch.object(Path,'read_bytes',changed):
+            with self.assertRaises(gate.GateError):gate.generate(gate.ROOT,{})
+
     def test_mutation_risk_is_rejected(self):
         old=Path.read_bytes
         def changed(self):

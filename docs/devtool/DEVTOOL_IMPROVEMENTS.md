@@ -130,3 +130,9 @@ This ledger is cumulative; append future Devtool gaps and campaign findings rath
 | ID | Evidence / affected projects | Recommendation / implementation | Status |
 |---|---|---|---|
 | DEV-M23-006 | PR #33 adds M23 production logic and app JVM tests, but preexisting Android test APK runs M14–M21 without a direct M23 class. Host source PASS and AndroidTest compilation are not on-device M23 qualification. | Reuse `com.sdvsync.test` by adding ten private-fixture M23 Android tests, the source-bound Devtool `m23-device-check` job/DAG, and CI validation; keep physical execution opt-in and unqualified until a real signed APK/device receipt. | Implemented test-source contract; Android CI and device pending |
+
+### DEV-M23-RUNNER-EXACT-METHOD-01 — Fixed in M23 hotfix (Oct 17, 2026)
+- **Evidence:** M23 Android instrumentation report had `m23_01`–`m23_10` all `NOT_COMPLETED` despite manually installed APKs; `m14_device_qualification.parse_instrumentation` expects complete `test=` values while the M23 wrapper passed only prefixes.
+- **Affected:** Cinderbox M23; reusable Devtool/device-runner design.
+- **Change:** Compare source-attested exact instrumentation method names and normalize only after parsing. Retain fail-closed outcomes and sanitized source-independent reports.
+- **Status:** Code fixed; host parsing regressions added; real-device rerun pending. Consider reusable case-id normalization as a future Devtool capability.

@@ -4,9 +4,31 @@ from __future__ import annotations
 import argparse, json, subprocess, sys
 from pathlib import Path
 from m14_device_qualification import parse_instrumentation, DeviceGateError
-from m23_device_test_gate import CLASS,EXPECTED
+from m23_device_test_gate import CLASS, EXPECTED, METHODS
 
 RUNNER='com.sdvsync.test/androidx.test.runner.AndroidJUnitRunner'
+
+
+def parse_m23_instrumentation(output: str) -> dict:
+    """Strictly match actual full JUnit methods; publish only stable case IDs."""
+    from m14_device_qualification import DeviceGateError
+
+    def short_ids(summary: dict) -> dict:
+        normalized = dict(summary)
+        normalized['cases'] = {
+            case_id: summary['cases'][method]
+            for case_id, method in zip(EXPECTED, METHODS)
+        }
+        normalized['parsed_using_full_method_names'] = True
+        return normalized
+
+    try:
+        return short_ids(parse_instrumentation(output, frozenset(METHODS)))
+    except DeviceGateError as error:
+        if error.case_summary is not None:
+            error.case_summary = short_ids(error.case_summary)
+        raise
+
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
@@ -39,13 +61,17 @@ def main():
             if 'package:' not in command('shell','pm','path',package):
                 raise RuntimeError('APP_AND_TEST_APKS_REQUIRED')
         output=command('shell','am','instrument','-w','-r','-e','class',CLASS,RUNNER,timeout=900)
-        status=parse_instrumentation(output,frozenset(EXPECTED))
+        status=parse_m23_instrumentation(output)
         report.update(overall='PASS_10_SYNTHETIC_DEVICE_TESTS_UNBOUND',
                       completed=status['completed'],cases=status['cases'])
     except DeviceGateError as exc:
         report['failure_code']=exc.code
         if exc.case_summary:
             report.update(completed=exc.case_summary['completed'],cases=exc.case_summary['cases'])
+        report['instrumentation_summary'] = {
+            'final_code': exc.case_summary.get('final_code'),
+            'parsed_using_full_method_names': exc.case_summary.get('parsed_using_full_method_names', False),
+        } if exc.case_summary else None
         report['overall']='FAILED_OR_BLOCKED'
     except (RuntimeError, OSError,subprocess.TimeoutExpired) as exc:
         report['failure_code']=str(exc)[:80] if isinstance(exc,RuntimeError) else type(exc).__name__
