@@ -138,6 +138,19 @@ jobs:
       - name: M18 genuine process recovery host regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m18_*.py' -v
 
+      - name: M23 read-only installation discovery source regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m23_discovery.py' -v
+
+      - name: M23 source-bound installation discovery gate
+        run: python3 scripts/devtool/m23_discovery_gate.py --output "$RUNNER_TEMP/cinderbox-m23-host.json"
+
+      - name: Upload M23 source-bound evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: m23-host-${{ github.run_id }}
+          path: ${{ runner.temp }}/cinderbox-m23-host.json
+          if-no-files-found: error
+
       - name: M22 postmerge source baseline regression tests
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m22_baseline.py' -v
 
@@ -294,6 +307,18 @@ jobs:
             ${{ runner.temp }}/cinderbox-devtool-debug/M13_QUALIFICATION.json
           if-no-files-found: error
           retention-days: 14
+      - name: M23 synthetic Android test source contract
+        run: |
+          python3 -m unittest discover -s scripts/devtool -p 'test_m23_device_test_gate.py' -v
+          python3 scripts/devtool/m23_device_test_gate.py --output "$RUNNER_TEMP/cinderbox-m23-android-source.json"
+
+      - name: Upload M23 Android test source evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: m23-android-source-${{ github.run_id }}
+          path: ${{ runner.temp }}/cinderbox-m23-android-source.json
+          if-no-files-found: error
+
       - name: M14 compile isolated Android instrumentation APK
         env:
           CINDERBOX_DEBUG_STORE_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_STORE_PASSWORD }}

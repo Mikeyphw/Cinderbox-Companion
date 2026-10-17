@@ -2,13 +2,13 @@ package com.sdvsync.local
 
 import com.sdvsync.cinderbox.CinderboxPaths
 import java.io.File
-import java.nio.file.Files
 
 /** Detection is read-only; a directory's presence is never proof of file integrity. */
 enum class InstallHealth { MISSING, INACCESSIBLE, INCOMPLETE, DETECTED, STRUCTURALLY_VALID }
 
 data class InstallAssessment(val health: InstallHealth, val details: String, val location: String) {
-    val usable: Boolean get() = health == InstallHealth.STRUCTURALLY_VALID
+    // A structure check without a trusted Steam depot manifest never authorizes use.
+    val usable: Boolean get() = false
 }
 
 data class InstallationSnapshot(
@@ -16,74 +16,71 @@ data class InstallationSnapshot(
     val cinderboxGame: InstallAssessment,
     val smapi: InstallAssessment,
     val cinderboxApp: InstallAssessment,
-    val storage: StorageCheck
+    val storage: StorageCheck,
+    val discovery: M23InstallationDiscovery.Inventory? = null
 )
 
 /** Never follows a symlink in a directory being evaluated for direct modification. */
 object InstallationScanner {
-    private val gameDlls = listOf(
-        "Stardew Valley.dll", "StardewValley.GameData.dll", "BmFont.dll",
-        "xTile.dll", "Lidgren.Network.dll"
-    )
-
+    /** Legacy UI API, now backed by the bounded M23 evidence engine. */
     fun game(folder: File): InstallAssessment {
-        val root = if (File(folder, "Stardew Valley").isDirectory &&
-            !File(folder, "Stardew Valley.dll").exists()) File(folder, "Stardew Valley") else folder
+        val wrapped = File(folder, "Stardew Valley")
+        val root = if (wrapped.isDirectory &&
+            !File(folder, "Stardew Valley.dll").exists()) wrapped else folder
+        val observed = M23InstallationDiscovery.game(root)
         val location = root.absolutePath
-        if (hasSymlinkComponent(root)) return InstallAssessment(InstallHealth.INACCESSIBLE, "Symbolic link; manual inspection required", location)
-        if (!root.exists()) return InstallAssessment(InstallHealth.MISSING, "No game files found", location)
-        if (!root.isDirectory || !root.canRead() || root.listFiles() == null)
-            return InstallAssessment(InstallHealth.INACCESSIBLE, "Directory cannot be read", location)
-        val children = root.listFiles() ?: return InstallAssessment(InstallHealth.INACCESSIBLE, "Directory cannot be listed", location)
-        if (children.isEmpty()) return InstallAssessment(InstallHealth.MISSING, "Empty directory", location)
-        val content = File(root, "Content")
-        if (gameDlls.any { name ->
-                val dll = File(root, name)
-                hasSymlinkComponent(dll) || !dll.isFile || !dll.canRead() || dll.length() <= 0L
-            } || !content.isDirectory || hasSymlinkComponent(content) ||
-            content.listFiles().isNullOrEmpty()) {
-            return InstallAssessment(InstallHealth.INCOMPLETE, "Some required DLLs or Content assets are missing; existing files will not be overwritten", location)
+        return when (observed.status) {
+            M23InstallationDiscovery.Status.MISSING ->
+                InstallAssessment(InstallHealth.MISSING, "No game files found", location)
+            M23InstallationDiscovery.Status.INACCESSIBLE,
+            M23InstallationDiscovery.Status.UNSAFE_LINK ->
+                InstallAssessment(InstallHealth.INACCESSIBLE, "Directory is inaccessible, linked, or exceeds safe scan bounds", location)
+            M23InstallationDiscovery.Status.PARTIAL,
+            M23InstallationDiscovery.Status.RECOVERY_REVIEW,
+            M23InstallationDiscovery.Status.CONFLICT ->
+                InstallAssessment(InstallHealth.INCOMPLETE,
+                    "Some required DLLs or Content assets are missing, staged, or unsafe; manual review required", location)
+            M23InstallationDiscovery.Status.CANDIDATE_UNVERIFIED ->
+                InstallAssessment(InstallHealth.STRUCTURALLY_VALID,
+                    "Core DLLs and Content present; Steam manifest hash verification not performed", location)
         }
-        return InstallAssessment(InstallHealth.STRUCTURALLY_VALID,
-            "Core DLLs and Content present; Steam manifest hash verification not performed", location)
     }
 
     fun smapi(folder: File = File(CinderboxPaths.SMAPI_DIR)): InstallAssessment {
-        val location = folder.absolutePath
-        if (hasSymlinkComponent(folder)) return InstallAssessment(InstallHealth.INACCESSIBLE, "Symbolic link; manual inspection required", location)
-        if (!folder.exists()) return InstallAssessment(InstallHealth.MISSING, "SMAPI directory not found", location)
-        if (!folder.isDirectory || !folder.canRead()) return InstallAssessment(InstallHealth.INACCESSIBLE, "SMAPI directory not accessible", location)
-        val files = folder.listFiles() ?: return InstallAssessment(InstallHealth.INACCESSIBLE, "Cannot list SMAPI files", location)
-        if (files.isEmpty()) return InstallAssessment(InstallHealth.INCOMPLETE, "SMAPI directory is empty", location)
-        if (files.any { it.name.startsWith(".sdvsync-stage-") } ||
-            File(folder.parentFile, ".${folder.name}.sdvsync-stage").exists() ||
-            File(folder.parentFile, ".${folder.name}.sdvsync-backup").exists()) {
-            return InstallAssessment(InstallHealth.INCOMPLETE, "Interrupted SMAPI transaction needs review", location)
+        val observed = M23InstallationDiscovery.smapi(folder)
+        return when (observed.status) {
+            M23InstallationDiscovery.Status.MISSING ->
+                InstallAssessment(InstallHealth.MISSING, "SMAPI directory not found", folder.absolutePath)
+            M23InstallationDiscovery.Status.INACCESSIBLE,
+            M23InstallationDiscovery.Status.UNSAFE_LINK ->
+                InstallAssessment(InstallHealth.INACCESSIBLE, "SMAPI is inaccessible or unsafe", folder.absolutePath)
+            M23InstallationDiscovery.Status.CANDIDATE_UNVERIFIED ->
+                InstallAssessment(InstallHealth.DETECTED,
+                    "SMAPI binary detected; runtime/version compatibility not verified", folder.absolutePath)
+            else -> InstallAssessment(InstallHealth.INCOMPLETE,
+                "SMAPI files or transaction are incomplete; manual review required", folder.absolutePath)
         }
-        val recognized = files.any { it.name.contains("smapi", ignoreCase = true) && it.isFile && it.length() > 0L }
-        return if (recognized) InstallAssessment(InstallHealth.DETECTED,
-            "SMAPI-like files detected; runtime/version compatibility not verified", location)
-        else InstallAssessment(InstallHealth.INCOMPLETE, "No recognizable SMAPI binaries found", location)
     }
 
     fun scan(selectedGameDir: File, cinderboxInstalled: Boolean): InstallationSnapshot =
+        scan(selectedGameDir, cinderboxInstalled, File(CinderboxPaths.ROOT_DIR))
+
+    /** No write probe, even when the installation-health screen refreshes. */
+    fun scan(selectedGameDir: File, cinderboxInstalled: Boolean, installationRoot: File,
+             appVisibilityKnown: Boolean = true): InstallationSnapshot =
         InstallationSnapshot(
             selectedGame = game(selectedGameDir),
-            cinderboxGame = game(File(CinderboxPaths.GAME_FILES_DIR)),
-            smapi = smapi(),
+            cinderboxGame = game(File(installationRoot, "desktop/GameFiles")),
+            smapi = smapi(File(installationRoot, "smapi-internal")),
             cinderboxApp = InstallAssessment(
-                if (cinderboxInstalled) InstallHealth.DETECTED else InstallHealth.MISSING,
-                if (cinderboxInstalled) "Cinderbox Android package detected; launch compatibility not verified"
+                if (!appVisibilityKnown) InstallHealth.INACCESSIBLE
+                else if (cinderboxInstalled) InstallHealth.DETECTED else InstallHealth.MISSING,
+                if (!appVisibilityKnown) "Package visibility denied; installed state unknown"
+                else if (cinderboxInstalled) "Cinderbox Android package detected; launch compatibility not verified"
                 else "Cinderbox Android package not installed", "com.game.cinderbox"),
-            storage = StoragePreflight.check(selectedGameDir)
+            storage = StorageCheck(false, "Read-only discovery; write access not tested. " +
+                "Run destination preflight only when explicitly starting an operation."),
+            discovery = M23InstallationDiscovery.inspect(selectedGameDir, installationRoot)
         )
 
-    private fun hasSymlinkComponent(file: File): Boolean {
-        var current: File? = file.absoluteFile
-        while (current != null) {
-            if (Files.isSymbolicLink(current.toPath())) return true
-            current = current.parentFile
-        }
-        return false
-    }
 }

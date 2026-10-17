@@ -11,6 +11,7 @@ import com.sdvsync.download.DownloadProgress
 import com.sdvsync.download.DownloadState
 import com.sdvsync.download.GameDownloadManager
 import com.sdvsync.local.InstallationScanner
+import com.sdvsync.local.M23InstallationDiscovery
 import com.sdvsync.local.InstallAssessment
 import com.sdvsync.local.InstallHealth
 import com.sdvsync.local.StoragePreflight
@@ -345,6 +346,8 @@ class GameDownloadViewModel(
 
         val selectedHealth = InstallationScanner.game(File(current.installDirectory))
         val storage = StoragePreflight.check(File(current.installDirectory))
+        val discovered = M23InstallationDiscovery.inspect(
+            File(current.installDirectory), File(CinderboxPaths.ROOT_DIR))
         val capacity = runCatching {
             StoragePlanner.downloadPlan(File(current.installDirectory),
                 StoragePlanner.parseGiB(current.estimatedGameSizeGiB))
@@ -361,6 +364,14 @@ class GameDownloadViewModel(
                 current.selectedOs, current.verifyAfterDownload)
         } catch (e: Exception) {
             _state.value = current.copy(error = e.message ?: "Invalid recovery journal")
+            return
+        }
+        // A different preexisting game, partial layout, or interrupted install cannot
+        // silently authorize another new download. Resume still requires owned checkpoint.
+        if (!resume && discovered.gameAlreadyPresent) {
+            _state.value = current.copy(error =
+                "Existing game or incomplete installation detected. Review Installation health " +
+                "before starting a new download; no files were changed.")
             return
         }
         if (!storage.writable || selectedHealth.health == InstallHealth.INACCESSIBLE ||

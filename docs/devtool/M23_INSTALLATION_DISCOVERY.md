@@ -1,0 +1,61 @@
+# M23: Read-only installation evidence and download guard
+
+## Implementation
+
+M23 builds on merged M22 `master` commit `3d0454574d49f74eb0e8407d2d266b3d9e49d96a` (postmerge run `39044683862` SUCCESS). The source-pinned native Devtool artifact adds an explicitly bounded `M23InstallationDiscovery` component and integrates its observations into the existing Installation Health screen and the existing GameDownloadViewModel consent gate.
+
+- Explicit user-selected folder plus `StardewValley/desktop/GameFiles` (0.8+) and `StardewValley/GameFiles` (legacy) are independently inspected. Separate, known `smapi-internal` state, partial archives, download marker, recovery stage, and conflicting layouts are recorded; no automatic migration is performed.
+- Enumerates at most 256 immediate entries at any inspected directory. Only the known `Content` level is inspected, never a recursive install scan. Rejects every symlink or inaccessible/oversized listing. Reads existing file metadata only, without opening user content and without following links.
+- `CANDIDATE_UNVERIFIED` is **not** a healthy/complete/compatible installation. Without an authenticated Steam depot manifest and version attestation, `verified=false`, `canInstallOrOverwrite=false`, version unknown, and download authorizations remain false. SMAPI presence alone cannot prove compatibility.
+- Folder paths use direct `File` access only. SAF URI grants, Root, Shizuku and manual import availability are not interchangeable with direct filesystem permissions. Missing/inaccessible results mean the selected provider cannot read, not that data is absent. An explicit provider-backed read-only scanner is outstanding for M27.
+- Read-only Installation Health no longer invokes `StoragePreflight.check()`, which creates a temporary write probe. Existing explicit, user-requested write workflows continue to use their preflight. The discovery dashboard labels write access *not tested*, never writable.
+- New download attempts are blocked when an existing current, legacy, selected, partial or unknown recovery path is detected. A matching, owned interrupted checkpoint can still resume through existing recovery validation. The actual download manager retains its existing guard independently.
+- Cinderbox `com.game.cinderbox` package recognition is retained through Android PackageManager; no launch/version/certificate equivalence is inferred from mere presence.
+
+## Qualification
+
+`./devtoolw m23-check` executes security -> M22 baseline -> M23 host tests -> M23 source inventory, using existing Devtool DAGs and evidence. `./devtoolw m23-full` reuses unit tests, lint, signed debug APK and APK verification. GitHub Actions both execute the identical `m23_discovery_gate.py`, uploading JSON bound to the exact commit SHA. JUnit fixture tests cover complete-looking but unverified game, dual layout conflict, partial archives, interrupted downloads/SMAPI, symlink rejection, bounded directory inventory, and no write probe.
+
+**M23 host PASS is NOT device qualification.** A consented read-only Android check must still test the real installed Cinderbox package, storage routes/revocation and the actual selected folder. The original M14–M21 device-local receipts remain unattached; historical observations are not rerun or replaced. M24 Steam transfer/manifest proof, M25 mods, M26 cloud, M27 access-provider qualification, M28 signing and M29 publication remain separate milestones. Automatic installation and release publication stay disabled.
+
+## Next evidence
+
+1. Validate the precise M23 source SHA through GitHub Actions: Android compilation, unit tests and instrumentation APK compilation.
+2. Review read-only Health dashboard on a device with consented test directories, including legacy/modern conflict, inaccessible access path and SMAPI stage.
+3. Record APK signer and source provenance separately; do not claim `M23_DEVICE_PASS` solely because the debug APK installs.
+
+## M23 Android synthetic instrumentation qualification extension
+
+PR #33 includes production M23 source and existing JUnit host tests. The existing
+`com.sdvsync.test` instrumentation APK originally contained M14–M21, not M23.
+This additive qualification patch introduces
+`M23DiscoveryDeviceTest` with **10 app-private synthetic Android cases**:
+missing-path refusal, modern candidate not verified, legacy/modern collision,
+staging review, untrusted archive, SMAPI recovery, symlink refusal, enumeration
+bound, absence of write probes, and selected archive-wrapper handling.
+The fixtures are disposable and owned under `com.sdvsync` private cache. They are
+**not** actual game directories, and the test does not access Steam credentials,
+real saves, external storage, SAF, Root or Shizuku.
+
+`./devtoolw m23-device-check` is a source-only DAG, not a claim of execution.
+Both existing CI jobs run the same gate and compile the instrumentation APK.
+After exact-source CI succeeds, on-device `am instrument` must actually run this
+class and emit 10/10 PASS plus a sanitized device receipt. The user must opt in
+to any debug APK replacement; never uninstall, clear data or override mismatched
+signatures just to run a test. Real selected-file/SAF permission qualification
+remains a separate, authorized activity. No prior M14–M22 results are overwritten.
+
+After exact-source CI and explicit installation of matching signed debug APKs,
+run **only** the M23 test class from the existing test app:
+
+```sh
+python3 scripts/devtool/m23_device_run.py \
+  --execute-synthetic-tests --ci-run-id <SUCCESSFUL_CI_RUN_ID> \
+  --output "$HOME/cinderbox-m23-device.json"
+```
+
+`--ci-run-id` is a *label*, not APK attestation. Until installed package
+source/signature provenance is separately verified, the best possible result
+is `PASS_10_SYNTHETIC_DEVICE_TESTS_UNBOUND`, with `device_qualified=false`.
+The runner does **not** install APKs, perform authentic game discovery,
+request permissions or clear any app state.
