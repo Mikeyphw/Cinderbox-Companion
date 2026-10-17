@@ -638,4 +638,14 @@
     <string name="settings_update_check_title">Check for app updates</string>
     <string name="settings_update_check_desc">Show update dialog on login when a new version is available</string>
     <string name="action_done">Done</string>
+    <!-- Earthy UI-D01: app-owned theme settings, available while logged out -->
+    <string name="appearance_section">Appearance</string>
+    <string name="appearance_style_label">Visual style</string>
+    <string name="appearance_style_desc">Choose classic Stardew colors or an original woodland-inspired palette.</string>
+    <string name="appearance_classic">Classic</string>
+    <string name="appearance_earthy">Earthy</string>
+    <string name="appearance_brightness_label">Brightness</string>
+    <string name="appearance_system">System</string>
+    <string name="appearance_light">Light</string>
+    <string name="appearance_dark">Dark</string>
 </resources>

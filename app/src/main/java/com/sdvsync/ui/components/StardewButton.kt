@@ -38,9 +38,15 @@ fun StardewButton(
 ) {
     val (containerColor, contentColor) = when (variant) {
         StardewButtonVariant.Primary -> MaterialTheme.colorScheme.primary to MaterialTheme.colorScheme.onPrimary
-        StardewButtonVariant.Action -> ForestGreen to Color.White
-        StardewButtonVariant.Gold -> GoldAmber to Color(0xFF3D2800)
-        StardewButtonVariant.Danger -> ErrorLight to Color.White
+        StardewButtonVariant.Action -> if (SdvSyncThemeExtras.isEarthy) {
+            MaterialTheme.colorScheme.secondary to MaterialTheme.colorScheme.onSecondary
+        } else ForestGreen to Color.White
+        StardewButtonVariant.Gold -> if (SdvSyncThemeExtras.isEarthy) {
+            MaterialTheme.colorScheme.tertiary to MaterialTheme.colorScheme.onTertiary
+        } else GoldAmber to Color(0xFF3D2800)
+        StardewButtonVariant.Danger -> if (SdvSyncThemeExtras.isEarthy) {
+            MaterialTheme.colorScheme.error to MaterialTheme.colorScheme.onError
+        } else ErrorLight to Color.White
     }
 
     val borderColors = SdvSyncThemeExtras.colors

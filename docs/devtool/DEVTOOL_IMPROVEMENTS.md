@@ -66,3 +66,20 @@ This ledger is cumulative; append future Devtool gaps and campaign findings rath
 - **Status:** Fix implemented and nine focused host tests PASS; new CI and a
   real signed APK verification required. The original failure cause is not
   definitively confirmed until the corrected verifier executes in Actions.
+
+### UI-D01 — theme evidence gap (2026-10-17)
+
+| ID | Evidence / affected projects | Recommendation | Status |
+|---|---|---|---|
+| DEV-UI-D01-001 | Existing M17 UI instrumentation asserts offline Settings/navigation and operation semantics, but provides no two-theme contrast or image baselines. Affects Cinderbox Companion and Devtool-driven GitHub Actions UI qualification. | Add source-bound UI contrast host checks now; build both APKs in GitHub CI; collect optional synthetic screenshots and 320dp/font-scale visual evidence in UI-D03. Keep screenshot and real-device gates explicitly NOT_RUN until executed. | Host source checks added in UI-D01; CI/device and screenshot gates pending |
+
+
+### UI-D01 Devtool integration audit — 2026-10-17
+
+| ID | Evidence / affected projects | Action | Status |
+|---|---|---|---|
+| DEV-UI-D01-019 | Original UI-D01 package used custom `apply.py` + SHA checker despite installed Devtool `apply-overlay` inventory, transaction, branch, rollback, validation, EXO and commit machinery. Affected: Cinderbox overlays and other adopters. | Replace with native schema-v2 `.devtool-artifact.json` containing SHA-256 preimages, validation script, atomic transactions, target binding and commit policy; remove parallel installer. | Implemented in replacement native UI-D01 overlay; runtime apply pending |
+| DEV-UI-D01-020 | `.devtool.toml` has reusable `security-contract`, `unit-tests`, `android-lint`, `debug-apk`, `verify-debug-apk` jobs, but the initial UI patch only changed Actions workflow scripts. | Define one `earthy-source` target-local command job, `earthy-check`/`earthy-full` DAGs and wrapper shortcuts, with security dependency and existing Android jobs reused unchanged. | Implemented; runtime DAG validation pending |
+| DEV-UI-D01-021 | UI-D01 was initially run through duplicate static+unittest snippets in both `.github/workflows/build.yml` and `devtool-android-build.yml`. | Put one fail-closed `ui_d01_gate.py` in source, call it from both workflows and Devtool job, emit SHA-256 exact-source JSON receipts with explicit unqualified status, upload receipts. Do not pull/install an unpinned Devtool version in CI. | Implemented; GitHub Actions unverified |
+| DEV-UI-D01-022 | Host source validation has no Android compilation/device execution; static string checks cannot prove actual Compose behavior. | Continue existing GitHub debug signing, test, lint, assembly, AndroidTest APK creation; separately run explicit Android UI qualification against pinned CI source. Do not count M21 historical observations as UI-D01 passes. | Open — compilation and device tests pending |
+| DEV-UI-D01-023 | Existing Devtool schema's `validation.script` can run host checks without Gradle using `validation.tasks=[]`. Android builds are expensive, especially on Termux. | Make native apply cheap: required script host gate, no Gradle; offer explicit `devtoolw earthy-full` as opt-in long chain and leave CI to build normal signed debug artifact once. | Implemented; runtime apply pending |

@@ -36,6 +36,11 @@ import com.sdvsync.ui.components.StardewCard
 import com.sdvsync.ui.components.StardewOutlinedButton
 import com.sdvsync.ui.components.StardewTopAppBar
 import com.sdvsync.ui.components.StoragePermissionDialog
+import com.sdvsync.ui.theme.AppearanceMode
+import com.sdvsync.ui.theme.AppearancePreferences
+import com.sdvsync.ui.theme.AppearanceSettings
+import com.sdvsync.ui.theme.AppearanceStyle
+import kotlinx.coroutines.launch
 import com.sdvsync.ui.viewmodels.CinderboxMigrationViewModel
 import com.sdvsync.ui.viewmodels.SettingsViewModel
 import kotlin.math.roundToInt
@@ -84,6 +89,9 @@ fun SettingsScreen(
     val migrationState by migrationViewModel.state.collectAsState()
 
     val context = LocalContext.current
+    val appearanceStore = remember(context) { AppearancePreferences(context.applicationContext) }
+    val appearance by appearanceStore.settings.collectAsState(initial = AppearanceSettings())
+    val appearanceScope = rememberCoroutineScope()
     var steamBackgroundEnabled by remember {
         mutableStateOf(SteamBackgroundService.isEnabled(context))
     }
@@ -179,6 +187,55 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
+            // Offline, app-private visual preferences. No Steam or storage permissions required.
+            SectionHeader(stringResource(R.string.appearance_section))
+            Spacer(Modifier.height(8.dp))
+            StardewCard {
+                Column(Modifier.padding(12.dp)) {
+                    Text(stringResource(R.string.appearance_style_label), style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        stringResource(R.string.appearance_style_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = appearance.style == AppearanceStyle.CLASSIC,
+                            onClick = { appearanceScope.launch { appearanceStore.setStyle(AppearanceStyle.CLASSIC) } },
+                            label = { Text(stringResource(R.string.appearance_classic)) },
+                            colors = filterChipColors
+                        )
+                        FilterChip(
+                            selected = appearance.style == AppearanceStyle.EARTHY,
+                            onClick = { appearanceScope.launch { appearanceStore.setStyle(AppearanceStyle.EARTHY) } },
+                            label = { Text(stringResource(R.string.appearance_earthy)) },
+                            colors = filterChipColors
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(stringResource(R.string.appearance_brightness_label), style = MaterialTheme.typography.titleMedium)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AppearanceMode.entries.forEach { mode ->
+                            val text = when (mode) {
+                                AppearanceMode.SYSTEM -> stringResource(R.string.appearance_system)
+                                AppearanceMode.LIGHT -> stringResource(R.string.appearance_light)
+                                AppearanceMode.DARK -> stringResource(R.string.appearance_dark)
+                            }
+                            FilterChip(
+                                selected = appearance.mode == mode,
+                                onClick = { appearanceScope.launch { appearanceStore.setMode(mode) } },
+                                label = { Text(text) },
+                                colors = filterChipColors
+                            )
+                        }
+                    }
+                }
+            }
+
+            SettingsSectionGap()
+
             // Game mode
             SectionHeader(stringResource(R.string.settings_game_mode_title))
             Spacer(Modifier.height(8.dp))

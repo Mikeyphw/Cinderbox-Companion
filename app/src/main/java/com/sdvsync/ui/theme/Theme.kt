@@ -102,6 +102,8 @@ data class StardewColors(
     val pixelBorderShadow: Color
 )
 
+val LocalAppearanceStyle = staticCompositionLocalOf { AppearanceStyle.CLASSIC }
+
 val LocalStardewColors = staticCompositionLocalOf {
     StardewColors(
         pullBlue = SyncPullBlue,
@@ -164,14 +166,33 @@ object SdvSyncThemeExtras {
     val colors: StardewColors
         @Composable
         get() = LocalStardewColors.current
+
+    val isEarthy: Boolean
+        @Composable
+        get() = LocalAppearanceStyle.current == AppearanceStyle.EARTHY
 }
 
 @Composable
-fun SdvSyncTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
-    val stardewColors = if (darkTheme) DarkStardewColors else LightStardewColors
+fun SdvSyncTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    style: AppearanceStyle = AppearanceStyle.CLASSIC,
+    content: @Composable () -> Unit
+) {
+    val colorScheme = when {
+        style == AppearanceStyle.EARTHY && darkTheme -> EarthyDarkColorScheme
+        style == AppearanceStyle.EARTHY -> EarthyLightColorScheme
+        darkTheme -> DarkColorScheme
+        else -> LightColorScheme
+    }
+    val stardewColors = when {
+        style == AppearanceStyle.EARTHY && darkTheme -> EarthyDarkStardewColors
+        style == AppearanceStyle.EARTHY -> EarthyLightStardewColors
+        darkTheme -> DarkStardewColors
+        else -> LightStardewColors
+    }
 
     CompositionLocalProvider(
+        LocalAppearanceStyle provides style,
         LocalStardewColors provides stardewColors
     ) {
         MaterialTheme(
