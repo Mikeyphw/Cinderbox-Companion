@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -18,6 +19,9 @@ fun PixelProgressBar(progress: Float, modifier: Modifier = Modifier) {
     val borderColors = SdvSyncThemeExtras.colors
     val dark = borderColors.pixelBorderDark
     val plank = borderColors.pixelBorderPlank
+    val isEarthy = SdvSyncThemeExtras.isEarthy
+    val earthyFill = MaterialTheme.colorScheme.tertiary
+    val earthyDither = MaterialTheme.colorScheme.tertiaryContainer
 
     Canvas(
         modifier = modifier
@@ -34,7 +38,11 @@ fun PixelProgressBar(progress: Float, modifier: Modifier = Modifier) {
         var row = 0
         while (x < fillWidth) {
             val useGold = (row + ((x / px).toInt())) % 2 == 0
-            val color = if (useGold) GoldBright else GoldAmber
+            val color = if (isEarthy) {
+                if (useGold) earthyFill else earthyDither
+            } else {
+                if (useGold) GoldBright else GoldAmber
+            }
             val blockWidth = minOf(px, fillWidth - x)
             drawRect(
                 color = color,

@@ -59,7 +59,9 @@ fun StardewBottomBar(selectedTab: BottomTab, onTabSelected: (BottomTab) -> Unit,
                 }
             },
         shape = RectangleShape,
-        color = MaterialTheme.colorScheme.surfaceContainer
+        color = if (SdvSyncThemeExtras.isEarthy) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else MaterialTheme.colorScheme.surfaceContainer
     ) {
         Row(
             modifier = Modifier

@@ -12,6 +12,7 @@ import androidx.compose.animation.core.EaseInOut
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -62,6 +63,8 @@ import com.sdvsync.ui.screens.SettingsScreen
 import com.sdvsync.ui.screens.SteamDiagnosticsScreen
 import com.sdvsync.ui.screens.SyncDetailScreen
 import com.sdvsync.ui.screens.SyncLogScreen
+import com.sdvsync.ui.theme.AppearancePreferences
+import com.sdvsync.ui.theme.AppearanceSettings
 import com.sdvsync.ui.theme.SdvSyncTheme
 import com.sdvsync.ui.viewmodels.AppUpdateViewModel
 import com.sdvsync.ui.viewmodels.CinderboxMigrationViewModel
@@ -109,7 +112,12 @@ class MainActivity : ComponentActivity() {
             }
         }
         setContent {
-            SdvSyncTheme {
+            val appearanceStore = remember { AppearancePreferences(applicationContext) }
+            val appearance by appearanceStore.settings.collectAsState(initial = AppearanceSettings())
+            SdvSyncTheme(
+                style = appearance.style,
+                darkTheme = appearance.mode.resolve(isSystemInDarkTheme())
+            ) {
                 val navController = rememberNavController()
                 SdvSyncNavGraph(navController)
             }

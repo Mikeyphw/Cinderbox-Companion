@@ -85,6 +85,16 @@ description = "M15 offline source and fail-closed integration runner regression 
 workflow = "m15-check"
 target = "cinderbox"
 
+[wrapper.commands.earthy-check]
+description = "UI-D01 source-bound appearance gate using Devtool DAG and EXO history"
+workflow = "earthy-check"
+target = "cinderbox"
+
+[wrapper.commands.earthy-full]
+description = "UI-D01 source gate, unit tests, lint, and verified debug APK"
+workflow = "earthy-full"
+target = "cinderbox"
+
 [wrapper.commands.device]
 description = "Explicit on-device instrumentation lane; requires a connected test device"
 workflow = "device"
@@ -239,6 +249,12 @@ command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p
 inputs = ["scripts/devtool/m15_device_qualification.py", "scripts/devtool/m14_device_qualification.py", "scripts/devtool/test_m15_device_qualification.py", "app/src/androidTest/java/com/sdvsync/qualification/M15IntegratedDeviceTest.kt"]
 metadata = { read_only = true, area = "m15-qualification", root_required = false }
 
+[targets.cinderbox.jobs.earthy-source]
+runner = "command"
+command = ["python3", "scripts/devtool/ui_d01_gate.py"]
+inputs = ["scripts/devtool/ui_d01_gate.py", "scripts/devtool/earthy_ui_source.py", "scripts/devtool/test_ui_earthy.py", "app/src/main/java/com/sdvsync/ui/theme/**", "app/src/main/java/com/sdvsync/ui/screens/SettingsScreen.kt", "app/src/main/java/com/sdvsync/ui/components/**", "app/src/main/java/com/sdvsync/MainActivity.kt", "app/src/main/res/values/strings.xml", "docs/security/M3_RELEASE_POLICY.json"]
+metadata = { read_only = true, area = "earthy-ui-d01", root_required = false, device_required = false, evidence = "source-sha256-json", baseline = "M21" }
+
 [targets.cinderbox.jobs.connected-tests]
 runner = "android"
 gradle_tasks = [":app:connectedDebugAndroidTest"]
@@ -270,6 +286,18 @@ m18-check = ["job:m18-host"]
 m19-check = ["job:m19-host"]
 m20-check = ["job:m20-host"]
 m21-check = ["job:m21-host"]
+earthy-check = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "earthy", ref = "job:earthy-source", depends_on = ["security"] },
+]
+earthy-full = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "earthy", ref = "job:earthy-source", depends_on = ["security"] },
+  { id = "unit", ref = "job:unit-tests", depends_on = ["earthy"] },
+  { id = "lint", ref = "job:android-lint", depends_on = ["unit"] },
+  { id = "apk", ref = "job:debug-apk", depends_on = ["lint"] },
+  { id = "verify", ref = "job:verify-debug-apk", depends_on = ["apk"] },
+]
 
 [artifacts]
 output_directory = ".devtool/build-artifacts"
