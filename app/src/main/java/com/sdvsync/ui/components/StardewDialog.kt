@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.unit.dp
+import com.sdvsync.ui.theme.SdvSyncThemeExtras
 import androidx.compose.ui.window.Dialog
 
 /**
@@ -30,6 +31,7 @@ fun StardewDialog(
     confirmButton: @Composable () -> Unit,
     dismissButton: @Composable () -> Unit = {}
 ) {
+    val earthy = SdvSyncThemeExtras.isEarthy
     Dialog(onDismissRequest = onDismissRequest) {
         Surface(
             modifier = Modifier
@@ -37,7 +39,7 @@ fun StardewDialog(
                 .pixelBorder()
                 .padding(8.dp),
             shape = RectangleShape,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh
+            color = if (earthy) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surfaceContainerHigh
         ) {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()).padding(

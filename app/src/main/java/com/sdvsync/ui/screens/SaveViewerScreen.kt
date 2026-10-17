@@ -25,6 +25,7 @@ import com.sdvsync.ui.components.PixelProgressBar
 import com.sdvsync.ui.components.StardewCard
 import com.sdvsync.ui.components.StardewTopAppBar
 import com.sdvsync.ui.theme.GoldAmber
+import com.sdvsync.ui.theme.SdvSyncThemeExtras
 import com.sdvsync.ui.viewmodels.SaveViewerTab
 import com.sdvsync.ui.viewmodels.SaveViewerViewModel
 import org.koin.androidx.compose.koinViewModel
@@ -158,7 +159,7 @@ private fun FarmerTab(farmer: FarmerStats) {
                     Text(
                         "%,dg".format(farmer.money),
                         style = MaterialTheme.typography.headlineSmall,
-                        color = GoldAmber,
+                        color = if (SdvSyncThemeExtras.isEarthy) MaterialTheme.colorScheme.tertiary else GoldAmber,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(Modifier.height(4.dp))

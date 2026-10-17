@@ -51,6 +51,7 @@ import com.sdvsync.fileaccess.AllFilesAccess
 import com.sdvsync.ui.formatBytes
 import com.sdvsync.ui.theme.GoldAmber
 import com.sdvsync.ui.theme.SuccessGreen
+import com.sdvsync.ui.theme.SdvSyncThemeExtras
 import com.sdvsync.ui.viewmodels.CinderboxWizardState
 import com.sdvsync.ui.viewmodels.CinderboxWizardStep
 import java.io.File
@@ -222,6 +223,7 @@ fun CinderboxWizardDialog(
 
 @Composable
 private fun SetupChoiceStep(onChooseCinderbox: () -> Unit, onChooseOther: () -> Unit) {
+    val highlight = if (SdvSyncThemeExtras.isEarthy) MaterialTheme.colorScheme.tertiary else GoldAmber
     Column {
         Text(
             stringResource(R.string.wizard_setup_title),
@@ -234,7 +236,7 @@ private fun SetupChoiceStep(onChooseCinderbox: () -> Unit, onChooseOther: () -> 
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(2.dp, GoldAmber, RectangleShape)
+                .border(2.dp, highlight, RectangleShape)
                 .clickable(onClick = onChooseCinderbox),
             shape = RectangleShape,
             color = MaterialTheme.colorScheme.surfaceContainer
@@ -243,7 +245,7 @@ private fun SetupChoiceStep(onChooseCinderbox: () -> Unit, onChooseOther: () -> 
                 Text(
                     stringResource(R.string.wizard_cinderbox_option),
                     style = MaterialTheme.typography.titleSmall,
-                    color = GoldAmber,
+                    color = highlight,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.height(4.dp))
@@ -351,7 +353,7 @@ private fun PermissionRow(title: String, description: String, granted: Boolean, 
                 Text(
                     stringResource(R.string.wizard_granted),
                     style = MaterialTheme.typography.bodySmall,
-                    color = SuccessGreen,
+                    color = if (SdvSyncThemeExtras.isEarthy) SdvSyncThemeExtras.colors.synced else SuccessGreen,
                     fontWeight = FontWeight.Bold
                 )
             } else {

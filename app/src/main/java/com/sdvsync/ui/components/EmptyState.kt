@@ -16,12 +16,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Color
+import com.sdvsync.ui.theme.SdvSyncThemeExtras
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 @Composable
 fun EmptyState(title: String, subtitle: String, modifier: Modifier = Modifier) {
+    val earthy = SdvSyncThemeExtras.isEarthy
     val infiniteTransition = rememberInfiniteTransition(label = "chickenBob")
     val bobOffset by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -40,12 +43,18 @@ fun EmptyState(title: String, subtitle: String, modifier: Modifier = Modifier) {
     ) {
         PixelIcon(
             pixelData = ChickenIconData,
-            palette = listOf(
-                androidx.compose.ui.graphics.Color.Transparent,
-                androidx.compose.ui.graphics.Color.White,
-                androidx.compose.ui.graphics.Color(0xFFE03030),
-                androidx.compose.ui.graphics.Color(0xFFE8A030),
-                androidx.compose.ui.graphics.Color(0xFF2A1A00)
+            palette = if (earthy) listOf(
+                Color.Transparent,
+                MaterialTheme.colorScheme.onPrimaryContainer,
+                MaterialTheme.colorScheme.tertiary,
+                MaterialTheme.colorScheme.secondary,
+                MaterialTheme.colorScheme.onSurface
+            ) else listOf(
+                Color.Transparent,
+                Color.White,
+                Color(0xFFE03030),
+                Color(0xFFE8A030),
+                Color(0xFF2A1A00)
             ),
             modifier = Modifier.graphicsLayer { translationY = bobOffset },
             size = 48.dp

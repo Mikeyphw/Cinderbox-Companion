@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.sdvsync.steam.SteamAuthenticator
 import com.sdvsync.steam.SteamDiagnostics
+import com.sdvsync.ui.theme.SdvSyncThemeExtras
 import kotlinx.coroutines.launch
 
 @Composable
@@ -30,6 +31,8 @@ fun SteamLiveBadge() {
     val scope = rememberCoroutineScope()
     var showDetails by remember { mutableStateOf(false) }
     val phase = diagnostics.phase
+    val earthy = SdvSyncThemeExtras.isEarthy
+    val tones = SdvSyncThemeExtras.colors
     val label = when (phase) {
         SteamDiagnostics.Phase.CONNECTED -> "Steam ✓"
         SteamDiagnostics.Phase.CONNECTING -> "Steam …"
@@ -43,8 +46,18 @@ fun SteamLiveBadge() {
         SteamDiagnostics.Phase.RECONNECTING -> Color(0xFF996000)
         SteamDiagnostics.Phase.OFFLINE -> Color(0xFFA42D30)
     }
-    Surface(color = color, shape = RoundedCornerShape(6.dp), modifier = Modifier.clickable { showDetails = true }) {
-        Text(label, color = Color.White, style = MaterialTheme.typography.labelSmall,
+    val statusTextColor = if (earthy) when (phase) {
+        SteamDiagnostics.Phase.CONNECTED -> tones.synced
+        SteamDiagnostics.Phase.CONNECTING, SteamDiagnostics.Phase.AUTHENTICATING -> tones.pullBlue
+        SteamDiagnostics.Phase.RECONNECTING -> tones.conflict
+        SteamDiagnostics.Phase.OFFLINE -> tones.syncError
+    } else color
+    Surface(
+        color = if (earthy) statusTextColor.copy(alpha = 0.14f) else color,
+        shape = RoundedCornerShape(6.dp),
+        modifier = Modifier.clickable { showDetails = true }
+    ) {
+        Text(label, color = if (earthy) statusTextColor else Color.White, style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 6.dp), maxLines = 1)
     }
     if (showDetails) {

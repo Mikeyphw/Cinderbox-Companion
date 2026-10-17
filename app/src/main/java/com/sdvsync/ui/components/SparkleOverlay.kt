@@ -10,6 +10,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.sdvsync.ui.theme.GoldAmber
 import com.sdvsync.ui.theme.GoldBright
+import com.sdvsync.ui.theme.SdvSyncThemeExtras
+import androidx.compose.material3.MaterialTheme
 import kotlin.random.Random
 import kotlinx.coroutines.isActive
 
@@ -30,9 +32,12 @@ private data class Sparkle(
  */
 @Composable
 fun SparkleOverlay(modifier: Modifier = Modifier, particleCount: Int = 7) {
-    val sparkles = remember { mutableStateListOf<Sparkle>() }
+    val earthy = SdvSyncThemeExtras.isEarthy
+    val earthyLight = MaterialTheme.colorScheme.tertiary
+    val earthyDark = MaterialTheme.colorScheme.secondary
+    val sparkles = remember(earthy, earthyLight, earthyDark) { mutableStateListOf<Sparkle>() }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(earthy, earthyLight, earthyDark) {
         val frameTimeMs = 16L // ~60fps
         var timeSinceSpawn = 0L
         val spawnInterval = 400L
@@ -51,7 +56,9 @@ fun SparkleOverlay(modifier: Modifier = Modifier, particleCount: Int = 7) {
                         alpha = 0.6f,
                         speed = 0.0003f + Random.nextFloat() * 0.0004f,
                         radius = 2f + Random.nextFloat() * 2f,
-                        color = if (Random.nextBoolean()) GoldBright else GoldAmber,
+                        color = if (earthy) {
+                            if (Random.nextBoolean()) earthyLight else earthyDark
+                        } else if (Random.nextBoolean()) GoldBright else GoldAmber,
                         life = 1f
                     )
                 )
