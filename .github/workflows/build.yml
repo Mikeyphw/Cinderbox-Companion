@@ -232,6 +232,18 @@ jobs:
             app/build/outputs/apk/debug/M3_PROVENANCE.json
             app/build/outputs/apk/debug/M13_QUALIFICATION.json
           retention-days: 14
+      - name: M23 synthetic Android test source contract
+        run: |
+          python3 -m unittest discover -s scripts/devtool -p 'test_m23_device_test_gate.py' -v
+          python3 scripts/devtool/m23_device_test_gate.py --output "$RUNNER_TEMP/cinderbox-m23-android-source.json"
+
+      - name: Upload M23 Android test source evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: m23-android-source-${{ github.run_id }}
+          path: ${{ runner.temp }}/cinderbox-m23-android-source.json
+          if-no-files-found: error
+
       - name: M14 compile isolated Android instrumentation APK
         env:
           CINDERBOX_DEBUG_STORE_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_STORE_PASSWORD }}

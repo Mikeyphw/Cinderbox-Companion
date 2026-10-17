@@ -135,6 +135,11 @@ description = "M23 discovery plus existing Android unit, lint and debug APK qual
 workflow = "m23-full"
 target = "cinderbox"
 
+[wrapper.commands.m23-device-check]
+description = "M23 source-bound synthetic Android instrumentation lane contract (no device execution)"
+workflow = "m23-device-check"
+target = "cinderbox"
+
 [wrapper.commands.device]
 description = "Explicit on-device instrumentation lane; requires a connected test device"
 workflow = "device"
@@ -331,6 +336,12 @@ command = ["python3", "scripts/devtool/m23_discovery_gate.py"]
 inputs = ["scripts/devtool/m23_discovery_gate.py", "app/src/main/java/com/sdvsync/local/M23InstallationDiscovery.kt", "app/src/main/java/com/sdvsync/local/InstallationScanner.kt", "app/src/main/java/com/sdvsync/ui/screens/InstallationHealthScreen.kt", "app/src/main/java/com/sdvsync/ui/viewmodels/GameDownloadViewModel.kt", "app/src/test/java/com/sdvsync/local/M23InstallationDiscoveryTest.kt", ".github/workflows/**", "docs/devtool/M23_INSTALLATION_DISCOVERY.md"]
 metadata = { read_only = true, area = "m23-installation-discovery", evidence = "source-bound-json", device_required = false, root_required = false }
 
+[targets.cinderbox.jobs.m23-device-source]
+runner = "command"
+command = ["python3", "scripts/devtool/m23_device_test_gate.py"]
+inputs = ["scripts/devtool/m23_device_test_gate.py", "scripts/devtool/test_m23_device_test_gate.py", "app/src/androidTest/java/com/sdvsync/qualification/M23DiscoveryDeviceTest.kt", "app/src/main/java/com/sdvsync/local/M23InstallationDiscovery.kt", ".github/workflows/**", ".devtool.toml"]
+metadata = { read_only = true, area = "m23-android-synthetic-instrumentation", device_required = false, root_required = false, evidence = "source-bound-json" }
+
 [targets.cinderbox.jobs.connected-tests]
 runner = "android"
 gradle_tasks = [":app:connectedDebugAndroidTest"]
@@ -426,6 +437,13 @@ m23-check = [
   { id = "m22", ref = "job:m22-baseline", depends_on = ["security"] },
   { id = "tests", ref = "job:m23-host-tests", depends_on = ["m22"] },
   { id = "inventory", ref = "job:m23-discovery", depends_on = ["tests"] },
+]
+m23-device-check = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "m22", ref = "job:m22-baseline", depends_on = ["security"] },
+  { id = "tests", ref = "job:m23-host-tests", depends_on = ["m22"] },
+  { id = "inventory", ref = "job:m23-discovery", depends_on = ["tests"] },
+  { id = "android_test_source", ref = "job:m23-device-source", depends_on = ["inventory"] },
 ]
 m23-full = [
   { id = "security", ref = "job:security-contract", depends_on = [] },

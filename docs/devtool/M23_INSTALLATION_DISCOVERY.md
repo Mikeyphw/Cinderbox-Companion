@@ -23,3 +23,39 @@ M23 builds on merged M22 `master` commit `3d0454574d49f74eb0e8407d2d266b3d9e49d9
 1. Validate the precise M23 source SHA through GitHub Actions: Android compilation, unit tests and instrumentation APK compilation.
 2. Review read-only Health dashboard on a device with consented test directories, including legacy/modern conflict, inaccessible access path and SMAPI stage.
 3. Record APK signer and source provenance separately; do not claim `M23_DEVICE_PASS` solely because the debug APK installs.
+
+## M23 Android synthetic instrumentation qualification extension
+
+PR #33 includes production M23 source and existing JUnit host tests. The existing
+`com.sdvsync.test` instrumentation APK originally contained M14–M21, not M23.
+This additive qualification patch introduces
+`M23DiscoveryDeviceTest` with **10 app-private synthetic Android cases**:
+missing-path refusal, modern candidate not verified, legacy/modern collision,
+staging review, untrusted archive, SMAPI recovery, symlink refusal, enumeration
+bound, absence of write probes, and selected archive-wrapper handling.
+The fixtures are disposable and owned under `com.sdvsync` private cache. They are
+**not** actual game directories, and the test does not access Steam credentials,
+real saves, external storage, SAF, Root or Shizuku.
+
+`./devtoolw m23-device-check` is a source-only DAG, not a claim of execution.
+Both existing CI jobs run the same gate and compile the instrumentation APK.
+After exact-source CI succeeds, on-device `am instrument` must actually run this
+class and emit 10/10 PASS plus a sanitized device receipt. The user must opt in
+to any debug APK replacement; never uninstall, clear data or override mismatched
+signatures just to run a test. Real selected-file/SAF permission qualification
+remains a separate, authorized activity. No prior M14–M22 results are overwritten.
+
+After exact-source CI and explicit installation of matching signed debug APKs,
+run **only** the M23 test class from the existing test app:
+
+```sh
+python3 scripts/devtool/m23_device_run.py \
+  --execute-synthetic-tests --ci-run-id <SUCCESSFUL_CI_RUN_ID> \
+  --output "$HOME/cinderbox-m23-device.json"
+```
+
+`--ci-run-id` is a *label*, not APK attestation. Until installed package
+source/signature provenance is separately verified, the best possible result
+is `PASS_10_SYNTHETIC_DEVICE_TESTS_UNBOUND`, with `device_qualified=false`.
+The runner does **not** install APKs, perform authentic game discovery,
+request permissions or clear any app state.
