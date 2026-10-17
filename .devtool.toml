@@ -65,6 +65,11 @@ description = "M18 process stop/relaunch qualification host tests (read-only)"
 workflow = "m18-check"
 target = "cinderbox"
 
+[wrapper.commands.m21-check]
+description = "M21 consolidated feature, authenticated and release acceptance source tests"
+workflow = "m21-check"
+target = "cinderbox"
+
 [wrapper.commands.m20-check]
 description = "M20 consolidated 52-scenario source and safety host tests"
 workflow = "m20-check"
@@ -210,6 +215,12 @@ command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p
 inputs = ["scripts/devtool/m18_device_qualification.py", "scripts/devtool/test_m18_device_qualification.py", "scripts/devtool/m14_device_qualification.py", "app/src/androidTest/java/com/sdvsync/qualification/M18ProcessRecoveryDeviceTest.kt"]
 metadata = { read_only = true, area = "m18-process-recovery", root_required = false }
 
+[targets.cinderbox.jobs.m21-host]
+runner = "command"
+command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_m21_*.py", "-v"]
+inputs = ["scripts/devtool/m21_campaign.py", "scripts/devtool/m21_scenarios.json", "scripts/devtool/test_m21_campaign.py", "app/src/androidTest/java/com/sdvsync/qualification/M21ReadinessDeviceTest.kt", "app/src/main/java/com/sdvsync/steam/SteamCloudService.kt"]
+metadata = { read_only = true, area = "m21-feature-release-readiness", root_required = false }
+
 [targets.cinderbox.jobs.m20-host]
 runner = "command"
 command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_m20_*.py", "-v"]
@@ -258,6 +269,7 @@ m17-check = ["job:m17-host"]
 m18-check = ["job:m18-host"]
 m19-check = ["job:m19-host"]
 m20-check = ["job:m20-host"]
+m21-check = ["job:m21-host"]
 
 [artifacts]
 output_directory = ".devtool/build-artifacts"

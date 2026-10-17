@@ -63,12 +63,9 @@ class SteamCloudService(private val clientManager: SteamClientManager, private v
         AppLogger.d(TAG, "Requesting cloud file list for AppID $STARDEW_APP_ID...")
         val changeList = cloud.getAppFileListChange(STARDEW_APP_ID, 0).await()
 
-        AppLogger.d(
-            TAG,
-            "Cloud response: changeNumber=${changeList.currentChangeNumber}, " +
-                "files=${changeList.files.size}, isOnlyDelta=${changeList.isOnlyDelta}, " +
-                "pathPrefixes=${changeList.pathPrefixes}, machineNames=${changeList.machineNames}"
-        )
+        // Metadata counts are useful; filenames, path prefixes and machine names
+        // are private user data and must never be written to diagnostic logs.
+        AppLogger.d(TAG, "Steam Cloud metadata received: ${changeList.files.size} entries")
 
         changeList.files.map { file ->
             val prefix = if (file.pathPrefixIndex in changeList.pathPrefixes.indices) {
@@ -77,11 +74,7 @@ class SteamCloudService(private val clientManager: SteamClientManager, private v
                 ""
             }
 
-            AppLogger.d(
-                TAG,
-                "  File: prefix='$prefix' filename='${file.filename}' " +
-                    "size=${file.rawFileSize} prefixIdx=${file.pathPrefixIndex}"
-            )
+
 
             CloudFile(
                 filename = file.filename,
@@ -145,21 +138,12 @@ class SteamCloudService(private val clientManager: SteamClientManager, private v
 
         val rawBytes = response.body?.bytes() ?: throw RuntimeException("Empty response body")
 
-        AppLogger.d(
-            TAG,
-            "Downloaded '$filename': ${rawBytes.size} bytes, " +
-                "isGzip=${GzipUtil.isGzip(rawBytes)}, " +
-                "first4=${rawBytes.take(4).joinToString(" ") { "%02x".format(it) }}"
-        )
+        AppLogger.d(TAG, "Steam Cloud file download completed: ${rawBytes.size} bytes")
 
         // Stardew Valley 1.6+ saves are gzip-compressed XML.
         // Steam Cloud stores them as-is, so decompress for all callers.
         val result = GzipUtil.decompressIfGzip(rawBytes)
-        AppLogger.d(
-            TAG,
-            "After decompression: ${result.size} bytes, " +
-                "first50=${String(result, 0, minOf(50, result.size))}"
-        )
+        AppLogger.d(TAG, "Steam Cloud payload decoded: ${result.size} bytes")
         result
     }
 
@@ -213,14 +197,14 @@ class SteamCloudService(private val clientManager: SteamClientManager, private v
         ).await()
 
         val batchId = batchResponse.batchID
-        AppLogger.d(TAG, "uploadSave: batch started, batchId=$batchId, files=${uploads.size}")
+        AppLogger.d(TAG, "uploadSave: batch started, fileCount=${uploads.size}")
 
         try {
             var uploadedCount = 0
             for ((fullPath, data) in uploads) {
                 val sha = sha1(data)
 
-                AppLogger.d(TAG, "uploadSave: uploading $fullPath (${data.size} bytes)")
+                AppLogger.d(TAG, "uploadSave: uploading file (${data.size} bytes)")
                 onProgress?.invoke(uploadedCount, uploads.size)
 
                 val uploadInfo = cloud.beginFileUpload(
@@ -256,7 +240,7 @@ class SteamCloudService(private val clientManager: SteamClientManager, private v
                     val response = httpClient.newCall(requestBuilder.build()).execute()
                     if (!response.isSuccessful) {
                         throw RuntimeException(
-                            "Upload failed for $fullPath block: HTTP ${response.code}"
+                            "Steam Cloud upload block failed: HTTP ${response.code}"
                         )
                     }
                     response.close()
@@ -271,11 +255,11 @@ class SteamCloudService(private val clientManager: SteamClientManager, private v
                 ).await()
 
                 if (!committed) {
-                    throw RuntimeException("Failed to commit upload for $fullPath")
+                    throw RuntimeException("Steam Cloud upload commit failed")
                 }
 
                 uploadedCount++
-                AppLogger.d(TAG, "uploadSave: committed $fullPath ($uploadedCount/${uploads.size})")
+                AppLogger.d(TAG, "uploadSave: committed $uploadedCount/${uploads.size} files")
             }
 
             onProgress?.invoke(uploads.size, uploads.size)

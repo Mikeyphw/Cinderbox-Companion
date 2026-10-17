@@ -93,7 +93,8 @@ def verify_ci(run, jobs, commit):
         'feature/m17-android-ui-lifecycle',
         'feature/m18-process-death-recovery',
         'feature/m19-interrupted-operation-recovery',
-            'feature/m20-consolidated-resilience', 'master'), 'WRONG_CI_BRANCH')
+            'feature/m20-consolidated-resilience',
+            'feature/m21-feature-release-readiness', 'master'), 'WRONG_CI_BRANCH')
     steps = jobs.get('jobs', [{}])[0].get('steps', [])
     successful = {s.get('name') for s in steps if s.get('conclusion') == 'success'}
     require({'M14 device qualification runner regressions',
@@ -129,7 +130,8 @@ def verified_ci_checkout(run, branch_commit, *, artifact_commit=None, artifact_r
                             'feature/m17-android-ui-lifecycle',
                             'feature/m18-process-death-recovery',
                             'feature/m19-interrupted-operation-recovery',
-                            'feature/m20-consolidated-resilience'),
+                            'feature/m20-consolidated-resilience',
+                            'feature/m21-feature-release-readiness'),
             'UNEXPECTED_PR_BRANCH')
     linked = run.get('pull_requests')
     require(type(linked) is list, 'PR_ASSOCIATION_AMBIGUOUS')
@@ -178,6 +180,15 @@ def verified_ci_checkout(run, branch_commit, *, artifact_commit=None, artifact_r
     else:
         require(pr.get('state') == 'open', 'PR_STATE_UNVERIFIABLE')
         merge_sha = pr.get('merge_commit_sha')
+        if merge_sha is None and artifact_commit is not None:
+            # GitHub may expose null for open PR merge_commit_sha after its CI
+            # finished. Recover ONLY the CI artifact's immutable checkout SHA,
+            # with exact PR ref, live Git ref, and two Git commit parents below.
+            require(artifact_ref == expected_ref and
+                    isinstance(artifact_commit, str) and
+                    SHA40.fullmatch(artifact_commit) is not None,
+                    'PR_MERGE_COMMIT_UNAVAILABLE')
+            merge_sha = artifact_commit
         require(isinstance(merge_sha, str) and SHA40.fullmatch(merge_sha) is not None,
                 'PR_MERGE_COMMIT_UNAVAILABLE')
         if artifact_commit is not None:
