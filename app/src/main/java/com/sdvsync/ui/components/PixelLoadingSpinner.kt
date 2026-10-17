@@ -13,12 +13,15 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.sdvsync.ui.theme.GoldAmber
 import com.sdvsync.ui.theme.GoldBright
+import com.sdvsync.ui.theme.SdvSyncThemeExtras
+import androidx.compose.material3.MaterialTheme
 
 /**
  * Animated pixel art loading spinner — a rotating gold star.
  */
 @Composable
 fun PixelLoadingSpinner(modifier: Modifier = Modifier, size: Dp = 32.dp) {
+    val earthy = SdvSyncThemeExtras.isEarthy
     val infiniteTransition = rememberInfiniteTransition(label = "spinner")
     val rotation by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -34,8 +37,8 @@ fun PixelLoadingSpinner(modifier: Modifier = Modifier, size: Dp = 32.dp) {
         pixelData = StarIconData,
         palette = listOf(
             androidx.compose.ui.graphics.Color.Transparent,
-            GoldBright,
-            GoldAmber
+            if (earthy) MaterialTheme.colorScheme.tertiary else GoldBright,
+            if (earthy) MaterialTheme.colorScheme.secondary else GoldAmber
         ),
         modifier = modifier.graphicsLayer { rotationZ = rotation },
         size = size

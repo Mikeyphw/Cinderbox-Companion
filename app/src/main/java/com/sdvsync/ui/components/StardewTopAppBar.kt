@@ -20,6 +20,7 @@ import com.sdvsync.ui.theme.SdvSyncThemeExtras
 @Composable
 fun StardewTopAppBar(title: String, navigationIcon: @Composable () -> Unit = {}, actions: @Composable () -> Unit = {}) {
     val borderColors = SdvSyncThemeExtras.colors
+    val earthy = SdvSyncThemeExtras.isEarthy
 
     TopAppBar(
         title = {
@@ -27,16 +28,16 @@ fun StardewTopAppBar(title: String, navigationIcon: @Composable () -> Unit = {},
                 title,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
+                color = if (earthy) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary,
                 maxLines = 1, overflow = TextOverflow.Ellipsis
             )
         },
         navigationIcon = navigationIcon,
         actions = { Row { SteamLiveBadge(); actions() } },
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-            navigationIconContentColor = MaterialTheme.colorScheme.primary,
-            actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            containerColor = if (earthy) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+            navigationIconContentColor = if (earthy) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary,
+            actionIconContentColor = if (earthy) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
         ),
         modifier = Modifier.drawBehind {
             val px = 2.dp.toPx()

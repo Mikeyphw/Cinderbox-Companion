@@ -138,6 +138,17 @@ jobs:
       - name: M18 genuine process recovery host regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m18_*.py' -v
 
+      - name: UI-D02 Devtool source-bound component gate
+        run: python3 scripts/devtool/ui_d02_gate.py --output "$RUNNER_TEMP/cinderbox-ui-d02-host.json"
+
+      - name: Upload UI-D02 source evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-d02-host-${{ github.run_id }}
+          path: ${{ runner.temp }}/cinderbox-ui-d02-host.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: UI-D01 Devtool source-bound appearance gate
         run: python3 scripts/devtool/ui_d01_gate.py --output "$RUNNER_TEMP/cinderbox-ui-d01-host.json"
 

@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.unit.dp
+import com.sdvsync.ui.theme.SdvSyncThemeExtras
 
 @Composable
 fun StardewCard(
@@ -18,6 +19,7 @@ fun StardewCard(
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val earthy = SdvSyncThemeExtras.isEarthy
     val cardModifier = modifier
         .fillMaxWidth()
         .pixelBorder()
@@ -30,7 +32,7 @@ fun StardewCard(
             cardModifier
         },
         shape = RectangleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh
+        color = if (earthy) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surfaceContainerHigh
     ) {
         Column { content() }
     }

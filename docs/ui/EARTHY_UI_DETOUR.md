@@ -33,3 +33,21 @@ Visual tone draws broad inspiration from DaisyNiko's **Earthy Recolour** and **E
 The replacement artifact is a schema-v2 Devtool overlay, **not** a custom Python installer. It uses inventory source SHA-256 preimages and payload checksums, requires a clean worktree, applies atomically, validates the host gate, and commits only on success. Run `devtool --repo "$PWD" overlay check path/to/overlay.zip` before application, then `devtool --repo "$PWD" --yes apply-overlay path/to/overlay.zip --keep-artifact`. It expects a clean branch from the post-M21 base and rejects touching files with diverged contents. Historical M21 evidence is not regenerated.
 
 `./devtoolw earthy-check` uses the dependency graph `security-contract -> earthy-source` with Devtool evidence history; `./devtoolw earthy-full` extends that graph through existing unit test, lint, debug APK and verifier jobs. GitHub Actions invoke **the identical** `ui_d01_gate.py` and upload its source-bound sanitized JSON as a CI artifact, in addition to the existing APK signature and provenance sequence. Android compilation and device qualification are not provided by the offline host gate.
+
+## UI-D02 implemented (stacked on successful UI-D01 CI)
+
+PR #29 head `156bd65201a239b81ea7cd6f5a52e1ff68de8362` passed GitHub Actions run `39004991945` (all 43 CI job steps, including pinned debug APK and instrumentation APK compilation). UI-D01 is **not** yet merged or device-qualified. UI-D02 remains a separate, source-bound patch intended for a clean stacked branch at that D01 commit.
+
+- Earthy-specific parchment cards/dialogs, forest-toned top app bar, and protected Classic fallback.
+- Status-differentiated and theme-appropriate Steam badge colors (the existing retry authentication behavior is unchanged).
+- Earthy empty-state pixel chicken, spinner, passive particles and setup wizard accent; original art colors retained in Classic.
+- Money highlights in Save Viewer use tertiary Clay/Copper for Earthy only.
+- Three synthetic Android Compose checks (Earthy day card/night dialog and Classic card) compiled only by future GitHub Actions; no real-device or screenshot claims.
+- Host evidence integrates with a **target-local native Devtool DAG** `earthy-d02-check` (security → D01 → D02) and `earthy-d02-full` (reuses unit, lint, APK and verify jobs) and both existing GitHub Actions workflows.
+- No operations on Steam sessions, installs, saves, mods, releases, or historic qualification JSON. Next UI-D03 audits 320dp, font scaling, focus/semantics and screenshot parity on device.
+
+## UI-D02 Devtool overlay rehearsal notes
+
+The initial Devtool artifact preflight for clean UI-D01 source was `ready`, structural/source checks passed with zero conflicts. The transactional apply ran six of six stages with zero errors and committed the synthetic test checkout; `earthy-d02-check` completed all three existing/new jobs. The full Python host regression suite finished with **294 tests, 0 failures, 1 skip**. No Android build/device test was run for D02.
+
+**Known Devtool bug:** Rechecking the already-applied artifact exposed `NameError: sha256_file` in `devtool/overlay/conflicts.py:38`, not a clean source-mismatch report. Source preflight against the intended untouched D01 worktree and the actual apply are unaffected. This is tracked as `DEV-OVERLAY-CONFLICT-UI-D02-04` in the Devtool improvements ledger; do not interpret the internal exception as evidence of a successful fail-closed conflict classification.
