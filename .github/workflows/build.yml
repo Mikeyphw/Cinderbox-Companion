@@ -89,6 +89,22 @@ jobs:
       - name: M18 genuine process recovery host regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m18_*.py' -v
 
+      - name: M22 postmerge source baseline regression tests
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m22_baseline.py' -v
+
+      - name: M22 source-bound read-only baseline and roadmap gate
+        run: |
+          python3 scripts/devtool/m22_baseline.py --output "$RUNNER_TEMP/cinderbox-m22-host.json"
+          python3 scripts/devtool/m22_baseline.py --verify "$RUNNER_TEMP/cinderbox-m22-host.json" > /dev/null
+
+      - name: Upload M22 source-bound baseline evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: m22-host-${{ github.run_id }}
+          path: ${{ runner.temp }}/cinderbox-m22-host.json
+          if-no-files-found: error
+          retention-days: 30
+
       - name: UI-D03 Devtool accessibility and screenshot source gate
         run: python3 scripts/devtool/ui_d03_gate.py --output "$RUNNER_TEMP/cinderbox-ui-d03-host.json"
 

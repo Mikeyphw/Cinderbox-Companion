@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "project": "Cinderbox Companion",
+  "repository": "Mikeyphw/Cinderbox-Companion",
+  "starting_master_commit": "5ba587e2e5b56a054ec38c7c225b50920b304b4c",
+  "starting_master_ci": {
+    "run_id": 39040952179,
+    "workflow": "Build Debug APK",
+    "source_commit": "5ba587e2e5b56a054ec38c7c225b50920b304b4c",
+    "observed_conclusion": "success",
+    "meaning": "prior-source build only; not qualification of new M22 source"
+  },
+  "historical_acceptance": {
+    "m14_m20": {
+      "observations_reported_pass": 74,
+      "origin": "historical user/device campaign; not rerun",
+      "original_receipts_in_repository": false,
+      "availability": "NOT_ATTACHED",
+      "source_binding": "multiple historical source commits; no single source SHA claimed"
+    },
+    "m21": {
+      "observations_reported_pass": 18,
+      "lanes": {"U": 4, "I": 6, "T": 4, "R": 4},
+      "original_reviewed_source": "d93d21d2f569d947bce91099ef112e3b6a793452",
+      "original_debug_ci_run_id": 38946596038,
+      "original_postreview_ci_checkout": "dc7439617acaa10823a5e9bc95091bf8771f21f2",
+      "overall_historical": "PASS_M21_PREPUBLICATION_ACCEPTANCE",
+      "original_receipts_in_repository": false,
+      "availability": "NOT_ATTACHED"
+    },
+    "total_reported_pass_observations": 92,
+    "receipt_index_completeness": "HISTORICAL_REFERENCES_ONLY",
+    "significance": "Past reported observations; not rerun or promoted to current-source PASS"
+  },
+  "historical_ci_anchors": [
+    {"purpose": "M21 integration", "run_id": 38979859033, "source_commit": "75ae79787c70c0f951dc1210aba7a519e95d2367", "observed_conclusion": "success"},
+    {"purpose": "M21 postmerge", "run_id": 38989044246, "source_commit": "930ab17067dc6f8ed078bdb31efdcbd9f56e2899", "observed_conclusion": "success"},
+    {"purpose": "signed unpublished M21 candidate", "run_id": 38964234525, "source_commit": "d93d21d2f569d947bce91099ef112e3b6a793452", "observed_conclusion": "success", "release_published": false},
+    {"purpose": "UI-D01 postmerge", "run_id": 39039246511, "source_commit": "e3f78f43897ba52c61bce79169ed7d0bc33434bc", "observed_conclusion": "success"},
+    {"purpose": "UI-D02 postmerge", "run_id": 39039901891, "source_commit": "fd1555195be90facc25c0be15fbe9866a4f740a8", "observed_conclusion": "success"},
+    {"purpose": "UI-D03 postmerge", "run_id": 39040952179, "source_commit": "5ba587e2e5b56a054ec38c7c225b50920b304b4c", "observed_conclusion": "success"}
+  ],
+  "coverage_matrix": {
+    "M22": {"name": "postmerge baseline and evidence", "required": ["master_sha_ci", "historical_receipts_index", "devtool_job_inventory", "coverage_gaps"], "source_implementation": "IN_THIS_CHANGE", "new_ci": "NOT_YET_RUN", "device_campaign": "NOT_RUN"},
+    "M23": {"name": "real game and SMAPI recognition", "required": ["package_and_layout_detection", "complete_partial_unknown_distinction", "storage_readiness", "no_mutation_readonly_audit"], "source_implementation": "NOT_ASSESSED_FOR_ACCEPTANCE", "new_ci": "NOT_RUN", "device_campaign": "NOT_RUN"},
+    "M24": {"name": "authenticated game download and recovery", "required": ["steam_entitlement", "depot_manifest", "resume", "checksum", "storage_budget", "atomic_commit", "interrupt_and_repair"], "source_implementation": "NOT_ASSESSED_FOR_ACCEPTANCE", "new_ci": "NOT_RUN", "device_campaign": "NOT_RUN"},
+    "M25": {"name": "SMAPI and mod lifecycle", "source_implementation": "NOT_RUN"},
+    "M26": {"name": "Steam Cloud/save writes", "source_implementation": "NOT_RUN"},
+    "M27": {"name": "Android storage/lifecycle", "source_implementation": "NOT_RUN"},
+    "M28": {"name": "release signer upgrades", "source_implementation": "NOT_RUN"},
+    "M29": {"name": "release decision", "source_implementation": "NOT_RUN"}
+  },
+  "m23_m24_existing_source_components": [
+    "app/src/main/java/com/sdvsync/cinderbox/CinderboxLayout.kt",
+    "app/src/main/java/com/sdvsync/local/InstallationScanner.kt",
+    "app/src/main/java/com/sdvsync/download/GameDownloadManager.kt",
+    "app/src/main/java/com/sdvsync/download/GameDownloadService.kt",
+    "app/src/main/java/com/sdvsync/download/GameDownloadRecovery.kt",
+    "app/src/main/java/com/sdvsync/download/GameFileIntegrity.kt",
+    "app/src/main/java/com/sdvsync/download/VerifiedGameRepair.kt",
+    "app/src/main/java/com/sdvsync/download/SmapiTransactionalInstaller.kt",
+    "app/src/main/java/com/sdvsync/steam/SteamContentService.kt",
+    "app/src/main/java/com/sdvsync/steam/SteamClientManager.kt"
+  ],
+  "safety_contract": {
+    "release_enabled": false,
+    "device_qualification_complete": false,
+    "publication_enabled": false,
+    "automatic_device_install": false,
+    "real_game_mutation": "FORBIDDEN_IN_M22",
+    "steam_mutation": "FORBIDDEN_IN_M22",
+    "historical_receipt_overwrite": "FORBIDDEN"
+  }
+}

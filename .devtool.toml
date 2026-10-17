@@ -115,6 +115,16 @@ description = "UI-D03 source plus existing test/lint/debug verified APK DAG"
 workflow = "earthy-d03-full"
 target = "cinderbox"
 
+[wrapper.commands.m22-check]
+description = "M22 read-only baseline, historical anchors, source/CI and DAG integrity"
+workflow = "m22-check"
+target = "cinderbox"
+
+[wrapper.commands.m22-full]
+description = "M22 checks plus existing unit, lint and verified debug APK jobs"
+workflow = "m22-full"
+target = "cinderbox"
+
 [wrapper.commands.device]
 description = "Explicit on-device instrumentation lane; requires a connected test device"
 workflow = "device"
@@ -287,6 +297,18 @@ command = ["python3", "scripts/devtool/ui_d03_gate.py"]
 inputs = ["scripts/devtool/ui_d03_source.py", "scripts/devtool/ui_d03_gate.py", "scripts/devtool/test_ui_d03.py", "scripts/devtool/ui_d03_device_capture.py", "app/src/main/java/com/sdvsync/ui/theme/EarthyColorSchemes.kt", "app/src/main/java/com/sdvsync/ui/components/StardewBottomBar.kt", "app/src/main/java/com/sdvsync/ui/components/PixelProgressBar.kt", "app/src/main/java/com/sdvsync/ui/components/PixelLoadingSpinner.kt", "app/src/androidTest/java/com/sdvsync/qualification/EarthyD03AccessibilityDeviceTest.kt", "docs/security/M3_RELEASE_POLICY.json"]
 metadata = { read_only = true, area = "earthy-ui-d03", device_required = false, evidence = "source-sha256-json", baseline = "ui-d02-ci-39006846654" }
 
+[targets.cinderbox.jobs.m22-host-tests]
+runner = "command"
+command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_m22_baseline.py", "-v"]
+inputs = ["scripts/devtool/m22_baseline.py", "scripts/devtool/m22_baseline_contract.json", "scripts/devtool/test_m22_baseline.py", "docs/security/M3_RELEASE_POLICY.json", ".devtool.toml"]
+metadata = { read_only = true, area = "m22-postmerge-baseline", device_required = false, root_required = false }
+
+[targets.cinderbox.jobs.m22-baseline]
+runner = "command"
+command = ["python3", "scripts/devtool/m22_baseline.py"]
+inputs = ["scripts/devtool/m22_baseline.py", "scripts/devtool/m22_baseline_contract.json", ".devtool.toml", "docs/devtool/**", ".github/workflows/**", "app/src/main/java/com/sdvsync/download/**", "app/src/main/java/com/sdvsync/steam/**", "app/src/main/java/com/sdvsync/cinderbox/**", "app/src/main/java/com/sdvsync/local/**"]
+metadata = { read_only = true, area = "m22-postmerge-baseline", device_required = false, root_required = false, evidence = "source-bound-json" }
+
 [targets.cinderbox.jobs.connected-tests]
 runner = "android"
 gradle_tasks = [":app:connectedDebugAndroidTest"]
@@ -357,6 +379,21 @@ earthy-d03-full = [
   { id = "d02", ref = "job:earthy-components-host", depends_on = ["d01"] },
   { id = "d03", ref = "job:earthy-accessibility-host", depends_on = ["d02"] },
   { id = "unit", ref = "job:unit-tests", depends_on = ["d03"] },
+  { id = "lint", ref = "job:android-lint", depends_on = ["unit"] },
+  { id = "apk", ref = "job:debug-apk", depends_on = ["lint"] },
+  { id = "verify", ref = "job:verify-debug-apk", depends_on = ["apk"] },
+]
+
+m22-check = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "tests", ref = "job:m22-host-tests", depends_on = ["security"] },
+  { id = "baseline", ref = "job:m22-baseline", depends_on = ["tests"] },
+]
+m22-full = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "tests", ref = "job:m22-host-tests", depends_on = ["security"] },
+  { id = "baseline", ref = "job:m22-baseline", depends_on = ["tests"] },
+  { id = "unit", ref = "job:unit-tests", depends_on = ["baseline"] },
   { id = "lint", ref = "job:android-lint", depends_on = ["unit"] },
   { id = "apk", ref = "job:debug-apk", depends_on = ["lint"] },
   { id = "verify", ref = "job:verify-debug-apk", depends_on = ["apk"] },
