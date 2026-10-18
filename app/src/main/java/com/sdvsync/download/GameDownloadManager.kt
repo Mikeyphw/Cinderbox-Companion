@@ -2,6 +2,8 @@ package com.sdvsync.download
 
 import android.content.Context
 import com.sdvsync.cinderbox.CinderboxPaths
+import com.sdvsync.local.M23CinderboxFirstPolicy
+import com.sdvsync.local.M23InstallationDiscovery
 import com.sdvsync.local.InstallationScanner
 import com.sdvsync.local.InstallHealth
 import com.sdvsync.local.StoragePreflight
@@ -171,10 +173,20 @@ class GameDownloadManager(
             "Another game download is already active"
         }
         val directory = File(installDirectory)
+        // Recheck in the service entry path; UI preflight alone is not a guard.
+        val scope = M23CinderboxFirstPolicy.assess(directory, File(CinderboxPaths.ROOT_DIR))
+        check(scope.code != M23CinderboxFirstPolicy.Code.PROTECTED_CINDERBOX_TREE &&
+            scope.code != M23CinderboxFirstPolicy.Code.UNSAFE_OR_NONABSOLUTE_DESTINATION &&
+            scope.code != M23CinderboxFirstPolicy.Code.DESTINATION_UNREADABLE) {
+            "Destination overlaps Cinderbox or cannot be safely inspected"
+        }
         StoragePreflight.requireWritable(directory)
         GameDownloadRecovery.safeDestination(directory)
         val checkpoint = recovery.pending()
         if (checkpoint == null) {
+            check(scope.separateEmptyDestination) {
+                "Selected folder is not an independent empty download destination"
+            }
             val health = InstallationScanner.game(directory).health
             check(health != InstallHealth.INCOMPLETE && health != InstallHealth.INACCESSIBLE &&
                 health != InstallHealth.DETECTED && health != InstallHealth.STRUCTURALLY_VALID) {
@@ -333,6 +345,18 @@ class GameDownloadManager(
     suspend fun copyToCinderbox(installDir: String) = withContext(Dispatchers.IO) {
         val srcDir = File(installDir)
         val destDir = File(CINDERBOX_DEST)
+        // Never clobber the primary app's imported game during an explicit copy.
+        // Restoring/updating an existing Cinderbox installation requires a
+        // separate reviewed and backed-up transaction, not this setup helper.
+        val sourceSafe = GameDownloadRecovery.safeDestination(srcDir)
+        val targetSafe = GameDownloadRecovery.safeDestination(destDir)
+        check(!sourceSafe.toPath().startsWith(targetSafe.toPath()) &&
+            !targetSafe.toPath().startsWith(sourceSafe.toPath())) {
+            "Copy source and primary Cinderbox game tree must be separate"
+        }
+        check(M23InstallationDiscovery.game(destDir).status == M23InstallationDiscovery.Status.MISSING) {
+            "Primary Cinderbox game already contains files; copying would overwrite imported data"
+        }
 
         val missing = CINDERBOX_DLLS.filter { !File(srcDir, it).isFile }.toMutableList()
         val content = File(srcDir, CINDERBOX_CONTENT_DIR)

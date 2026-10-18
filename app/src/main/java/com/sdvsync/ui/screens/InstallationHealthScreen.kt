@@ -13,6 +13,7 @@ import com.sdvsync.local.InstallAssessment
 import com.sdvsync.local.InstallHealth
 import com.sdvsync.local.InstallationScanner
 import com.sdvsync.local.InstallationSnapshot
+import com.sdvsync.local.M23InstallationDiscovery
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import com.sdvsync.cinderbox.CinderboxPaths
@@ -44,9 +45,11 @@ fun InstallationHealthScreen(onBack: () -> Unit) {
     LaunchedEffect(selectedPath, refresh) {
         report = withContext(Dispatchers.IO) {
             @Suppress("DEPRECATION")
-            val installed = try { context.packageManager.getPackageInfo("com.game.cinderbox", 0); true }
-            catch (_: PackageManager.NameNotFoundException) { false }
-            InstallationScanner.scan(File(selectedPath), installed)
+            val installed = try { context.packageManager.getPackageInfo("com.game.cinderbox", 0); true to true }
+            catch (_: PackageManager.NameNotFoundException) { false to true }
+            catch (_: SecurityException) { false to false } // Visibility failure does not prove absence.
+            InstallationScanner.scan(File(selectedPath), installed.first,
+                File(CinderboxPaths.ROOT_DIR), installed.second)
         }
     }
     Scaffold(topBar = { StardewTopAppBar("Installation health", navigationIcon = {
@@ -101,9 +104,29 @@ fun InstallationHealthScreen(onBack: () -> Unit) {
                 HealthRow("Cinderbox GameFiles", result.cinderboxGame)
                 HealthRow("SMAPI", result.smapi)
                 HealthRow("Cinderbox app", result.cinderboxApp)
+                result.discovery?.let { inventory ->
+                    Spacer(Modifier.height(12.dp))
+                    Text("M23 · Read-only installation evidence", style = MaterialTheme.typography.titleMedium)
+                    Text("No game, Steam, or SMAPI version is verified by filename detection. " +
+                        "SAF, Root and Shizuku access require their own authorized provider checks.",
+                        style = MaterialTheme.typography.bodySmall)
+                    DiscoveryRow("Selected directory", inventory.selected)
+                    DiscoveryRow("Cinderbox 0.8+", inventory.modern)
+                    DiscoveryRow("Legacy pre-0.8", inventory.legacy)
+                    DiscoveryRow("SMAPI internals", inventory.smapi)
+                    if (inventory.layoutConflict) {
+                        Text("Conflicting legacy and current layouts; automatic merging is forbidden.",
+                            color = MaterialTheme.colorScheme.error)
+                    }
+                    Text("Access: ${inventory.storageAccess.replace('_', ' ')}",
+                        style = MaterialTheme.typography.bodySmall)
+                    Text("Download/install permission: NOT GRANTED by discovery. " +
+                        "Use the existing explicit operation preflight and matching recovery checkpoint.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
                 Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                     Column(Modifier.padding(12.dp)) {
-                        Text("Destination storage: ${if (result.storage.writable) "Writable" else "Blocked"}",
+                        Text("Destination access: Not tested for writes",
                             style = MaterialTheme.typography.titleSmall)
                         Text(result.storage.details, style = MaterialTheme.typography.bodySmall)
                     }
@@ -169,6 +192,21 @@ private fun HealthRow(title: String, result: InstallAssessment) {
             Text("$title: ${result.health.name.replace('_', ' ')}", style = MaterialTheme.typography.titleSmall)
             Text(result.details, style = MaterialTheme.typography.bodySmall)
             Text(result.location, style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+@Composable
+private fun DiscoveryRow(title: String, finding: M23InstallationDiscovery.Finding) {
+    Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Column(Modifier.padding(12.dp)) {
+            Text("$title: ${finding.status.name.replace('_', ' ')}",
+                style = MaterialTheme.typography.titleSmall)
+            Text("Evidence: ${finding.evidence.joinToString { it.name.replace('_', ' ') }}",
+                style = MaterialTheme.typography.bodySmall)
+            Text("Reasons: ${finding.codes.joinToString()}", style = MaterialTheme.typography.bodySmall)
+            Text("Game/SMAPI version: not verified; observed entries: ${finding.observedFiles}",
+                style = MaterialTheme.typography.labelSmall)
         }
     }
 }

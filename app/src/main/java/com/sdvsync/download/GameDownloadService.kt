@@ -1,6 +1,8 @@
 package com.sdvsync.download
 
 import android.app.ActivityManager
+import com.sdvsync.cinderbox.CinderboxPaths
+import com.sdvsync.local.M23CinderboxFirstPolicy
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -137,6 +139,14 @@ class GameDownloadService : Service() {
     ) {
         try {
             val installRoot = File(installDir)
+            // Defense in depth for restarted/explicit service intents, even if the
+            // UI and GameDownloadManager path gates were bypassed.
+            val scope = M23CinderboxFirstPolicy.assess(installRoot, File(CinderboxPaths.ROOT_DIR))
+            check(scope.code != M23CinderboxFirstPolicy.Code.PROTECTED_CINDERBOX_TREE &&
+                scope.code != M23CinderboxFirstPolicy.Code.UNSAFE_OR_NONABSOLUTE_DESTINATION &&
+                scope.code != M23CinderboxFirstPolicy.Code.DESTINATION_UNREADABLE) {
+                "Protected Cinderbox game tree or unsafe destination"
+            }
             StoragePreflight.requireWritable(installRoot)
             // Only a checkpoint written by our manager authorizes touching partial files.
             // This also rejects intents manually dispatched to the service.
