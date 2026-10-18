@@ -135,6 +135,11 @@ description = "M24 isolated staging, atomic publish and crash-safe resume safety
 workflow = "m24-stage-check"
 target = "cinderbox"
 
+[wrapper.commands.m24-provenance-check]
+description = "M24 source-bound exact CI APK provenance and read-only primary Cinderbox inspection"
+workflow = "m24-provenance-check"
+target = "cinderbox"
+
 [wrapper.commands.m24-full]
 description = "M24 gate plus existing Android unit, lint and debug build chain"
 workflow = "m24-full"
@@ -386,6 +391,18 @@ runner = "android"
 gradle_tasks = [":app:connectedDebugAndroidTest"]
 metadata = { area = "device", explicit_only = true }
 
+[targets.cinderbox.jobs.m24-provenance-tests]
+runner = "command"
+command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_m24_real_substrate.py", "-v"]
+inputs = ["scripts/devtool/m24_real_substrate.py", "scripts/devtool/test_m24_real_substrate.py"]
+metadata = { read_only = true, area = "m24-installed-apk-provenance", root_required = false, device_required = false }
+
+[targets.cinderbox.jobs.m24-provenance-source]
+runner = "command"
+command = ["python3", "scripts/devtool/m24_provenance_gate.py"]
+inputs = ["scripts/devtool/m24_provenance_gate.py", "scripts/devtool/m24_real_substrate.py", "scripts/devtool/test_m24_real_substrate.py", ".devtool.toml", ".github/workflows/**", "docs/devtool/M24_AUTHENTICATED_DOWNLOAD.md"]
+metadata = { read_only = true, area = "m24-source-bound-apk-provenance", root_required = false, device_required = false, evidence = "source-sha256-json" }
+
 [targets.cinderbox.workflows]
 security = ["job:security-contract"]
 quick = [
@@ -503,6 +520,11 @@ m24-stage-check = [
   { id = "security", ref = "job:security-contract", depends_on = [] },
   { id = "tests", ref = "job:m24-staged-tests", depends_on = ["security"] },
   { id = "gate", ref = "job:m24-source", depends_on = ["tests"] },
+]
+m24-provenance-check = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "tests", ref = "job:m24-provenance-tests", depends_on = ["security"] },
+  { id = "gate", ref = "job:m24-provenance-source", depends_on = ["tests"] },
 ]
 m24-full = [
   { id = "security", ref = "job:security-contract", depends_on = [] },

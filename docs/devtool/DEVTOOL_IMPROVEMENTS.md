@@ -163,3 +163,11 @@ This ledger is cumulative; append future Devtool gaps and campaign findings rath
 - **Implemented:** source-bound owned sibling stage, atomic same-filesystem rename without copy fallback, post-rename reconciliation, new `m24-stage-check` wrapper, independent Android source fixture lane and GitHub gate. No changes to imported Cinderbox files.
 - **Remaining:** live Steam manifest-to-file proof, authenticated entitled depot receipt, atomic rename behavior on target device and process-death verification. Do not call these qualified from fixtures.
 - **Status:** SOURCE_IMPLEMENTED / LIVE_UNQUALIFIED.
+
+
+### M24-PROV-01 — Installed APK pair provenance vs synthetic execution (2026-10-18)
+- **Evidence:** M24 device receipts from CI #39129035270 and #39132432005 each report four PASS synthetic cases while `installed_source_verified=false`; duplicate ADB transports may reflect one physical device. The recorded `ci_run_id_label` alone does not bind APK bytes to the GitHub commit.
+- **Affected:** Cinderbox Companion M24, Devtool Android Actions, reusable real-substrate qualification workflows.
+- **Implementation:** add `m24-provenance-check` native wrapper/DAG and CI source receipt; opt-in read-only tool compares two downloaded GitHub Actions APK artifact SHA-256s with installed Android base APK SHA-256s using explicitly selected ADB transport; reject missing/split/mismatching packages and stale/failed/wrong-branch CI. Observe only main Cinderbox package and public directory existence.
+- **Open improvement:** Devtool-native first-class installed APK pair attestation, transport deduplication through actual physical-device identity, and provider-backed Steam depot manifest provenance rather than app-local hash ledgers. Never treat this as authenticated Steam entitlement, live download, or release qualification.
+- **Status:** SOURCE_IMPLEMENTED; real-device execution outstanding.
