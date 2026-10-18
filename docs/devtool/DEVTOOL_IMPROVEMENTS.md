@@ -178,3 +178,15 @@ This ledger is cumulative; append future Devtool gaps and campaign findings rath
 - **Affected:** Cinderbox Companion M24 SteamContentService, GameDownloadRecovery, GameDownloadService; Devtool M24 source/device gates.
 - **Fix implemented:** deterministic numeric depot manifest ID snapshot, bound to an owned staged checkpoint; preserve partial bytes on drift. New `m24-pics-check` 3-node DAG and four private Android fixtures, no live Steam or user data required.
 - **Outstanding:** verify independent Steam depot file manifests and entitlement in the JavaSteam API, obtain authorized manifest bytes / authenticated request codes, validate exact file/chunk contents, consented real download and interruption. PICS GIDs alone are not signatures or file hashes. **Status: PARTIAL / external trust provider open.**
+
+
+### M24-FIN — Steam manifest source/content attestation gap (2026-10-18)
+- **Evidence:** JavaSteam 1.8.0 downloader reads `.DepotDownloader/<depot>_<manifest>.manifest`
+  and local `.sha`; PICS supplies depot manifest GIDs; existing service previously hashed only
+  its own transferred files and lacked file-by-file comparison to depot manifest content.
+- **Projects:** Cinderbox Companion, reusable Devtool Android qualification workflows.
+- **Action:** Source-bound cached depot SHA-1 cross-check added before and after atomic stage
+  promotion, with negative tests and distinct unsigned-manifest scope.
+- **Status:** HOST_IMPLEMENTED_PENDING_CI_DEVICE; signed manifest/protocol attestation and
+  separately authorized live-transfer evidence remain OPEN. Never silently treat synthetic
+  or self-hashed results as live verification.

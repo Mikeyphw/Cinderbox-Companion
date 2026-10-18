@@ -18,7 +18,7 @@ class SteamContentService(private val clientManager: SteamClientManager) {
 
     data class BranchInfo(val name: String, val buildId: Long, val passwordRequired: Boolean,
                           val timeUpdated: Long, val manifestFingerprint: String? = null,
-                          val depotCount: Int = 0)
+                          val depotCount: Int = 0, val depotManifestIds: Map<Int, String> = emptyMap())
 
     data class AppContentInfo(val branches: List<BranchInfo>)
 
@@ -90,7 +90,8 @@ class SteamContentService(private val clientManager: SteamClientManager) {
                 passwordRequired = pwdRequired,
                 timeUpdated = timeUpdated,
                 manifestFingerprint = snapshot?.fingerprint,
-                depotCount = snapshot?.depotCount ?: 0
+                depotCount = snapshot?.depotCount ?: 0,
+                depotManifestIds = if (snapshot != null) manifestIds else emptyMap()
             )
         }.sortedWith(compareByDescending<BranchInfo> { it.name == "public" }.thenByDescending { it.timeUpdated })
 

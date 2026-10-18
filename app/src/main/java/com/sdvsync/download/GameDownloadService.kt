@@ -157,6 +157,7 @@ class GameDownloadService : Service() {
             check(clientManager.isLoggedIn) { "Steam sign-in required" }
             val content = SteamContentService(clientManager)
             var sessionManifestFingerprint: String? = null
+            var sessionDepotManifestIds: Map<Int, String>? = null
             suspend fun recheckBranch() {
                 val selected = content.getAppBranches().branches.firstOrNull { it.name == branch }
                 M24SteamSelectionPolicy.requireBound(clientManager.isLoggedIn, expectedBuildId, selected?.buildId)
@@ -167,6 +168,12 @@ class GameDownloadService : Service() {
                         "Steam depot manifest identity changed during download; staged bytes preserved"
                     }
                 }
+                val ids = selected?.depotManifestIds ?: emptyMap()
+                check(ids.isNotEmpty() && ids.size == selected?.depotCount) { "PICS depot manifest identities missing" }
+                if (sessionDepotManifestIds != null) {
+                    check(sessionDepotManifestIds == ids) { "PICS depot manifests changed" }
+                }
+                sessionDepotManifestIds = ids
                 sessionManifestFingerprint = fingerprint
             }
             recheckBranch()
@@ -194,7 +201,7 @@ class GameDownloadService : Service() {
             if (recovery.isPromotedStage(installRoot)) {
                 // Crash occurred after atomic rename, before final ledger/journal
                 // commit. Rehash the installed bytes without contacting downloader.
-                verifyPromotedFiles(installRoot)
+                verifyPromotedFiles(installRoot, checkNotNull(sessionDepotManifestIds))
                 return
             }
             val stageRoot = recovery.requireActiveStage(installRoot)
@@ -246,6 +253,7 @@ class GameDownloadService : Service() {
             depotBytes.clear()
             failedItems.set(false)
             val completedFiles = Collections.synchronizedSet(mutableSetOf<String>())
+            val completedDepots = Collections.synchronizedSet(mutableSetOf<Int>())
 
             downloader.addListener(object : IDownloadListener {
                 override fun onDownloadStarted(item: DownloadItem) {
@@ -323,6 +331,7 @@ class GameDownloadService : Service() {
                 override fun onDepotCompleted(depotId: Int, compressedBytes: Long, uncompressedBytes: Long) {
                     try {
                         AppLogger.d(TAG, "Depot $depotId completed: ${uncompressedBytes / 1024 / 1024} MB")
+                        completedDepots.add(depotId)
                         depotBytes.compute(depotId) { _, previous ->
                             maxOf(previous ?: 0L, uncompressedBytes.coerceAtLeast(0L))
                         }
@@ -395,7 +404,8 @@ class GameDownloadService : Service() {
 
             // Every M24 live transfer requires a local SHA-256 ledger. This does
             // not attest an independent signed Steam depot manifest.
-            verifyFiles(installDir, stageRoot, completedFiles, ::recheckBranch, checkNotNull(sessionManifestFingerprint))
+            verifyFiles(installDir, stageRoot, completedFiles, ::recheckBranch,
+                checkNotNull(sessionManifestFingerprint), checkNotNull(sessionDepotManifestIds), completedDepots.toSet())
         } catch (e: CancellationException) {
             AppLogger.d(TAG, "Download cancelled")
             GameDownloadManager._progress.value = DownloadProgress(
@@ -423,7 +433,9 @@ class GameDownloadService : Service() {
         }
     }
 
-    private suspend fun verifyPromotedFiles(destination: File) {
+    private suspend fun verifyPromotedFiles(destination: File, depotIds: Map<Int, String>,
+        completedDepots: Set<Int>? = null) {
+        M24DepotManifestCrosscheck.verify(destination, depotIds, completedDepots)
         // Interrupted after atomic promotion: no transfer or destructive replay.
         val report = GameFileIntegrity(filesDir).verifyAndRecord(destination)
         check(report.passed) { "Promoted files failed local SHA-256 verification" }
@@ -432,7 +444,7 @@ class GameDownloadService : Service() {
             state = DownloadState.COMPLETED, overallPercent = 1f,
             verifiedFiles = report.files, totalFilesToVerify = report.files,
             verificationPassed = true,
-            integrityScope = "LOCAL_SHA256_ONLY_MANIFEST_UNATTESTED"
+            integrityScope = "PICS_BOUND_DEPOT_SHA1_UNSIGNED"
         )
     }
 
@@ -441,7 +453,8 @@ class GameDownloadService : Service() {
      */
     private suspend fun verifyFiles(installDir: String, stageRoot: File,
         completedFiles: Set<String>, recheckBranch: suspend () -> Unit,
-        expectedManifestFingerprint: String) {
+        expectedManifestFingerprint: String, depotIds: Map<Int, String>,
+        completedDepots: Set<Int>) {
         val root = stageRoot
         GameDownloadManager._progress.value = DownloadProgress(
             state = DownloadState.VERIFYING, totalFilesToVerify = completedFiles.size
@@ -469,6 +482,10 @@ class GameDownloadService : Service() {
             updateNotification("File verification failed. Retry to repair this download.")
             return
         }
+        // Fail closed unless all PICS-bound depot manifests are cached and every
+        // resulting staged file matches its manifest content hash. This does
+        // not verify Valve's signature or independently prove entitlement.
+        M24DepotManifestCrosscheck.verify(root, depotIds, completedDepots)
         // Final PICS check after hashing, before the only filesystem commit.
         recheckBranch()
         // Crash recovery must still own the same PICS manifest identity.
@@ -476,12 +493,12 @@ class GameDownloadService : Service() {
         // Atomic same-volume publish requires an ABSENT target. No copy fallback.
         GameDownloadRecovery(filesDir).promoteStaged(File(installDir))
         // The final ledger must refer to the published destination, not the stage.
-        verifyPromotedFiles(File(installDir))
+        verifyPromotedFiles(File(installDir), depotIds, completedDepots)
         GameDownloadManager._progress.value = DownloadProgress(
             state = DownloadState.COMPLETED, overallPercent = 1f,
             verifiedFiles = report.files, totalFilesToVerify = report.files,
             verificationPassed = true,
-            integrityScope = "LOCAL_SHA256_ONLY_MANIFEST_UNATTESTED"
+            integrityScope = "PICS_BOUND_DEPOT_SHA1_UNSIGNED"
         )
         updateNotification(getString(R.string.download_complete))
     }

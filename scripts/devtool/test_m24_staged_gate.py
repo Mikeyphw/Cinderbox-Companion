@@ -33,7 +33,8 @@ class M24StagedSourceGate(unittest.TestCase):
         self.assertIn('installDirectory = stageRoot.absolutePath',svc)
         self.assertIn('promoteStaged(File(installDir))',svc)
         self.assertIn('recovery.beginStaged(directory, branch, os, verifyAfterDownload)',manager)
-        self.assertIn('LOCAL_SHA256_ONLY_MANIFEST_UNATTESTED',svc)
+        self.assertIn('PICS_BOUND_DEPOT_SHA1_UNSIGNED',svc)
+        self.assertIn('M24DepotManifestCrosscheck.verify(root, depotIds, completedDepots)',svc)
     def test_exact_fixture_matrix(self):
         from re import findall
         src=(ROOT/'app/src/androidTest/java/com/sdvsync/qualification/M24StagedTransactionDeviceTest.kt').read_text()

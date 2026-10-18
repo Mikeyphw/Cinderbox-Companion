@@ -44,7 +44,7 @@ def generate(root=ROOT,env=None):
   if phrase not in steam:raise ValueError('PICS_DEPOT_DISCOVERY_MISSING')
  for phrase in ('fun bindDepotManifestFingerprint(', 'fun requireDepotManifestFingerprint(', 'pics_depot_manifest_fingerprint', 'StandardCopyOption.ATOMIC_MOVE'):
   if phrase not in recovery:raise ValueError('PICS_JOURNAL_BINDING_MISSING')
- for phrase in ('recovery.bindDepotManifestFingerprint(manifestFingerprint)', 'recovery.requireDepotManifestFingerprint(manifestFingerprint)', 'requireDepotManifestFingerprint(expectedManifestFingerprint)', 'LOCAL_SHA256_ONLY_MANIFEST_UNATTESTED'):
+ for phrase in ('recovery.bindDepotManifestFingerprint(manifestFingerprint)', 'recovery.requireDepotManifestFingerprint(manifestFingerprint)', 'requireDepotManifestFingerprint(expectedManifestFingerprint)', 'PICS_BOUND_DEPOT_SHA1_UNSIGNED'):
   if phrase not in service:raise ValueError('PICS_LIVE_DRIFT_CHECK_MISSING')
  if tuple(re.findall(r'@Test fun (m24p_\d\d\w+)\s*\(',device))!=METHODS:raise ValueError('ANDROID_CASES_CHANGED')
  for phrase in ('targetContext.cacheDir.canonicalFile','m24pics-owned-'):

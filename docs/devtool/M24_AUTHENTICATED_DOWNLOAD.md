@@ -40,3 +40,22 @@ The previous M23 10/10 and 3/3 Android receipts retain their original source att
 - Parses positive numeric depot manifest GIDs from the selected branch's live PICS appinfo response, sorted and SHA-256 fingerprinted with app 413150, branch and build ID. A missing/invalid manifest set refuses a new live transfer. This metadata is an **identity pointer only**, not an independently authenticated per-file depot manifest.
 - A newly started owned M24 stage stores the fresh depot-manifest fingerprint atomically in the private recovery journal after existing ownership/build checks. A restarted session, branch drift or manifest identity drift fails closed while preserving partial bytes. Existing historical fixtures remain compatible but cannot bypass the live service's fingerprint requirement.
 - Steam entitlement, signed file manifests, chunk-to-file digest matching and a real consented Steam transfer remain **NOT_QUALIFIED**. Do not claim that this PICS identity fingerprint verifies game files or proves ownership. The final integrity scope remains `LOCAL_SHA256_ONLY_MANIFEST_UNATTESTED`.
+
+
+## M24 depot cached-manifest file cross-check (follow-on candidate)
+
+Before atomic promotion, the Steam downloader's cached `.DepotDownloader/<depot>_<manifest>.manifest`
+files (and their SDK-generated `.sha` consistency checks) must correspond to live
+PICS depot manifest IDs for SDK-reported completed depots. PICS may list unrelated
+platform/language depots that must not be required for a Windows-only transfer. Every staged file must match its manifest file size and SHA-1,
+no extra game files or symlink paths may appear, and a post-rename reconciliation rechecks
+again before recording completion. A missing manifest, failed digest, or changed manifest
+identity blocks promotion and retains partial data. The source does not touch original
+Cinderbox game, saves, mods or SMAPI locations.
+
+**Trust boundary:** JavaSteam's `.manifest.sha` checks a local cached manifest's SHA-1 and is
+not a Valve digital signature. PICS IDs and manifest `fileHash` values support content
+cross-checking, **not an independently verified Steam signature, explicit entitlement proof,
+or evidence of a licensed live transfer**. The result scope is
+`PICS_BOUND_DEPOT_SHA1_UNSIGNED`. Product-release, real-transfer, and signed-manifest claims
+remain disallowed until real-source and device receipts independently close them.

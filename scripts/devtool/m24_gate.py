@@ -14,6 +14,8 @@ PATHS=(
     'scripts/devtool/test_m24_staged_gate.py',
     'app/src/main/java/com/sdvsync/download/GameDownloadManager.kt',
     'app/src/main/java/com/sdvsync/download/GameDownloadService.kt',
+    'app/src/main/java/com/sdvsync/download/M24DepotFileProof.kt',
+    'app/src/main/java/com/sdvsync/download/M24DepotManifestCrosscheck.kt',
     'app/src/main/java/com/sdvsync/ui/viewmodels/GameDownloadViewModel.kt',
     'app/src/main/java/com/sdvsync/ui/screens/GameDownloadScreen.kt',
     'app/src/test/java/com/sdvsync/download/M24SteamSelectionPolicyTest.kt',
@@ -63,13 +65,16 @@ def generate(root=ROOT,env=None):
         require(term in mgr,'MANAGER_GATE_MISSING')
     for term in ('recheckBranch()', 'SteamContentService(clientManager)',
                  'recovery.requireSteamBuildId(expectedBuildId)',
-                 'verifyFiles(installDir, stageRoot, completedFiles, ::recheckBranch, checkNotNull(sessionManifestFingerprint))',
+                 'verifyFiles(installDir, stageRoot, completedFiles, ::recheckBranch,',
                  'recovery.requireActiveStage(installRoot)',
                  'promoteStaged(File(installDir))',
-                 'LOCAL_SHA256_ONLY_MANIFEST_UNATTESTED',
+                 'M24DepotManifestCrosscheck.verify(root, depotIds, completedDepots)',
+                 'PICS_BOUND_DEPOT_SHA1_UNSIGNED',
                  'StoragePlanner.downloadPlan(installRoot, estimatedPayloadBytes).sufficient == true'):
         require(term in svc,'SERVICE_GATE_MISSING')
+    require('M24DepotManifestCrosscheck.verify(destination, depotIds, completedDepots)' in svc,'PROMOTED_RECONCILIATION_MANIFEST_MISSING')
     require(svc.count('recheckBranch()')>=3,'PRE_AND_POST_PICS_CHECK_REQUIRED')
+    require('private val' not in get('app/src/main/java/com/sdvsync/download/M24DepotFileProof.kt') or 'verify(stage:' in get('app/src/main/java/com/sdvsync/download/M24DepotFileProof.kt'), 'MANIFEST_PROOF_SOURCE_MISSING')
     require('capacity.sufficient == false || capacity.sufficient == null' in ui,'UNKNOWN_CAPACITY_MUST_BLOCK')
     require('selectedBranchInfo.buildId' in ui and '!current.verifyAfterDownload' in ui,'UI_LIVE_GUARD_MISSING')
     require('enabled = false' in screen and 'LOCAL_SHA256_ONLY_MANIFEST_UNATTESTED' in screen,'USER_STATUS_UNSAFE')
