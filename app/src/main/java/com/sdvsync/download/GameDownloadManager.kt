@@ -42,6 +42,7 @@ data class DownloadProgress(
     // Steam's percentages refer to individual depots, not the entire game.
     val currentDepotId: Int? = null,
     val currentDepotPercent: Float = 0f,
+    val depotPhase: String = "",
     val filesDownloaded: Int = 0,
     val errorMessage: String? = null,
     val verifiedFiles: Int = 0,

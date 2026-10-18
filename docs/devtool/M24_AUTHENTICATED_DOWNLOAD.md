@@ -59,3 +59,7 @@ cross-checking, **not an independently verified Steam signature, explicit entitl
 or evidence of a licensed live transfer**. The result scope is
 `PICS_BOUND_DEPOT_SHA1_UNSIGNED`. Product-release, real-transfer, and signed-manifest claims
 remain disallowed until real-source and device receipts independently close them.
+
+### M24 live depot handoff visibility (pending device retest)
+
+The initial authorized real transfer was observed stuck in the UI at “Waiting for depot progress…”. This means `onDownloadStarted` fired but no chunk/file progress callback was received; it does not by itself prove a CDN or Steam entitlement failure. JavaSteam 1.8.0 reports manifest and file allocation stages through `onStatusUpdate`, previously logged but not displayed. The adapter now maps those messages only to safe constant UI labels, checks the SDK failure flag promptly, replaces blocking `awaitCompletion()` with a cancellable completion-future await, and emits `STEAM_DEPOT_FIRST_CONTENT_TIMEOUT` after 240 seconds without content or `STEAM_DEPOT_CONTENT_STALLED` after 300 seconds without transfer activity. Neither timeout deletes owned checkpoint or staged bytes. The actual cause of a particular device hang still needs sanitized live logs; this is not an authenticated Steam entitlement receipt or release qualification.

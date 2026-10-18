@@ -461,6 +461,7 @@ fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
                         bytesPerSecond = state.downloadProgress.bytesPerSecond,
                         currentDepotId = state.downloadProgress.currentDepotId,
                         currentDepotPercent = state.downloadProgress.currentDepotPercent,
+                        depotPhase = state.downloadProgress.depotPhase,
                         filesDownloaded = state.downloadProgress.filesDownloaded,
                         onCancel = { viewModel.cancelDownload() }
                     )
@@ -929,6 +930,7 @@ private fun DownloadProgressSection(
     bytesPerSecond: Long,
     currentDepotId: Int?,
     currentDepotPercent: Float,
+    depotPhase: String,
     filesDownloaded: Int,
     onCancel: () -> Unit
 ) {
@@ -991,7 +993,10 @@ private fun DownloadProgressSection(
                 Spacer(Modifier.height(4.dp))
                 PixelProgressBar(progress = currentDepotPercent)
             } else {
-                Text("Waiting for depot progress…", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    depotPhase.ifBlank { "Contacting Steam CDN; waiting for first depot chunk…" },
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
 
             Spacer(Modifier.height(12.dp))

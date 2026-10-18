@@ -12,6 +12,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import com.sdvsync.MainActivity
 import com.sdvsync.R
@@ -33,6 +34,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.future.await
 import org.koin.android.ext.android.inject
 
 class GameDownloadService : Service() {
@@ -91,6 +93,9 @@ class GameDownloadService : Service() {
     // Track cumulative bytes per depot (callback values are cumulative, not deltas)
     private val depotBytes = ConcurrentHashMap<Int, Long>()
     private val failedItems = AtomicBoolean(false)
+    // Monotonic progress probes: status text cannot hide a zero-byte stalled transfer.
+    private val lastDepotContentMs = AtomicLong(0L)
+    private val depotContentObserved = AtomicBoolean(false)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -252,6 +257,8 @@ class GameDownloadService : Service() {
             lastSpeedBytes.set(0L)
             depotBytes.clear()
             failedItems.set(false)
+            depotContentObserved.set(false)
+            lastDepotContentMs.set(SystemClock.elapsedRealtime())
             val completedFiles = Collections.synchronizedSet(mutableSetOf<String>())
             val completedDepots = Collections.synchronizedSet(mutableSetOf<Int>())
 
@@ -260,7 +267,10 @@ class GameDownloadService : Service() {
                     try {
                         AppLogger.d(TAG, "Download started for item")
                         // A second item can start after other depots already transferred data.
-                        GameDownloadManager._progress.update { it.copy(state = DownloadState.DOWNLOADING) }
+                        GameDownloadManager._progress.update { it.copy(
+                            state = DownloadState.DOWNLOADING,
+                            depotPhase = "Locating Steam depots and requesting content…"
+                        ) }
                         updateNotification(getString(R.string.download_downloading))
                     } catch (e: Exception) {
                         AppLogger.e(TAG, "Error in onDownloadStarted", e)
@@ -274,6 +284,8 @@ class GameDownloadService : Service() {
                     uncompressedBytes: Long
                 ) {
                     try {
+                        depotContentObserved.set(true)
+                        lastDepotContentMs.set(SystemClock.elapsedRealtime())
                         // Callbacks are cumulative per depot and may arrive from parallel workers.
                         depotBytes.compute(depotId) { _, previous ->
                             maxOf(previous ?: 0L, uncompressedBytes.coerceAtLeast(0L))
@@ -311,6 +323,8 @@ class GameDownloadService : Service() {
 
                 override fun onFileCompleted(depotId: Int, fileName: String, depotPercentComplete: Float) {
                     try {
+                        depotContentObserved.set(true)
+                        lastDepotContentMs.set(SystemClock.elapsedRealtime())
                         completedFiles.add(fileName)
                         GameDownloadManager._progress.update { current ->
                             current.copy(
@@ -331,6 +345,8 @@ class GameDownloadService : Service() {
                 override fun onDepotCompleted(depotId: Int, compressedBytes: Long, uncompressedBytes: Long) {
                     try {
                         AppLogger.d(TAG, "Depot $depotId completed: ${uncompressedBytes / 1024 / 1024} MB")
+                        depotContentObserved.set(true)
+                        lastDepotContentMs.set(SystemClock.elapsedRealtime())
                         completedDepots.add(depotId)
                         depotBytes.compute(depotId) { _, previous ->
                             maxOf(previous ?: 0L, uncompressedBytes.coerceAtLeast(0L))
@@ -368,7 +384,11 @@ class GameDownloadService : Service() {
                 }
 
                 override fun onStatusUpdate(message: String) {
-                    AppLogger.d(TAG, "Status: $message")
+                    // The SDK can include actual file paths in its status messages.
+                    // Use an allowlist of static labels, never raw SDK status text.
+                    val phase = M24DepotHandoffPolicy.safePhase(message) ?: return
+                    GameDownloadManager._progress.update { it.copy(depotPhase = phase) }
+                    AppLogger.d(TAG, "Depot phase: $phase")
                 }
             })
 
@@ -389,9 +409,26 @@ class GameDownloadService : Service() {
                 manifest = emptyList()
             )
 
+            val waitStartMs = SystemClock.elapsedRealtime()
             downloader.add(appItem)
             downloader.finishAdding()
-            downloader.awaitCompletion()
+            // JavaSteam.awaitCompletion() calls CompletableFuture.join(), blocking
+            // a coroutine thread and masking an SDK failure before completion.
+            // Poll cancellably, detect SDK failure and missing bytes, then await
+            // the exact same future to propagate any terminal exception.
+            val completion = downloader.getCompletion()
+            while (!completion.isDone) {
+                currentCoroutineContext().ensureActive()
+                M24DepotHandoffPolicy.failureCode(
+                    SystemClock.elapsedRealtime(), waitStartMs, lastDepotContentMs.get(),
+                    depotContentObserved.get(), failedItems.get()
+                )?.let { code ->
+                    AppLogger.w(TAG, "Steam depot handoff stopped: $code")
+                    error(code)
+                }
+                delay(1_000L)
+            }
+            completion.await()
 
             // A per-item callback can report failure without throwing awaitCompletion().
             check(!failedItems.get() && GameDownloadManager._progress.value.state != DownloadState.ERROR) {

@@ -190,3 +190,10 @@ This ledger is cumulative; append future Devtool gaps and campaign findings rath
 - **Status:** HOST_IMPLEMENTED_PENDING_CI_DEVICE; signed manifest/protocol attestation and
   separately authorized live-transfer evidence remain OPEN. Never silently treat synthetic
   or self-hashed results as live verification.
+
+### M24-LIVE-STALL — Silent JavaSteam depot handoff and blocking wait (2026-10-18)
+
+- **Evidence:** On real user-authorized Steam download, Companion displayed “Waiting for depot progress…” indefinitely. Source shows `onDownloadStarted` sets DOWNLOADING before any bytes; `onStatusUpdate` only logs SDK status; `DepotDownloader.awaitCompletion()` blocks on `CompletableFuture.join()` without bounded progress policy. JavaSteam 1.8.0 `getCompletion()` and per-depot callbacks were verified against the tagged SDK sources. No live Steam completion claimed.
+- **Affected projects:** Cinderbox Companion / Steam depot downloader adapter / Devtool Android qualification.
+- **Remediation:** Add constant-label status mapping (no raw paths), monotonic first-content and transfer-stall limits, prompt SDK failure detection, cancellable completion-future wait, source-bound negative tests and CI. Preserve owned partial bytes and do not touch imported Cinderbox game.
+- **Status:** IMPLEMENTED_PENDING_CI_AND_REAL_DEVICE; 16 historical synthetic M24 cases remain accepted. New live acceptance remains blocked until a successful licensed transfer is observed.

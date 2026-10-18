@@ -95,6 +95,18 @@ jobs:
       - name: M24 staging and crash-recovery source regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m24_staged_gate.py' -v
 
+      - name: M24 live depot handoff watchdog regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m24_depot_handoff_gate.py' -v
+
+      - name: M24 live depot handoff source gate
+        run: python3 scripts/devtool/m24_depot_handoff_gate.py --output "$RUNNER_TEMP/cinderbox-m24-handoff-source.json"
+
+      - name: Upload M24 depot handoff source evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: m24-handoff-${{ github.run_id }}
+          path: ${{ runner.temp }}/cinderbox-m24-handoff-source.json
+
       - name: M24 cached depot file hash cross-check regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m24_file_manifest_gate.py' -v
 
