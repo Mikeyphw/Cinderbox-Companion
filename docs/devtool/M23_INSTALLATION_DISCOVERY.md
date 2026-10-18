@@ -65,3 +65,24 @@ request permissions or clear any app state.
 Initial manually-installed APK run reported all ten cases `NOT_COMPLETED` and code `INSTRUMENTATION_INCOMPLETE_OR_FAILED`. Code review found the Python runner passed six-character IDs (`m23_01`) into a parser that requires the full Android method name (`m23_01MissingPrivatePathsAreNotDownloadApproval`). The report cannot establish whether device tests passed or failed.
 
 The repair binds exactly ten full source-attested method names, accepts only a complete instrumentation success, converts the outcome back to stable case IDs, and persists only sanitized case statuses/final code, not raw device logs. Host regressions cover PASS, FAIL, missing cases, empty output, unexpected methods, and exit-code mismatch. No APK source changed; installed app and instrumentation APKs do not need replacement. Run the repaired script and inspect its result before any merge. Device provenance is still unverified without separate installed-APK digest checks.
+
+
+## M23-CB: Primary Cinderbox app integration repair
+
+The original `com.game.cinderbox` is the **primary game app**; Companion `com.sdvsync` manages its existing files. User-visible Android screenshots showed a structurally plausible imported game at `StardewValley/desktop/GameFiles`, a detected `smapi-internal`, and a missing independent `Download/StardewValley` path. Treat those as **distinct facts**. The original Cinderbox import is not a Steam manifest attestation, but it must not block an optional download into a *different empty folder*.
+
+The Download tab now surfaces primary-game/SMAPI detection and opens Installation Health without Steam login, write probes, data moves or implicit repairs. Download eligibility is a separate `M23CinderboxFirstPolicy` path guard: refuse primary-root ancestors and descendants, symlinks, invalid paths, any existing/partial selected destination or missing access; allow *only an independent empty or absent target* to proceed to existing Steam, storage-capacity, explicit write preflight and owned-checkpoint validation. No discovery result itself authorizes downloading. `GameDownloadManager.startDownload` rechecks this gate rather than trusting UI state.
+
+`copyToCinderbox` now refuses existing or partial main-game bytes and overlapping source/target paths before writing. No silent copy/replacement of game, saves, mods, or SMAPI. A future explicit review/backup transaction will be needed for game updates; the existing M10 selective verified repair remains independently gated.
+
+The M23 original 10/10 synthetic Android outcomes remain historical on the earlier installed APK. This fix adds 3 independent synthetic Cinderbox-first Android methods, built into `com.sdvsync.test` by current CI. They must be run against the **new** matched APK after a successful build; running the old test APK cannot qualify these changes. The test runner preserves only sanitized case codes and never inspects actual game folders. A separate, consented read-only real-installation inventory, APK digest/signer provenance, access-provider permissions and authenticated integrity checks remain not qualified.
+
+After applying this PR-scoped native Devtool overlay, run `./devtoolw m23-cinderbox-check`. After a new successful PR build, install both matching APK artifacts by explicit consent (same signer only), then run only the new lane:
+
+```sh
+python3 scripts/devtool/m23_cinderbox_first_device_run.py \
+  --execute-synthetic-tests --serial emulator-5554 \
+  --ci-run-id <NEW_RUN> --output "$HOME/cinderbox-m23-cinderbox-first.json"
+```
+
+Release and publication remain disabled. Do not rerun M14–M22 or the already-accepted ten synthetic M23 tests.

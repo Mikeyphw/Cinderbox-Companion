@@ -12,6 +12,7 @@ import com.sdvsync.download.DownloadState
 import com.sdvsync.download.GameDownloadManager
 import com.sdvsync.local.InstallationScanner
 import com.sdvsync.local.M23InstallationDiscovery
+import com.sdvsync.local.M23CinderboxFirstPolicy
 import com.sdvsync.local.InstallAssessment
 import com.sdvsync.local.InstallHealth
 import com.sdvsync.local.StoragePreflight
@@ -58,6 +59,9 @@ data class GameDownloadState(
     val selectedOs: String = "windows",
     val installDirectory: String = "",
     val selectedInstallHealth: InstallAssessment? = null,
+    val primaryGameStatus: M23InstallationDiscovery.Status = M23InstallationDiscovery.Status.MISSING,
+    val primarySmapiStatus: M23InstallationDiscovery.Status = M23InstallationDiscovery.Status.MISSING,
+    val destinationCode: M23CinderboxFirstPolicy.Code = M23CinderboxFirstPolicy.Code.DESTINATION_UNREADABLE,
     val storageReady: Boolean = false,
     val storageDetail: String = "Storage not checked",
     val estimatedGameSizeGiB: String = "",
@@ -121,8 +125,12 @@ class GameDownloadViewModel(
             hasRecoverableDownload = pending != null,
             error = interrupted.exceptionOrNull()?.message,
             selectedInstallHealth = InstallationScanner.game(File(selectedDir)),
-            storageReady = StoragePreflight.check(File(selectedDir)).writable,
-            storageDetail = StoragePreflight.check(File(selectedDir)).details,
+            primaryGameStatus = M23InstallationDiscovery.game(File(CinderboxPaths.GAME_FILES_DIR)).status,
+            primarySmapiStatus = M23InstallationDiscovery.smapi(File(CinderboxPaths.SMAPI_DIR)).status,
+            destinationCode = M23CinderboxFirstPolicy.assess(
+                File(selectedDir), File(CinderboxPaths.ROOT_DIR)).code,
+            storageReady = false,
+            storageDetail = "Write access will be tested only when you start a download.",
             isCinderboxSetup = fileAccessDetector.getSetupType() == SETUP_TYPE_CINDERBOX
         )
         if (pending != null) downloadManager.restoreInterruptedProgress()
@@ -300,8 +308,12 @@ class GameDownloadViewModel(
         _state.value = _state.value.copy(
             installDirectory = path,
             selectedInstallHealth = InstallationScanner.game(File(path)),
-            storageReady = StoragePreflight.check(File(path)).writable,
-            storageDetail = StoragePreflight.check(File(path)).details
+            primaryGameStatus = M23InstallationDiscovery.game(File(CinderboxPaths.GAME_FILES_DIR)).status,
+            primarySmapiStatus = M23InstallationDiscovery.smapi(File(CinderboxPaths.SMAPI_DIR)).status,
+            destinationCode = M23CinderboxFirstPolicy.assess(
+                File(path), File(CinderboxPaths.ROOT_DIR)).code,
+            storageReady = false,
+            storageDetail = "Write access will be tested only when you start a download."
         )
     }
 
@@ -309,8 +321,12 @@ class GameDownloadViewModel(
         val path = _state.value.installDirectory
         _state.value = _state.value.copy(
             selectedInstallHealth = InstallationScanner.game(File(path)),
-            storageReady = StoragePreflight.check(File(path)).writable,
-            storageDetail = StoragePreflight.check(File(path)).details
+            primaryGameStatus = M23InstallationDiscovery.game(File(CinderboxPaths.GAME_FILES_DIR)).status,
+            primarySmapiStatus = M23InstallationDiscovery.smapi(File(CinderboxPaths.SMAPI_DIR)).status,
+            destinationCode = M23CinderboxFirstPolicy.assess(
+                File(path), File(CinderboxPaths.ROOT_DIR)).code,
+            storageReady = false,
+            storageDetail = "Write access will be tested only when you start a download."
         )
     }
 
@@ -345,8 +361,9 @@ class GameDownloadViewModel(
         }
 
         val selectedHealth = InstallationScanner.game(File(current.installDirectory))
-        val storage = StoragePreflight.check(File(current.installDirectory))
-        val discovered = M23InstallationDiscovery.inspect(
+        // Existing imported Cinderbox game/SMAPI are primary app assets,
+        // not an authorization or a blanket blocker for another destination.
+        val destination = M23CinderboxFirstPolicy.assess(
             File(current.installDirectory), File(CinderboxPaths.ROOT_DIR))
         val capacity = runCatching {
             StoragePlanner.downloadPlan(File(current.installDirectory),
@@ -366,14 +383,20 @@ class GameDownloadViewModel(
             _state.value = current.copy(error = e.message ?: "Invalid recovery journal")
             return
         }
-        // A different preexisting game, partial layout, or interrupted install cannot
-        // silently authorize another new download. Resume still requires owned checkpoint.
-        if (!resume && discovered.gameAlreadyPresent) {
+        // A checkpoint never licenses writing inside the original Cinderbox tree.
+        // For new downloads, the *selected* destination must be empty and separate.
+        if ((!resume && !destination.separateEmptyDestination) ||
+            destination.code == M23CinderboxFirstPolicy.Code.PROTECTED_CINDERBOX_TREE ||
+            destination.code == M23CinderboxFirstPolicy.Code.UNSAFE_OR_NONABSOLUTE_DESTINATION ||
+            destination.code == M23CinderboxFirstPolicy.Code.DESTINATION_UNREADABLE) {
             _state.value = current.copy(error =
-                "Existing game or incomplete installation detected. Review Installation health " +
-                "before starting a new download; no files were changed.")
+                "Download destination rejected (${destination.code}). Cinderbox's imported " +
+                "game, saves, mods and SMAPI were not modified.")
             return
         }
+        // Only after rejecting protected/unsafe destinations may an explicitly
+        // requested download test actual filesystem writability.
+        val storage = StoragePreflight.check(File(current.installDirectory))
         if (!storage.writable || selectedHealth.health == InstallHealth.INACCESSIBLE ||
             (!resume && (selectedHealth.health == InstallHealth.INCOMPLETE ||
                 selectedHealth.health == InstallHealth.STRUCTURALLY_VALID ||

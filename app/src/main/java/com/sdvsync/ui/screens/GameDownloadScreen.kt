@@ -31,6 +31,9 @@ import com.sdvsync.ui.components.StardewTopAppBar
 import com.sdvsync.ui.components.installCinderboxApk
 import com.sdvsync.ui.formatBytes
 import com.sdvsync.local.StoragePlanner
+import com.sdvsync.local.M23InstallationDiscovery
+import com.sdvsync.local.M23CinderboxFirstPolicy
+import com.sdvsync.cinderbox.CinderboxPaths
 import java.io.File
 import com.sdvsync.ui.viewmodels.GameDownloadViewModel
 import java.text.SimpleDateFormat
@@ -54,7 +57,8 @@ private fun formatDate(epochSeconds: Long): String {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun GameDownloadScreen(onBack: () -> Unit, viewModel: GameDownloadViewModel = koinViewModel()) {
+fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
+                       viewModel: GameDownloadViewModel = koinViewModel()) {
     val state by viewModel.state.collectAsState()
     val wizardState by viewModel.wizardState.collectAsState()
 
@@ -125,6 +129,28 @@ fun GameDownloadScreen(onBack: () -> Unit, viewModel: GameDownloadViewModel = ko
                 }
             }
 
+            Spacer(Modifier.height(12.dp))
+            // Main Cinderbox is the game owner. This card only reads its known
+            // installation and navigates to read-only Installation Health.
+            StardewCard {
+                Column(Modifier.padding(12.dp)) {
+                    Text("Main app · Cinderbox", style = MaterialTheme.typography.titleMedium)
+                    Text("Game: ${state.primaryGameStatus.name.replace('_', ' ')}",
+                        style = MaterialTheme.typography.bodyMedium)
+                    Text("SMAPI: ${state.primarySmapiStatus.name.replace('_', ' ')}",
+                        style = MaterialTheme.typography.bodyMedium)
+                    Text("Cinderbox game location: ${CinderboxPaths.GAME_FILES_DIR}",
+                        style = MaterialTheme.typography.bodySmall)
+                    Text("An imported game can be used through Cinderbox without " +
+                        "downloading another copy. Detection is read-only; versions " +
+                        "and Steam integrity are not verified.",
+                        style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(8.dp))
+                    StardewOutlinedButton(onClick = onOpenInstallationHealth) {
+                        Text("Inspect existing Cinderbox installation")
+                    }
+                }
+            }
             Spacer(Modifier.height(24.dp))
             PixelDivider()
             Spacer(Modifier.height(24.dp))
@@ -262,8 +288,8 @@ fun GameDownloadScreen(onBack: () -> Unit, viewModel: GameDownloadViewModel = ko
             PixelDivider()
             Spacer(Modifier.height(24.dp))
 
-            // Download location
-            SectionHeader(stringResource(R.string.download_section_location))
+            // A separate optional Steam download destination; not the imported game.
+            SectionHeader("Optional separate download location")
             Spacer(Modifier.height(8.dp))
 
             var editingPath by remember { mutableStateOf(false) }
@@ -306,10 +332,12 @@ fun GameDownloadScreen(onBack: () -> Unit, viewModel: GameDownloadViewModel = ko
                 Text(health.details, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(12.dp))
             }
-            if (!state.storageReady) {
-                Text("Download blocked: ${state.storageDetail}", color = MaterialTheme.colorScheme.error)
-                Spacer(Modifier.height(12.dp))
+            Text(state.storageDetail, style = MaterialTheme.typography.bodySmall)
+            if (state.destinationCode != M23CinderboxFirstPolicy.Code.EMPTY_SEPARATE_DESTINATION) {
+                Text("Destination review: ${state.destinationCode.name.replace('_', ' ')}",
+                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
+            Spacer(Modifier.height(12.dp))
             // Steam depot size is not known in advance. Optional user estimate is conservative.
             StardewCard {
                 Column(Modifier.padding(12.dp)) {

@@ -534,6 +534,7 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
             // Download tab
             composable("game_download") {
                 GameDownloadScreen(
+                    onOpenInstallationHealth = { parentNavController.navigate("installation_health") },
                     onBack = {
                         mainNavController.navigate("saves") {
                             popUpTo(mainNavController.graph.findStartDestination().id) {

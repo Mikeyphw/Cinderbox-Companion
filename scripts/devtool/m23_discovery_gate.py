@@ -13,6 +13,15 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[2]
 PATHS = (
     'app/src/main/java/com/sdvsync/local/M23InstallationDiscovery.kt',
+    'app/src/main/java/com/sdvsync/local/M23CinderboxFirstPolicy.kt',
+    'app/src/main/java/com/sdvsync/download/GameDownloadManager.kt',
+    'app/src/main/java/com/sdvsync/download/GameDownloadService.kt',
+    'app/src/main/java/com/sdvsync/ui/screens/GameDownloadScreen.kt',
+    'app/src/main/java/com/sdvsync/MainActivity.kt',
+    'app/src/test/java/com/sdvsync/local/M23CinderboxFirstPolicyTest.kt',
+    'app/src/androidTest/java/com/sdvsync/qualification/M23CinderboxFirstDeviceTest.kt',
+    'scripts/devtool/m23_cinderbox_first_device_run.py',
+    'scripts/devtool/test_m23_cinderbox_first.py',
     'app/src/main/java/com/sdvsync/local/InstallationScanner.kt',
     'app/src/main/java/com/sdvsync/ui/screens/InstallationHealthScreen.kt',
     'app/src/main/java/com/sdvsync/ui/viewmodels/GameDownloadViewModel.kt',
@@ -59,10 +68,10 @@ def generate(root: Path = ROOT, env: dict | None = None) -> dict:
         if policy.get(flag) is not False:
             raise GateError('UNSAFE_RELEASE_POLICY')
     source = {p:sha(safe(root,p)) for p in PATHS}
-    kotlin = safe(root,PATHS[0]).decode()
-    scanner = safe(root,PATHS[1]).decode()
-    ui = safe(root,PATHS[2]).decode()
-    viewmodel = safe(root,PATHS[3]).decode()
+    kotlin = safe(root,'app/src/main/java/com/sdvsync/local/M23InstallationDiscovery.kt').decode()
+    scanner = safe(root,'app/src/main/java/com/sdvsync/local/InstallationScanner.kt').decode()
+    ui = safe(root,'app/src/main/java/com/sdvsync/ui/screens/InstallationHealthScreen.kt').decode()
+    viewmodel = safe(root,'app/src/main/java/com/sdvsync/ui/viewmodels/GameDownloadViewModel.kt').decode()
     for token in ('MAX_CHILDREN = 256', 'DirectoryStream', 'newDirectoryStream',
                   'UNSAFE_LINK', 'RECOVERY_REVIEW', 'CANDIDATE_UNVERIFIED',
                   'NO_AUTHENTICATED_DEPOT_MANIFEST', 'SMAPI_VERSION_AND_GAME_COMPATIBILITY_UNKNOWN',
@@ -73,8 +82,31 @@ def generate(root: Path = ROOT, env: dict | None = None) -> dict:
         raise GateError('READ_ONLY_SCAN_NOT_ENFORCED')
     if 'result.discovery' not in ui or 'Not tested for writes' not in ui:
         raise GateError('UI_DISCOVERY_MISSING')
-    if 'if (!resume && discovered.gameAlreadyPresent)' not in viewmodel:
-        raise GateError('DOWNLOAD_EXISTING_GAME_GUARD_MISSING')
+    policy = safe(root,'app/src/main/java/com/sdvsync/local/M23CinderboxFirstPolicy.kt').decode()
+    manager = safe(root,'app/src/main/java/com/sdvsync/download/GameDownloadManager.kt').decode()
+    service = safe(root,'app/src/main/java/com/sdvsync/download/GameDownloadService.kt').decode()
+    download_ui = safe(root,'app/src/main/java/com/sdvsync/ui/screens/GameDownloadScreen.kt').decode()
+    activity = safe(root,'app/src/main/java/com/sdvsync/MainActivity.kt').decode()
+    for token in ('PROTECTED_CINDERBOX_TREE', 'EMPTY_SEPARATE_DESTINATION',
+                  'primary.toPath().startsWith(target.toPath())',
+                  'target.toPath().startsWith(primary.toPath())',
+                  'hasSymlinkAncestor(destination)', 'val authorizesDownload: Boolean = false'):
+        if token not in policy: raise GateError('PRIMARY_CINDERBOX_PROTECTION_MISSING')
+    if 'M23CinderboxFirstPolicy.assess(' not in viewmodel or 'discovered.gameAlreadyPresent' in viewmodel:
+        raise GateError('DOWNLOAD_DESTINATION_POLICY_MISSING')
+    if ('M23CinderboxFirstPolicy.assess(' not in manager or
+        'check(scope.separateEmptyDestination)' not in manager or
+        'M23InstallationDiscovery.game(destDir).status == M23InstallationDiscovery.Status.MISSING' not in manager or
+        'GameDownloadRecovery.safeDestination(destDir)' not in manager):
+        raise GateError('DOWNLOAD_MANAGER_DESTINATION_GUARD_MISSING')
+    if 'M23CinderboxFirstPolicy.assess(installRoot, File(CinderboxPaths.ROOT_DIR))' not in service:
+        raise GateError('DOWNLOAD_SERVICE_PROTECTION_MISSING')
+    if 'Inspect existing Cinderbox installation' not in download_ui or 'onOpenInstallationHealth' not in activity:
+        raise GateError('CINDERBOX_FIRST_UI_MISSING')
+    if 'StoragePreflight.check(File(path))' in viewmodel or 'StoragePreflight.check(File(selectedDir))' in viewmodel:
+        raise GateError('PASSIVE_SCREEN_WRITE_PROBE')
+    if 'M23CinderboxFirstPolicyTest' not in safe(root,'app/src/test/java/com/sdvsync/local/M23CinderboxFirstPolicyTest.kt').decode():
+        raise GateError('CINDERBOX_FIRST_TESTS_MISSING')
     cfg=tomllib.loads(safe(root,'.devtool.toml').decode())
     target=cfg['targets']['cinderbox']
     flow=target['workflows'].get('m23-check',[])
@@ -83,9 +115,20 @@ def generate(root: Path = ROOT, env: dict | None = None) -> dict:
     jobs=target['jobs']
     if flow[-1]['ref'] != 'job:m23-discovery' or 'm23-discovery' not in jobs:
         raise GateError('M23_JOB_MISSING')
+    delta=target['workflows'].get('m23-cinderbox-check',[])
+    if [n.get('id') for n in delta] != ['security','m22','tests','policy','inventory','android_source']:
+        raise GateError('M23_CINDERBOX_DAG_INVALID')
+    for prev, node in zip(delta, delta[1:]):
+        if node.get('depends_on') != [prev['id']]:
+            raise GateError('M23_CINDERBOX_DAG_DEPENDENCY_MISSING')
+    delta_job=jobs.get('m23-cinderbox-first-tests',{})
+    if 'test_m23_cinderbox_first.py' not in delta_job.get('command',[]) or not delta_job.get('metadata',{}).get('read_only'):
+        raise GateError('M23_CINDERBOX_JOB_MISSING')
     for workflow in ('.github/workflows/build.yml','.github/workflows/devtool-android-build.yml'):
         content=safe(root,workflow).decode()
-        if 'scripts/devtool/m23_discovery_gate.py' not in content or 'test_m23_discovery.py' not in content:
+        if ('scripts/devtool/m23_discovery_gate.py' not in content or
+            'test_m23_discovery.py' not in content or
+            'test_m23_cinderbox_first.py' not in content):
             raise GateError('CI_GATE_MISSING')
     return {
         'schema_version':1, 'producer':'cinderbox-m23-discovery',
@@ -102,7 +145,7 @@ def generate(root: Path = ROOT, env: dict | None = None) -> dict:
         'release_qualified':False, 'publication_allowed':False,
         'source_sha256':source,
         'safety':{'bounded_direct_roots':True,'no_recursive_scan':True,'no_write_probe_in_health_screen':True,
-                  'unknown_version_never_green':True, 'download_guard_detects_existing_game':True},
+                  'unknown_version_never_green':True, 'separate_destination_blocks_only_local_existing_files':True, 'primary_cinderbox_tree_write_protected':True},
         'result_kind':'HOST_SOURCE_GATE_ONLY'
     }
 

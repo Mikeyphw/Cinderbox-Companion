@@ -141,6 +141,9 @@ jobs:
       - name: M23 read-only installation discovery source regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m23_discovery.py' -v
 
+      - name: M23 primary Cinderbox protection and destination regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m23_cinderbox_first.py' -v
+
       - name: M23 source-bound installation discovery gate
         run: python3 scripts/devtool/m23_discovery_gate.py --output "$RUNNER_TEMP/cinderbox-m23-host.json"
 

@@ -40,10 +40,20 @@ class M23HostTests(unittest.TestCase):
         def changed(root,path):
             data=original(root,path)
             if path.endswith('GameDownloadViewModel.kt'):
-                return data.replace(b'if (!resume && discovered.gameAlreadyPresent)',b'if (false)')
+                return data.replace(b'M23CinderboxFirstPolicy.assess(',b'M23CinderboxFirstPolicy.omitted(')
             return data
         with patch.object(gate,'safe',side_effect=changed):
             with self.assertRaises(gate.GateError): gate.generate(gate.ROOT,{})
+
+    def test_main_download_manager_guard_cannot_be_removed(self):
+        original=gate.safe
+        def changed(root,path):
+            data=original(root,path)
+            if path.endswith('GameDownloadManager.kt'):
+                return data.replace(b'check(scope.separateEmptyDestination)',b'check(true)')
+            return data
+        with patch.object(gate,'safe',side_effect=changed):
+            with self.assertRaises(gate.GateError):gate.generate(gate.ROOT,{})
 
     def test_readonly_observation_cannot_become_write_probe(self):
         original=gate.safe

@@ -336,6 +336,12 @@ command = ["python3", "scripts/devtool/m23_discovery_gate.py"]
 inputs = ["scripts/devtool/m23_discovery_gate.py", "app/src/main/java/com/sdvsync/local/M23InstallationDiscovery.kt", "app/src/main/java/com/sdvsync/local/InstallationScanner.kt", "app/src/main/java/com/sdvsync/ui/screens/InstallationHealthScreen.kt", "app/src/main/java/com/sdvsync/ui/viewmodels/GameDownloadViewModel.kt", "app/src/test/java/com/sdvsync/local/M23InstallationDiscoveryTest.kt", ".github/workflows/**", "docs/devtool/M23_INSTALLATION_DISCOVERY.md"]
 metadata = { read_only = true, area = "m23-installation-discovery", evidence = "source-bound-json", device_required = false, root_required = false }
 
+[targets.cinderbox.jobs.m23-cinderbox-first-tests]
+runner = "command"
+command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_m23_cinderbox_first.py", "-v"]
+inputs = ["scripts/devtool/test_m23_cinderbox_first.py", "scripts/devtool/m23_discovery_gate.py", "app/src/main/java/com/sdvsync/local/M23CinderboxFirstPolicy.kt", "app/src/test/java/com/sdvsync/local/M23CinderboxFirstPolicyTest.kt"]
+metadata = { read_only = true, area = "m23-primary-cinderbox", device_required = false, root_required = false }
+
 [targets.cinderbox.jobs.m23-device-source]
 runner = "command"
 command = ["python3", "scripts/devtool/m23_device_test_gate.py"]
@@ -444,6 +450,14 @@ m23-device-check = [
   { id = "tests", ref = "job:m23-host-tests", depends_on = ["m22"] },
   { id = "inventory", ref = "job:m23-discovery", depends_on = ["tests"] },
   { id = "android_test_source", ref = "job:m23-device-source", depends_on = ["inventory"] },
+]
+m23-cinderbox-check = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "m22", ref = "job:m22-baseline", depends_on = ["security"] },
+  { id = "tests", ref = "job:m23-host-tests", depends_on = ["m22"] },
+  { id = "policy", ref = "job:m23-cinderbox-first-tests", depends_on = ["tests"] },
+  { id = "inventory", ref = "job:m23-discovery", depends_on = ["policy"] },
+  { id = "android_source", ref = "job:m23-device-source", depends_on = ["inventory"] },
 ]
 m23-full = [
   { id = "security", ref = "job:security-contract", depends_on = [] },

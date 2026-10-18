@@ -21,7 +21,9 @@ METHODS=(
     'm23_10SelectedArchiveWrapperIsUnverified',
 )
 EXPECTED=tuple(m[:6] for m in METHODS)
-PATHS=(TEST,'app/src/main/java/com/sdvsync/local/M23InstallationDiscovery.kt',
+PATHS=(TEST, 'app/src/androidTest/java/com/sdvsync/qualification/M23CinderboxFirstDeviceTest.kt',
+       'app/src/main/java/com/sdvsync/local/M23CinderboxFirstPolicy.kt',
+       'app/src/main/java/com/sdvsync/local/M23InstallationDiscovery.kt',
        'app/src/main/java/com/sdvsync/local/InstallationScanner.kt',
        'scripts/devtool/m23_device_test_gate.py', 'scripts/devtool/m23_device_run.py', 'scripts/devtool/test_m23_device_runner.py', '.devtool.toml',
        '.github/workflows/build.yml','.github/workflows/devtool-android-build.yml',
@@ -65,6 +67,13 @@ def generate(root:Path=ROOT,env:dict|None=None)->dict:
     runner=data['scripts/devtool/m23_device_run.py'].decode()
     if 'parse_m23_instrumentation(output)' not in runner or 'frozenset(METHODS)' not in runner:
         raise GateError('DEVICE_RUNNER_METHOD_MAPPING_MISSING')
+    integration = data['app/src/androidTest/java/com/sdvsync/qualification/M23CinderboxFirstDeviceTest.kt'].decode()
+    cb_methods = re.findall(r'@Test\s+fun\s+(m23cb_\d\d\w*)\s*\(', integration)
+    if len(cb_methods) != 3 or [n[:8] for n in cb_methods] != ['m23cb_01','m23cb_02','m23cb_03']:
+        raise GateError('CINDERBOX_DEVICE_TEST_MATRIX_CHANGED')
+    for term in ('targetContext.cacheDir.canonicalFile', 'm23-cinderbox-first-',
+                 'M23CinderboxFirstPolicy.assess(', 'assertFalse(result.authorizesDownload)'):
+        if term not in integration: raise GateError('CINDERBOX_DEVICE_FIXTURE_CONTRACT_CHANGED')
     cfg=tomllib.loads(data['.devtool.toml'].decode())
     job=cfg['targets']['cinderbox']['jobs'].get('m23-device-source',{})
     cmd=job.get('command',[])
@@ -86,6 +95,7 @@ def generate(root:Path=ROOT,env:dict|None=None)->dict:
                 source_commit=head,github_run_id=env.get('GITHUB_RUN_ID'),
                 github_source_bound=bool(env.get('GITHUB_SHA')),
                 test_class=CLASS,expected_cases=methods,expected_case_count=len(methods),
+                cinderbox_integration_cases=cb_methods,cinderbox_integration_case_count=3,
                 installed_apk_verified=False,device_executed=False,device_qualified=False,
                 real_user_installation_examined=False,real_game_files_modified=False,
                 historical_m14_m22_evidence_replaced=False,release_qualified=False,
