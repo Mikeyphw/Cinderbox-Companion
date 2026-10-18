@@ -205,12 +205,15 @@ class GameDownloadManager(
                 "Selected folder already contains files; choose an empty destination"
             }
             // Journal before starting the service. A process death leaves a recoverable download.
-            recovery.beginNew(directory, branch, os, verifyAfterDownload)
+            recovery.beginStaged(directory, branch, os, verifyAfterDownload)
             recovery.bindSteamBuildId(branchBuildId)
         } else {
             // Existing game bytes are usable ONLY if this exact session created them.
             recovery.requireMatching(directory, branch, os, verifyAfterDownload)
             recovery.requireSteamBuildId(branchBuildId)
+            check(checkpoint.stagingDirectory != null) {
+                "Legacy direct-write checkpoint cannot authorize M24 staging; preserve bytes for review"
+            }
         }
         GameDownloadService.start(
             context = context,

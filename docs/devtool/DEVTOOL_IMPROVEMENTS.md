@@ -156,3 +156,10 @@ This ledger is cumulative; append future Devtool gaps and campaign findings rath
 | DEV-M24-RECOVERY-002 | M6 download journal was bound to directory/branch/OS/verify and marker but not Steam branch build, allowing stale-resume ambiguity. | Bind build ID atomically to owned journal; reject unbound/stale live recovery while keeping historical fixture compatibility and all partial bytes. | M24 source plus synthetic checks; Android device pending |
 | DEV-M24-INTEGRITY-003 | Local SHA-256 checksum ledger could be read as proof of Steam-depot authenticity; downloader wrote in place and did not atomically publish a game directory. | Make local verification mandatory; report local-only state and track signed manifest verification and atomic directory commit as distinct unmet obligations. | M24 reporting corrected; manifest/atomic install remains OPEN |
 | DEV-M24-WRAPPER-004 | M23 Cinderbox-first overlay added workflow without wrapper alias (`Unknown wrapper command`), requiring direct invoke. | Register both `m24-check` and `m24-full` wrapper aliases alongside target workflows; extend CI source-bound gate and private Android synthetic cases. | M24 source added, run qualification pending |
+
+### M24-STAGE-01 — Download stage/atomic receipt and recovery registration (2026-10-18)
+- **Evidence:** M24 initial service directed DepotDownloader to the final selected path while the app-private recovery journal recorded ownership; per-file verification used only a local SHA-256 ledger. This left no atomic whole-game visibility boundary.
+- **Affected:** Cinderbox Companion M24; Devtool wrapper and Android Actions.
+- **Implemented:** source-bound owned sibling stage, atomic same-filesystem rename without copy fallback, post-rename reconciliation, new `m24-stage-check` wrapper, independent Android source fixture lane and GitHub gate. No changes to imported Cinderbox files.
+- **Remaining:** live Steam manifest-to-file proof, authenticated entitled depot receipt, atomic rename behavior on target device and process-death verification. Do not call these qualified from fixtures.
+- **Status:** SOURCE_IMPLEMENTED / LIVE_UNQUALIFIED.

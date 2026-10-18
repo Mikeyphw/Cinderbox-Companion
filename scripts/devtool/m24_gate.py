@@ -8,6 +8,10 @@ ROOT=Path(__file__).resolve().parents[2]
 PATHS=(
     'app/src/main/java/com/sdvsync/download/M24SteamSelectionPolicy.kt',
     'app/src/main/java/com/sdvsync/download/GameDownloadRecovery.kt',
+    'app/src/test/java/com/sdvsync/download/M24StagedGameTransactionTest.kt',
+    'app/src/androidTest/java/com/sdvsync/qualification/M24StagedTransactionDeviceTest.kt',
+    'scripts/devtool/m24_staged_device_run.py',
+    'scripts/devtool/test_m24_staged_gate.py',
     'app/src/main/java/com/sdvsync/download/GameDownloadManager.kt',
     'app/src/main/java/com/sdvsync/download/GameDownloadService.kt',
     'app/src/main/java/com/sdvsync/ui/viewmodels/GameDownloadViewModel.kt',
@@ -54,11 +58,14 @@ def generate(root=ROOT,env=None):
         require(term in rec,'CHECKPOINT_BINDING_MISSING')
     for term in ('require(verifyAfterDownload && branchBuildId > 0L)',
                  'recovery.bindSteamBuildId(branchBuildId)','recovery.requireSteamBuildId(branchBuildId)',
+                 'recovery.beginStaged(directory, branch, os, verifyAfterDownload)',
                  'expectedBuildId = branchBuildId', 'StoragePlanner.downloadPlan(directory, estimatedPayloadBytes).sufficient == true'):
         require(term in mgr,'MANAGER_GATE_MISSING')
     for term in ('recheckBranch()', 'SteamContentService(clientManager)',
-                 'GameDownloadRecovery(filesDir).requireSteamBuildId(expectedBuildId)',
-                 'verifyFiles(installDir, completedFiles)',
+                 'recovery.requireSteamBuildId(expectedBuildId)',
+                 'verifyFiles(installDir, stageRoot, completedFiles, ::recheckBranch)',
+                 'recovery.requireActiveStage(installRoot)',
+                 'promoteStaged(File(installDir))',
                  'LOCAL_SHA256_ONLY_MANIFEST_UNATTESTED',
                  'StoragePlanner.downloadPlan(installRoot, estimatedPayloadBytes).sufficient == true'):
         require(term in svc,'SERVICE_GATE_MISSING')
@@ -83,17 +90,20 @@ def generate(root=ROOT,env=None):
         require(ci.count('scripts/devtool/m24_gate.py')==1,'CI_GATE_NOT_BOUND')
         require(ci.count('test_m24_gate.py')==1,'CI_HOST_TESTS_NOT_BOUND')
         require(ci.index('scripts/devtool/m24_gate.py')<ci.index('assembleDebugAndroidTest'),'CI_ORDER_INVALID')
+    for token in ('fun beginStaged(', 'fun requireActiveStage(', 'fun promoteStaged(',
+                  'StandardCopyOption.ATOMIC_MOVE', 'fun isPromotedStage('):
+        require(token in rec, 'ATOMIC_STAGE_POLICY_MISSING')
     return dict(schema_version=1,producer='cinderbox-m24-host-source',repository='Mikeyphw/Cinderbox-Companion',
                 source_commit=head,github_run_id=env.get('GITHUB_RUN_ID'),
                 github_source_bound=bool(env.get('GITHUB_SHA')),
                 overall='PASS_SOURCE_ONLY',source_sha256={k:hashlib.sha256(v).hexdigest() for k,v in sorted(content.items())},
                 synthetic_device_cases=list(METHODS),device_executed=False,installed_source_verified=False,
                 authenticated_steam_tested=False,licensed_depot_manifest_verified=False,
-                atomic_game_install_committed=False,real_game_modified=False,
+                atomic_game_install_committed=False,atomic_stage_source_implemented=True,real_game_modified=False,
                 historical_m14_m23_evidence_replaced=False,device_qualified=False,
                 release_qualified=False,publication_allowed=False,
                 obligations=['STEAM_LICENSE_AND_SIGNED_MANIFEST_EVIDENCE','REAL_CONSENTED_DOWNLOAD',
-                             'PROVEN_APK_IDENTITY','ATOMIC_GAME_DIRECTORY_COMMIT','PROCESS_DEATH_RECOVERY'])
+                             'PROVEN_APK_IDENTITY','REAL_ATOMIC_STAGE_PROMOTION','PROCESS_DEATH_RECOVERY'])
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--output',type=Path)

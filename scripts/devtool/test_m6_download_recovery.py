@@ -9,7 +9,7 @@ class M6DownloadRecoveryTest(unittest.TestCase):
     def test_resume_requires_owned_app_private_session(self):
         manager = read('app/src/main/java/com/sdvsync/download/GameDownloadManager.kt')
         self.assertIn('GameDownloadRecovery(context.filesDir)', manager)
-        self.assertIn('recovery.beginNew(', manager)
+        self.assertIn('recovery.beginStaged(', manager)
         self.assertIn('recovery.requireMatching(', manager)
         self.assertIn('fun pendingDownload()', manager)
         self.assertIn('fun discardPendingDownload()', manager)

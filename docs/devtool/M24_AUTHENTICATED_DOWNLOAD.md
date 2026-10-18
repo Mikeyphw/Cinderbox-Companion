@@ -16,3 +16,12 @@
 **M24 is not fully qualified.** Live licensed Steam depot ownership; authenticated per-depot manifest/chunk proof; a trusted depot manifest-to-files comparison; atomic game directory commit; real network interruption/cancellation/reconnection; storage revocation/shortage and consented real download are **NOT_RUN**, and source or synthetic test PASS cannot substitute for them. `verifyAndRecord` only records self-computed local hashes. The existing downloader writes in place to its owned separate destination and is not an atomic game-directory transaction; do not claim it is.
 
 The previous M23 10/10 and 3/3 Android receipts retain their original source attribution. The new M24 synthetic lane must be run using exact matching CI APK and test APK; its runner deliberately reports `installed_source_verified=false` until separately attested. Publishing and release signing remain disabled.
+
+## M24 staged transfer increment (PR #34 follow-up)
+
+- Live M24 transfers use a **separate, owned sibling staging directory**, not the selected final game path. The final path must be absent; even an empty preexisting directory is not replaced. Users may need to choose a new path.
+- A durable app-private journal binds stage identity, destination, branch and build ID. Resumption after a process death only accepts the matching token and existing stage. Legacy direct-write sessions are rejected for *new* M24 transfers but their bytes are preserved.
+- After local SHA-256 checks and another live PICS check, a same-filesystem `ATOMIC_MOVE` publishes the stage; no non-atomic copy fallback. If interrupted between rename and journal cleanup, cold recovery reconciles a matching marker and verifies the destination before clearing recovery.
+- An explicit discard forgets ownership metadata without deleting partial files; it does not automatically clean orphaned stages.
+- This is **local-only integrity**, NOT authenticated Steam file-manifest or entitlement evidence. `LOCAL_SHA256_ONLY_MANIFEST_UNATTESTED` remains the user-visible completion scope. Live Steam, manifest integrity and a physical device crash experiment remain unqualified. New device fixtures do not touch user game storage.
+- Known limitation: concurrent unrelated external actors modifying the destination parent are not a qualified adversarial filesystem environment. Future manifest binding and destructive operation approval remain outstanding. Release publication disabled.

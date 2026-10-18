@@ -177,7 +177,15 @@ class GameDownloadService : Service() {
             // Only a checkpoint written by our manager authorizes touching partial files.
             // This also rejects intents manually dispatched to the service.
             GameDownloadRecovery(filesDir).requireMatching(installRoot, branch, os, verify)
-            GameDownloadRecovery(filesDir).requireSteamBuildId(expectedBuildId)
+            val recovery = GameDownloadRecovery(filesDir)
+            recovery.requireSteamBuildId(expectedBuildId)
+            if (recovery.isPromotedStage(installRoot)) {
+                // Crash occurred after atomic rename, before final ledger/journal
+                // commit. Rehash the installed bytes without contacting downloader.
+                verifyPromotedFiles(installRoot)
+                return
+            }
+            val stageRoot = recovery.requireActiveStage(installRoot)
             GameDownloadManager._progress.value = DownloadProgress(state = DownloadState.PREPARING)
             updateNotification(getString(R.string.download_preparing))
 
@@ -346,7 +354,7 @@ class GameDownloadService : Service() {
             val appItem = AppItem(
                 appId = 413150,
                 installToGameNameDirectory = false,
-                installDirectory = installDir,
+                installDirectory = stageRoot.absolutePath,
                 branch = branch,
                 branchPassword = password ?: "",
                 downloadAllPlatforms = false,
@@ -375,7 +383,7 @@ class GameDownloadService : Service() {
 
             // Every M24 live transfer requires a local SHA-256 ledger. This does
             // not attest an independent signed Steam depot manifest.
-            verifyFiles(installDir, completedFiles)
+            verifyFiles(installDir, stageRoot, completedFiles, ::recheckBranch)
         } catch (e: CancellationException) {
             AppLogger.d(TAG, "Download cancelled")
             GameDownloadManager._progress.value = DownloadProgress(
@@ -403,11 +411,25 @@ class GameDownloadService : Service() {
         }
     }
 
+    private suspend fun verifyPromotedFiles(destination: File) {
+        // Interrupted after atomic promotion: no transfer or destructive replay.
+        val report = GameFileIntegrity(filesDir).verifyAndRecord(destination)
+        check(report.passed) { "Promoted files failed local SHA-256 verification" }
+        GameDownloadRecovery(filesDir).completed()
+        GameDownloadManager._progress.value = DownloadProgress(
+            state = DownloadState.COMPLETED, overallPercent = 1f,
+            verifiedFiles = report.files, totalFilesToVerify = report.files,
+            verificationPassed = true,
+            integrityScope = "LOCAL_SHA256_ONLY_MANIFEST_UNATTESTED"
+        )
+    }
+
     /** Persist SHA-256 hashes and detect changed/unreadable game files.
      * This is local integrity checking; Steam authenticates chunks during transfer.
      */
-    private suspend fun verifyFiles(installDir: String, completedFiles: Set<String>) {
-        val root = File(installDir)
+    private suspend fun verifyFiles(installDir: String, stageRoot: File,
+        completedFiles: Set<String>, recheckBranch: suspend () -> Unit) {
+        val root = stageRoot
         GameDownloadManager._progress.value = DownloadProgress(
             state = DownloadState.VERIFYING, totalFilesToVerify = completedFiles.size
         )
@@ -434,8 +456,12 @@ class GameDownloadService : Service() {
             updateNotification("File verification failed. Retry to repair this download.")
             return
         }
-        // Do not retire recovery until the file audit and ledger commit both succeeded.
-        GameDownloadRecovery(filesDir).completed()
+        // Final PICS check after hashing, before the only filesystem commit.
+        recheckBranch()
+        // Atomic same-volume publish requires an ABSENT target. No copy fallback.
+        GameDownloadRecovery(filesDir).promoteStaged(File(installDir))
+        // The final ledger must refer to the published destination, not the stage.
+        verifyPromotedFiles(File(installDir))
         GameDownloadManager._progress.value = DownloadProgress(
             state = DownloadState.COMPLETED, overallPercent = 1f,
             verifiedFiles = report.files, totalFilesToVerify = report.files,

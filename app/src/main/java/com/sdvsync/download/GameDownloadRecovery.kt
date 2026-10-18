@@ -18,14 +18,19 @@ data class GameDownloadCheckpoint(
     val os: String,
     val verify: Boolean,
     val token: String,
-    val steamBuildId: Long = 0L
+    val steamBuildId: Long = 0L,
+    val stagingDirectory: String? = null
 ) {
     fun matches(directory: File, branch: String, os: String, verify: Boolean): Boolean {
         val safe = GameDownloadRecovery.safeDestination(directory)
         if (this.directory != safe.path || this.branch != branch ||
             this.os != os || this.verify != verify) return false
         // A path alone cannot establish ownership of a partial installation.
-        val marker = File(safe, ".cinderbox-download.session")
+        val stage = stagingDirectory?.let { GameDownloadRecovery.safeDestination(File(it)) }
+        // Staged receipts are either PRE-PROMOTION (stage only) or AFTER-PROMOTION
+        // (destination only). Both present means a conflict, never trusted recovery.
+        if (stage != null && stage.exists() == safe.exists()) return false
+        val marker = File(if (stage?.exists() == true) stage else safe, ".cinderbox-download.session")
         return runCatching { marker.isFile && !Files.isSymbolicLink(marker.toPath()) &&
             marker.readText() == token }.getOrDefault(false)
     }
@@ -75,20 +80,48 @@ class GameDownloadRecovery(private val privateRoot: File) {
         val rawBuild = props.getProperty("steam_build_id")
         val buildId = rawBuild?.toLongOrNull() ?: if (rawBuild == null) 0L else error("Invalid branch build identity")
         check(buildId >= 0L) { "Invalid branch build identity" }
-        return GameDownloadCheckpoint(directory, branch, os, verify, token, buildId)
+        val stagePath = props.getProperty("staging_directory")
+        if (stagePath != null) {
+            val stage = safeDestination(File(stagePath))
+            check(stage.path == stagePath && stage.parentFile == safe.parentFile &&
+                stage.name == ".${safe.name}.cinderbox-m24-stage-$token") {
+                "Invalid M24 staging directory identity"
+            }
+        }
+        return GameDownloadCheckpoint(directory, branch, os, verify, token, buildId, stagePath)
     }
 
     /** Only call this for a NEW, already preflighted empty installation directory. */
-    @Synchronized fun beginNew(directory: File, branch: String, os: String, verify: Boolean) {
+    @Synchronized fun beginNew(directory: File, branch: String, os: String, verify: Boolean) =
+        beginOwned(directory, branch, os, verify, false)
+
+    /** For live M24 traffic: create an owned sibling stage, never write to the
+     * selected destination until the complete staging tree has been checked.
+     * A preexisting destination, even empty, is deliberately not replaced.
+     */
+    @Synchronized fun beginStaged(directory: File, branch: String, os: String, verify: Boolean) =
+        beginOwned(directory, branch, os, verify, true)
+
+    private fun beginOwned(directory: File, branch: String, os: String, verify: Boolean, staged: Boolean) {
         check(pending() == null) { "Resolve the previous download before starting another" }
         val safe = safeDestination(directory)
         require(branch.length in 1..128 && os in setOf("windows", "linux", "macos")) {
             "Unsupported Steam download selection"
         }
         check(privateRoot.isDirectory || privateRoot.mkdirs()) { "App-private download storage inaccessible" }
-        check(safe.isDirectory || safe.mkdirs()) { "Game download directory is inaccessible" }
         val token = UUID.randomUUID().toString()
-        val marker = File(safe, ".cinderbox-download.session")
+        val stage = if (staged) {
+            check(!safe.exists() && safe.parentFile?.isDirectory == true) {
+                "Staged download requires an absent target and existing parent"
+            }
+            File(safe.parentFile, ".${safe.name}.cinderbox-m24-stage-$token").also {
+                check(it.mkdir()) { "Cannot create exclusive M24 staging directory" }
+            }
+        } else {
+            check(safe.isDirectory || safe.mkdirs()) { "Game download directory is inaccessible" }
+            safe
+        }
+        val marker = File(stage, ".cinderbox-download.session")
         check(marker.createNewFile()) { "Game directory already contains a download ownership marker" }
         try { marker.writeText(token) }
         catch (e: Exception) { marker.delete(); throw e }
@@ -100,6 +133,7 @@ class GameDownloadRecovery(private val privateRoot: File) {
             setProperty("os", os)
             setProperty("verify", verify.toString())
             setProperty("token", token)
+            if (staged) setProperty("staging_directory", stage.path)
         }
         val temp = File(privateRoot, "m6-game-download-${System.nanoTime()}.tmp")
         try {
@@ -115,7 +149,10 @@ class GameDownloadRecovery(private val privateRoot: File) {
             }
         } catch (e: Exception) {
             // Failure before publishing a journal leaves no authorized resume session.
-            if (!journal.exists()) marker.delete()
+            if (!journal.exists()) {
+                marker.delete()
+                if (staged) stage.delete() // only our empty private stage
+            }
             throw e
         } finally {
             if (temp.exists()) temp.delete()
@@ -159,6 +196,58 @@ class GameDownloadRecovery(private val privateRoot: File) {
         } finally { temp.delete() }
     }
 
+
+    /** Resolve a journal-owned stage. No metadata or path alone can authorize a
+     * write into a destination or into a different staging tree.
+     */
+    @Synchronized fun requireActiveStage(destination: File): File {
+        val current = pending() ?: error("M24 staged checkpoint missing")
+        check(current.stagingDirectory != null && current.steamBuildId > 0L &&
+            current.directory == safeDestination(destination).path &&
+            current.matches(destination, current.branch, current.os, current.verify)) {
+            "Staging identity or ownership changed"
+        }
+        val stage = safeDestination(File(current.stagingDirectory))
+        check(stage.isDirectory && !destination.exists()) {
+            "Staged transfer already promoted or destination changed; do not redownload"
+        }
+        return stage
+    }
+
+    @Synchronized fun isPromotedStage(destination: File): Boolean {
+        val current = pending() ?: return false
+        if (current.stagingDirectory == null || current.steamBuildId <= 0L ||
+            current.directory != safeDestination(destination).path) return false
+        val stage = safeDestination(File(current.stagingDirectory))
+        return !stage.exists() && destination.isDirectory &&
+            current.matches(destination, current.branch, current.os, current.verify)
+    }
+
+    /** An atomic same-filesystem directory rename; never fall back to copying or
+     * replace preexisting content. Integrity and live identity checks precede it.
+     * If a process dies after the rename, the unchanged journal/marker allow
+     * completion reconciliation without a second download.
+     */
+    @Synchronized fun promoteStaged(destination: File) {
+        val current = pending() ?: error("M24 staging journal missing")
+        val safe = safeDestination(destination)
+        val stage = requireActiveStage(safe)
+        check(current.matches(safe, current.branch, current.os, current.verify)) {
+            "Staging marker mismatch"
+        }
+        check(!safe.exists()) { "Target appeared during staged transfer; no overwrite" }
+        var gameFileCount = 0
+        stage.walkTopDown().forEach { node ->
+            check(!Files.isSymbolicLink(node.toPath())) { "Staged tree contains a symbolic link" }
+            if (node.isFile && node.name != ".cinderbox-download.session") gameFileCount++
+        }
+        check(gameFileCount > 0) { "No game files in staged transfer" }
+        // AtomicMoveNotSupportedException deliberately propagates: non-atomic
+        // fallback could expose a partially copied game to Cinderbox.
+        Files.move(stage.toPath(), safe.toPath(), StandardCopyOption.ATOMIC_MOVE)
+        check(isPromotedStage(safe)) { "Promotion ownership could not be reconciled" }
+    }
+
     /** Old or corrupt checkpoints cannot be used for a current authenticated download. */
     @Synchronized fun requireSteamBuildId(buildId: Long) {
         require(buildId > 0L) { "Steam build identity unavailable" }
@@ -173,6 +262,11 @@ class GameDownloadRecovery(private val privateRoot: File) {
         val current = pending()
         if (current != null) {
             val marker = File(current.directory, ".cinderbox-download.session")
+            if (current.stagingDirectory != null) {
+                check(isPromotedStage(File(current.directory))) {
+                    "Cannot finalize unpromoted or conflicting staged download"
+                }
+            }
             if (marker.exists()) {
                 check(!Files.isSymbolicLink(marker.toPath()) && marker.isFile &&
                     marker.readText() == current.token) { "Game download ownership changed" }
@@ -186,7 +280,9 @@ class GameDownloadRecovery(private val privateRoot: File) {
     @Synchronized fun discard() {
         val current = pending()
         if (current != null) {
-            val marker = File(current.directory, ".cinderbox-download.session")
+            val path = current.stagingDirectory?.let { File(it) }
+                ?.takeIf { it.exists() } ?: File(current.directory)
+            val marker = File(path, ".cinderbox-download.session")
             if (marker.isFile && !Files.isSymbolicLink(marker.toPath()) &&
                 runCatching { marker.readText() == current.token }.getOrDefault(false)) marker.delete()
         }

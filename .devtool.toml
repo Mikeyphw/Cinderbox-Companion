@@ -130,6 +130,11 @@ description = "M24 source-bound Steam selection, checkpoint binding and private 
 workflow = "m24-check"
 target = "cinderbox"
 
+[wrapper.commands.m24-stage-check]
+description = "M24 isolated staging, atomic publish and crash-safe resume safety lane"
+workflow = "m24-stage-check"
+target = "cinderbox"
+
 [wrapper.commands.m24-full]
 description = "M24 gate plus existing Android unit, lint and debug build chain"
 workflow = "m24-full"
@@ -364,6 +369,12 @@ command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p
 inputs = ["scripts/devtool/test_m24_gate.py", "scripts/devtool/m24_gate.py", "scripts/devtool/m24_device_run.py", "app/src/test/java/com/sdvsync/download/M24*", "app/src/androidTest/java/com/sdvsync/qualification/M24*"]
 metadata = { read_only = true, area = "m24-steam-authenticated-download", device_required = false, root_required = false }
 
+[targets.cinderbox.jobs.m24-staged-tests]
+runner = "command"
+command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_m24_staged_gate.py", "-v"]
+inputs = ["scripts/devtool/test_m24_staged_gate.py", "scripts/devtool/m24_staged_device_run.py", "app/src/test/java/com/sdvsync/download/M24StagedGameTransactionTest.kt", "app/src/androidTest/java/com/sdvsync/qualification/M24StagedTransactionDeviceTest.kt", "app/src/main/java/com/sdvsync/download/GameDownloadRecovery.kt"]
+metadata = { read_only = true, area = "m24-staged-game-commit", device_required = false, root_required = false }
+
 [targets.cinderbox.jobs.m24-source]
 runner = "command"
 command = ["python3", "scripts/devtool/m24_gate.py"]
@@ -486,6 +497,11 @@ m24-check = [
   { id = "m22", ref = "job:m22-baseline", depends_on = ["security"] },
   { id = "m23", ref = "job:m23-discovery", depends_on = ["m22"] },
   { id = "tests", ref = "job:m24-host-tests", depends_on = ["m23"] },
+  { id = "gate", ref = "job:m24-source", depends_on = ["tests"] },
+]
+m24-stage-check = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "tests", ref = "job:m24-staged-tests", depends_on = ["security"] },
   { id = "gate", ref = "job:m24-source", depends_on = ["tests"] },
 ]
 m24-full = [
