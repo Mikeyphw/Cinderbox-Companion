@@ -19,7 +19,9 @@ import com.sdvsync.logging.AppLogger
 import com.sdvsync.local.InstallationScanner
 import com.sdvsync.local.InstallHealth
 import com.sdvsync.local.StoragePreflight
+import com.sdvsync.local.StoragePlanner
 import com.sdvsync.steam.SteamClientManager
+import com.sdvsync.steam.SteamContentService
 import `in`.dragonbra.javasteam.depotdownloader.DepotDownloader
 import `in`.dragonbra.javasteam.depotdownloader.IDownloadListener
 import `in`.dragonbra.javasteam.depotdownloader.data.AppItem
@@ -45,6 +47,8 @@ class GameDownloadService : Service() {
         private const val EXTRA_INSTALL_DIR = "install_dir"
         private const val EXTRA_OS = "os"
         private const val EXTRA_VERIFY = "verify"
+        private const val EXTRA_BUILD_ID = "steam_build_id"
+        private const val EXTRA_ESTIMATE = "estimated_payload_bytes"
 
         fun start(
             context: Context,
@@ -52,7 +56,9 @@ class GameDownloadService : Service() {
             password: String?,
             installDir: String,
             os: String,
-            verify: Boolean = true
+            verify: Boolean = true,
+            expectedBuildId: Long = 0L,
+            estimatedPayloadBytes: Long? = null
         ) {
             val intent = Intent(context, GameDownloadService::class.java).apply {
                 putExtra(EXTRA_BRANCH, branch)
@@ -60,6 +66,8 @@ class GameDownloadService : Service() {
                 putExtra(EXTRA_INSTALL_DIR, installDir)
                 putExtra(EXTRA_OS, os)
                 putExtra(EXTRA_VERIFY, verify)
+                putExtra(EXTRA_BUILD_ID, expectedBuildId)
+                putExtra(EXTRA_ESTIMATE, estimatedPayloadBytes ?: 0L)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
@@ -98,10 +106,13 @@ class GameDownloadService : Service() {
         val installDir = intent?.getStringExtra(EXTRA_INSTALL_DIR) ?: return START_NOT_STICKY
         val os = intent.getStringExtra(EXTRA_OS) ?: "windows"
         val verify = intent.getBooleanExtra(EXTRA_VERIFY, true)
+        val expectedBuildId = intent.getLongExtra(EXTRA_BUILD_ID, 0L)
+        val estimatedPayloadBytes = intent.getLongExtra(EXTRA_ESTIMATE, 0L)
 
         downloadJob?.cancel()
         downloadJob = serviceScope.launch {
-            runDownload(branch, password, installDir, os, verify)
+            runDownload(branch, password, installDir, os, verify,
+                expectedBuildId, estimatedPayloadBytes)
         }
 
         return START_NOT_STICKY
@@ -135,9 +146,21 @@ class GameDownloadService : Service() {
         password: String?,
         installDir: String,
         os: String,
-        verify: Boolean
+        verify: Boolean,
+        expectedBuildId: Long,
+        estimatedPayloadBytes: Long
     ) {
         try {
+            require(estimatedPayloadBytes > 0L) { "Download requires size estimate" }
+            // This verifies PICS branch identity, NOT actual license/depot entitlement.
+            require(verify && expectedBuildId > 0L) { "Unverified Steam build selection" }
+            check(clientManager.isLoggedIn) { "Steam sign-in required" }
+            val content = SteamContentService(clientManager)
+            suspend fun recheckBranch() {
+                val observed = content.getAppBranches().branches.firstOrNull { it.name == branch }?.buildId
+                M24SteamSelectionPolicy.requireBound(clientManager.isLoggedIn, expectedBuildId, observed)
+            }
+            recheckBranch()
             val installRoot = File(installDir)
             // Defense in depth for restarted/explicit service intents, even if the
             // UI and GameDownloadManager path gates were bypassed.
@@ -148,9 +171,13 @@ class GameDownloadService : Service() {
                 "Protected Cinderbox game tree or unsafe destination"
             }
             StoragePreflight.requireWritable(installRoot)
+            check(StoragePlanner.downloadPlan(installRoot, estimatedPayloadBytes).sufficient == true) {
+                "Insufficient or unknown available storage capacity"
+            }
             // Only a checkpoint written by our manager authorizes touching partial files.
             // This also rejects intents manually dispatched to the service.
             GameDownloadRecovery(filesDir).requireMatching(installRoot, branch, os, verify)
+            GameDownloadRecovery(filesDir).requireSteamBuildId(expectedBuildId)
             GameDownloadManager._progress.value = DownloadProgress(state = DownloadState.PREPARING)
             updateNotification(getString(R.string.download_preparing))
 
@@ -341,18 +368,14 @@ class GameDownloadService : Service() {
             check(!failedItems.get() && GameDownloadManager._progress.value.state != DownloadState.ERROR) {
                 "Steam reported a failed depot or file download"
             }
-            AppLogger.d(TAG, "Download pipeline finished")
+            // An interrupted network session or branch update must not be recorded
+            // as a successful download even if the SDK returned from awaitCompletion.
+            recheckBranch()
+            AppLogger.d(TAG, "Download pipeline finished; PICS build rechecked")
 
-            if (verify) {
-                verifyFiles(installDir, completedFiles)
-            } else {
-                GameDownloadRecovery(filesDir).completed()
-                GameDownloadManager._progress.value = DownloadProgress(
-                    state = DownloadState.COMPLETED,
-                    overallPercent = 1f
-                )
-                updateNotification(getString(R.string.download_complete))
-            }
+            // Every M24 live transfer requires a local SHA-256 ledger. This does
+            // not attest an independent signed Steam depot manifest.
+            verifyFiles(installDir, completedFiles)
         } catch (e: CancellationException) {
             AppLogger.d(TAG, "Download cancelled")
             GameDownloadManager._progress.value = DownloadProgress(
@@ -416,7 +439,8 @@ class GameDownloadService : Service() {
         GameDownloadManager._progress.value = DownloadProgress(
             state = DownloadState.COMPLETED, overallPercent = 1f,
             verifiedFiles = report.files, totalFilesToVerify = report.files,
-            verificationPassed = true
+            verificationPassed = true,
+            integrityScope = "LOCAL_SHA256_ONLY_MANIFEST_UNATTESTED"
         )
         updateNotification(getString(R.string.download_complete))
     }

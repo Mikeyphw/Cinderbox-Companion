@@ -340,7 +340,8 @@ class GameDownloadViewModel(
     }
 
     fun toggleVerification() {
-        _state.value = _state.value.copy(verifyAfterDownload = !_state.value.verifyAfterDownload)
+        // M24: live transfers cannot disable local integrity verification.
+        _state.value = _state.value.copy(verifyAfterDownload = true)
     }
 
     fun startDownload() {
@@ -360,6 +361,13 @@ class GameDownloadViewModel(
             return
         }
 
+        val selectedBranchInfo = current.branches.find { it.name == current.selectedBranch }
+        if (selectedBranchInfo == null || selectedBranchInfo.buildId <= 0L ||
+            !current.verifyAfterDownload) {
+            _state.value = current.copy(error =
+                "Steam branch build information is missing or local verification is disabled. Refresh branches.")
+            return
+        }
         val selectedHealth = InstallationScanner.game(File(current.installDirectory))
         // Existing imported Cinderbox game/SMAPI are primary app assets,
         // not an authorization or a blanket blocker for another destination.
@@ -372,7 +380,7 @@ class GameDownloadViewModel(
             _state.update { it.copy(error = problem.message ?: "Invalid capacity estimate") }
             return
         }
-        if (capacity.sufficient == false) {
+        if (capacity.sufficient == false || capacity.sufficient == null) {
             _state.update { it.copy(error = capacity.detail) }
             return
         }
@@ -381,6 +389,11 @@ class GameDownloadViewModel(
                 current.selectedOs, current.verifyAfterDownload)
         } catch (e: Exception) {
             _state.value = current.copy(error = e.message ?: "Invalid recovery journal")
+            return
+        }
+        if (resume && downloadManager.pendingDownload()?.steamBuildId != selectedBranchInfo.buildId) {
+            _state.value = current.copy(error =
+                "Interrupted checkpoint uses a different or unknown Steam build. Files preserved; review before retry.")
             return
         }
         // A checkpoint never licenses writing inside the original Cinderbox tree.
@@ -405,8 +418,7 @@ class GameDownloadViewModel(
                 "Existing game files detected (${selectedHealth.health}). Only a matching interrupted session may resume them.")
             return
         }
-        val selectedBranchInfo = current.branches.find { it.name == current.selectedBranch }
-        if (selectedBranchInfo?.passwordRequired == true && current.branchPassword.isBlank()) {
+        if (selectedBranchInfo.passwordRequired == true && current.branchPassword.isBlank()) {
             _state.value = current.copy(error = context.getString(R.string.download_error_password_required))
             return
         }
@@ -425,7 +437,9 @@ class GameDownloadViewModel(
                 branchPassword = current.branchPassword.ifBlank { null },
                 installDirectory = current.installDirectory,
                 os = current.selectedOs,
-                verifyAfterDownload = current.verifyAfterDownload
+                verifyAfterDownload = current.verifyAfterDownload,
+                branchBuildId = selectedBranchInfo.buildId,
+                estimatedPayloadBytes = capacity.payloadBytes
             )
         } catch (e: Exception) {
             _state.value = _state.value.copy(error = e.message ?: "Storage is unavailable")

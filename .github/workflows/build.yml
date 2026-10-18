@@ -89,6 +89,19 @@ jobs:
       - name: M18 genuine process recovery host regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m18_*.py' -v
 
+      - name: M24 selection, recovery and evidence source regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m24_gate.py' -v
+
+      - name: M24 source-bound authenticated transfer safety gate
+        run: python3 scripts/devtool/m24_gate.py --output "$RUNNER_TEMP/cinderbox-m24-host.json"
+
+      - name: Upload M24 source-bound evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: m24-host-${{ github.run_id }}
+          path: ${{ runner.temp }}/cinderbox-m24-host.json
+          if-no-files-found: error
+
       - name: M23 read-only installation discovery source regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m23_discovery.py' -v
 

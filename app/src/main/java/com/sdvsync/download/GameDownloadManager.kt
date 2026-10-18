@@ -47,6 +47,7 @@ data class DownloadProgress(
     val verifiedFiles: Int = 0,
     val totalFilesToVerify: Int = 0,
     val verificationPassed: Boolean = true,
+    val integrityScope: String = "NOT_VERIFIED",
     val verificationErrors: List<String> = emptyList(),
     val copiedFiles: Int = 0,
     val totalFilesToCopy: Int = 0,
@@ -166,8 +167,16 @@ class GameDownloadManager(
         branchPassword: String? = null,
         installDirectory: String,
         os: String = "windows",
-        verifyAfterDownload: Boolean = true
+        verifyAfterDownload: Boolean = true,
+        branchBuildId: Long = 0L,
+        estimatedPayloadBytes: Long? = null
     ) {
+        require(estimatedPayloadBytes != null && estimatedPayloadBytes > 0L) {
+            "M24 needs an explicit positive, conservative size estimate"
+        }
+        require(verifyAfterDownload && branchBuildId > 0L) {
+            "M24 requires an authenticated PICS build and local verification"
+        }
         check(_progress.value.state !in setOf(DownloadState.PREPARING,
             DownloadState.DOWNLOADING, DownloadState.VERIFYING, DownloadState.COPYING)) {
             "Another game download is already active"
@@ -181,6 +190,9 @@ class GameDownloadManager(
             "Destination overlaps Cinderbox or cannot be safely inspected"
         }
         StoragePreflight.requireWritable(directory)
+        check(StoragePlanner.downloadPlan(directory, estimatedPayloadBytes).sufficient == true) {
+            "Storage budget unknown or insufficient; request a better estimate"
+        }
         GameDownloadRecovery.safeDestination(directory)
         val checkpoint = recovery.pending()
         if (checkpoint == null) {
@@ -194,9 +206,11 @@ class GameDownloadManager(
             }
             // Journal before starting the service. A process death leaves a recoverable download.
             recovery.beginNew(directory, branch, os, verifyAfterDownload)
+            recovery.bindSteamBuildId(branchBuildId)
         } else {
             // Existing game bytes are usable ONLY if this exact session created them.
             recovery.requireMatching(directory, branch, os, verifyAfterDownload)
+            recovery.requireSteamBuildId(branchBuildId)
         }
         GameDownloadService.start(
             context = context,
@@ -204,7 +218,9 @@ class GameDownloadManager(
             password = branchPassword,
             installDir = installDirectory,
             os = os,
-            verify = verifyAfterDownload
+            verify = verifyAfterDownload,
+            expectedBuildId = branchBuildId,
+            estimatedPayloadBytes = estimatedPayloadBytes
         )
     }
 

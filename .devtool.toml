@@ -125,6 +125,16 @@ description = "M22 checks plus existing unit, lint and verified debug APK jobs"
 workflow = "m22-full"
 target = "cinderbox"
 
+[wrapper.commands.m24-check]
+description = "M24 source-bound Steam selection, checkpoint binding and private fixture source checks"
+workflow = "m24-check"
+target = "cinderbox"
+
+[wrapper.commands.m24-full]
+description = "M24 gate plus existing Android unit, lint and debug build chain"
+workflow = "m24-full"
+target = "cinderbox"
+
 [wrapper.commands.m23-check]
 description = "M23 read-only installation recognition and source-bound evidence DAG"
 workflow = "m23-check"
@@ -348,6 +358,18 @@ command = ["python3", "scripts/devtool/m23_device_test_gate.py"]
 inputs = ["scripts/devtool/m23_device_test_gate.py", "scripts/devtool/test_m23_device_test_gate.py", "app/src/androidTest/java/com/sdvsync/qualification/M23DiscoveryDeviceTest.kt", "app/src/main/java/com/sdvsync/local/M23InstallationDiscovery.kt", ".github/workflows/**", ".devtool.toml"]
 metadata = { read_only = true, area = "m23-android-synthetic-instrumentation", device_required = false, root_required = false, evidence = "source-bound-json" }
 
+[targets.cinderbox.jobs.m24-host-tests]
+runner = "command"
+command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_m24_gate.py", "-v"]
+inputs = ["scripts/devtool/test_m24_gate.py", "scripts/devtool/m24_gate.py", "scripts/devtool/m24_device_run.py", "app/src/test/java/com/sdvsync/download/M24*", "app/src/androidTest/java/com/sdvsync/qualification/M24*"]
+metadata = { read_only = true, area = "m24-steam-authenticated-download", device_required = false, root_required = false }
+
+[targets.cinderbox.jobs.m24-source]
+runner = "command"
+command = ["python3", "scripts/devtool/m24_gate.py"]
+inputs = ["scripts/devtool/m24_gate.py", "scripts/devtool/test_m24_gate.py", "scripts/devtool/m24_device_run.py", "app/src/main/java/com/sdvsync/download/**", "app/src/main/java/com/sdvsync/ui/viewmodels/GameDownloadViewModel.kt", "app/src/main/java/com/sdvsync/ui/screens/GameDownloadScreen.kt", "app/src/androidTest/java/com/sdvsync/qualification/M24*", ".github/workflows/**", "docs/security/M3_RELEASE_POLICY.json"]
+metadata = { read_only = true, area = "m24-steam-authenticated-download", device_required = false, evidence = "source-sha256-json", root_required = false }
+
 [targets.cinderbox.jobs.connected-tests]
 runner = "android"
 gradle_tasks = [":app:connectedDebugAndroidTest"]
@@ -459,6 +481,25 @@ m23-cinderbox-check = [
   { id = "inventory", ref = "job:m23-discovery", depends_on = ["policy"] },
   { id = "android_source", ref = "job:m23-device-source", depends_on = ["inventory"] },
 ]
+m24-check = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "m22", ref = "job:m22-baseline", depends_on = ["security"] },
+  { id = "m23", ref = "job:m23-discovery", depends_on = ["m22"] },
+  { id = "tests", ref = "job:m24-host-tests", depends_on = ["m23"] },
+  { id = "gate", ref = "job:m24-source", depends_on = ["tests"] },
+]
+m24-full = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "m22", ref = "job:m22-baseline", depends_on = ["security"] },
+  { id = "m23", ref = "job:m23-discovery", depends_on = ["m22"] },
+  { id = "tests", ref = "job:m24-host-tests", depends_on = ["m23"] },
+  { id = "gate", ref = "job:m24-source", depends_on = ["tests"] },
+  { id = "unit", ref = "job:unit-tests", depends_on = ["gate"] },
+  { id = "lint", ref = "job:android-lint", depends_on = ["unit"] },
+  { id = "apk", ref = "job:debug-apk", depends_on = ["lint"] },
+  { id = "verify", ref = "job:verify-debug-apk", depends_on = ["apk"] },
+]
+
 m23-full = [
   { id = "security", ref = "job:security-contract", depends_on = [] },
   { id = "m22", ref = "job:m22-baseline", depends_on = ["security"] },

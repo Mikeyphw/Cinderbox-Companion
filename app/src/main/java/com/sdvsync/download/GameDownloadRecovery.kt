@@ -17,7 +17,8 @@ data class GameDownloadCheckpoint(
     val branch: String,
     val os: String,
     val verify: Boolean,
-    val token: String
+    val token: String,
+    val steamBuildId: Long = 0L
 ) {
     fun matches(directory: File, branch: String, os: String, verify: Boolean): Boolean {
         val safe = GameDownloadRecovery.safeDestination(directory)
@@ -71,7 +72,10 @@ class GameDownloadRecovery(private val privateRoot: File) {
         }
         val safe = safeDestination(File(directory))
         check(safe.path == directory) { "Download path changed since checkpoint" }
-        return GameDownloadCheckpoint(directory, branch, os, verify, token)
+        val rawBuild = props.getProperty("steam_build_id")
+        val buildId = rawBuild?.toLongOrNull() ?: if (rawBuild == null) 0L else error("Invalid branch build identity")
+        check(buildId >= 0L) { "Invalid branch build identity" }
+        return GameDownloadCheckpoint(directory, branch, os, verify, token, buildId)
     }
 
     /** Only call this for a NEW, already preflighted empty installation directory. */
@@ -121,6 +125,46 @@ class GameDownloadRecovery(private val privateRoot: File) {
     @Synchronized fun requireMatching(directory: File, branch: String, os: String, verify: Boolean) {
         check(pending()?.matches(directory, branch, os, verify) == true) {
             "No matching interrupted download. Existing files will not be overwritten"
+        }
+    }
+
+    /** Bind a freshly obtained PICS build ID to the existing owned checkpoint.
+     * A crash before this atomic update leaves an unbound checkpoint that cannot
+     * authorize the M24 live service; historical v1 fixtures remain readable.
+     */
+    @Synchronized fun bindSteamBuildId(buildId: Long) {
+        require(buildId > 0L) { "Steam branch build identity unavailable" }
+        val current = pending() ?: error("Missing owned download checkpoint")
+        check(current.matches(File(current.directory), current.branch, current.os, current.verify)) {
+            "Download checkpoint owner changed"
+        }
+        check(current.steamBuildId == 0L || current.steamBuildId == buildId) {
+            "Steam branch build changed during checkpoint binding"
+        }
+        val props = Properties().apply { journal.inputStream().use { load(it) } }
+        props.setProperty("steam_build_id", buildId.toString())
+        val temp = File(privateRoot, "m24-build-${System.nanoTime()}.tmp")
+        try {
+            temp.outputStream().use { out ->
+                props.store(out, "Steam branch build binding; no account data")
+                out.flush()
+                if (out is java.io.FileOutputStream) out.fd.sync()
+            }
+            try {
+                Files.move(temp.toPath(), journal.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                Files.move(temp.toPath(), journal.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
+        } finally { temp.delete() }
+    }
+
+    /** Old or corrupt checkpoints cannot be used for a current authenticated download. */
+    @Synchronized fun requireSteamBuildId(buildId: Long) {
+        require(buildId > 0L) { "Steam build identity unavailable" }
+        val current = pending() ?: error("Download checkpoint missing")
+        check(current.steamBuildId > 0L && current.steamBuildId == buildId) {
+            "Unbound or stale Steam build checkpoint; files preserved for review"
         }
     }
 

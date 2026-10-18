@@ -377,7 +377,7 @@ fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
                 }
             }
             Spacer(Modifier.height(12.dp))
-            // Verification toggle
+            // M24: mandatory local verification (not independent Steam manifest proof).
             StardewCard {
                 Row(
                     modifier = Modifier
@@ -398,8 +398,9 @@ fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
                     }
                     Spacer(Modifier.width(12.dp))
                     Switch(
-                        checked = state.verifyAfterDownload,
-                        onCheckedChange = { viewModel.toggleVerification() }
+                        checked = true,
+                        onCheckedChange = null,
+                        enabled = false
                     )
                 }
             }
@@ -541,6 +542,11 @@ fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
+                            if (progress.integrityScope == "LOCAL_SHA256_ONLY_MANIFEST_UNATTESTED") {
+                                Text("Local SHA-256 consistency passed. Independent Steam depot " +
+                                    "manifest integrity and ownership are not yet attested.",
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 stringResource(R.string.download_complete_desc, state.installDirectory),
