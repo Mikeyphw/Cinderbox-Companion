@@ -140,6 +140,11 @@ description = "M24 source-bound exact CI APK provenance and read-only primary Ci
 workflow = "m24-provenance-check"
 target = "cinderbox"
 
+[wrapper.commands.m24-pics-check]
+description = "M24 PICS depot manifest identity, crash recovery and synthetic source contract"
+workflow = "m24-pics-check"
+target = "cinderbox"
+
 [wrapper.commands.m24-full]
 description = "M24 gate plus existing Android unit, lint and debug build chain"
 workflow = "m24-full"
@@ -386,6 +391,18 @@ command = ["python3", "scripts/devtool/m24_gate.py"]
 inputs = ["scripts/devtool/m24_gate.py", "scripts/devtool/test_m24_gate.py", "scripts/devtool/m24_device_run.py", "app/src/main/java/com/sdvsync/download/**", "app/src/main/java/com/sdvsync/ui/viewmodels/GameDownloadViewModel.kt", "app/src/main/java/com/sdvsync/ui/screens/GameDownloadScreen.kt", "app/src/androidTest/java/com/sdvsync/qualification/M24*", ".github/workflows/**", "docs/security/M3_RELEASE_POLICY.json"]
 metadata = { read_only = true, area = "m24-steam-authenticated-download", device_required = false, evidence = "source-sha256-json", root_required = false }
 
+[targets.cinderbox.jobs.m24-pics-tests]
+runner = "command"
+command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_m24_pics_gate.py", "-v"]
+inputs = ["scripts/devtool/m24_pics_gate.py", "scripts/devtool/test_m24_pics_gate.py", "scripts/devtool/m24_pics_device_run.py", "app/src/androidTest/java/com/sdvsync/qualification/M24PicsManifestIdentityDeviceTest.kt"]
+metadata = { read_only = true, area = "m24-pics-identity", device_required = false, root_required = false }
+
+[targets.cinderbox.jobs.m24-pics-source]
+runner = "command"
+command = ["python3", "scripts/devtool/m24_pics_gate.py"]
+inputs = ["app/src/main/java/com/sdvsync/download/M24DepotManifestIdentity.kt", "app/src/main/java/com/sdvsync/steam/SteamContentService.kt", "app/src/main/java/com/sdvsync/download/GameDownloadRecovery.kt", "app/src/main/java/com/sdvsync/download/GameDownloadService.kt", "scripts/devtool/m24_pics_gate.py", "app/src/test/java/com/sdvsync/download/M24DepotManifestIdentityTest.kt", ".devtool.toml", ".github/workflows/**"]
+metadata = { read_only = true, area = "m24-pics-identity", device_required = false, root_required = false, evidence = "source-sha256-json" }
+
 [targets.cinderbox.jobs.connected-tests]
 runner = "android"
 gradle_tasks = [":app:connectedDebugAndroidTest"]
@@ -520,6 +537,11 @@ m24-stage-check = [
   { id = "security", ref = "job:security-contract", depends_on = [] },
   { id = "tests", ref = "job:m24-staged-tests", depends_on = ["security"] },
   { id = "gate", ref = "job:m24-source", depends_on = ["tests"] },
+]
+m24-pics-check = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "tests", ref = "job:m24-pics-tests", depends_on = ["security"] },
+  { id = "gate", ref = "job:m24-pics-source", depends_on = ["tests"] },
 ]
 m24-provenance-check = [
   { id = "security", ref = "job:security-contract", depends_on = [] },

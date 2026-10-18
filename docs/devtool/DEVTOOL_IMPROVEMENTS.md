@@ -171,3 +171,10 @@ This ledger is cumulative; append future Devtool gaps and campaign findings rath
 - **Implementation:** add `m24-provenance-check` native wrapper/DAG and CI source receipt; opt-in read-only tool compares two downloaded GitHub Actions APK artifact SHA-256s with installed Android base APK SHA-256s using explicitly selected ADB transport; reject missing/split/mismatching packages and stale/failed/wrong-branch CI. Observe only main Cinderbox package and public directory existence.
 - **Open improvement:** Devtool-native first-class installed APK pair attestation, transport deduplication through actual physical-device identity, and provider-backed Steam depot manifest provenance rather than app-local hash ledgers. Never treat this as authenticated Steam entitlement, live download, or release qualification.
 - **Status:** SOURCE_IMPLEMENTED; real-device execution outstanding.
+
+
+## M24-PICS01 — Authenticated PICS depot manifest identity is not signed file integrity (2026-10-18)
+- **Evidence:** `SteamContentService` previously consumed only PICS branch build IDs while `GameDownloadService` generated a local SHA-256 ledger; the depot manifest identity could drift independently without invalidating a build-bound checkpoint.
+- **Affected:** Cinderbox Companion M24 SteamContentService, GameDownloadRecovery, GameDownloadService; Devtool M24 source/device gates.
+- **Fix implemented:** deterministic numeric depot manifest ID snapshot, bound to an owned staged checkpoint; preserve partial bytes on drift. New `m24-pics-check` 3-node DAG and four private Android fixtures, no live Steam or user data required.
+- **Outstanding:** verify independent Steam depot file manifests and entitlement in the JavaSteam API, obtain authorized manifest bytes / authenticated request codes, validate exact file/chunk contents, consented real download and interruption. PICS GIDs alone are not signatures or file hashes. **Status: PARTIAL / external trust provider open.**

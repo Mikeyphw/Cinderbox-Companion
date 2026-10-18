@@ -1,6 +1,7 @@
 package com.sdvsync.steam
 
 import com.sdvsync.logging.AppLogger
+import com.sdvsync.download.M24DepotManifestIdentity
 import `in`.dragonbra.javasteam.steam.handlers.steamapps.PICSRequest
 import `in`.dragonbra.javasteam.steam.handlers.steamapps.callback.PICSProductInfoCallback
 import kotlinx.coroutines.CompletableDeferred
@@ -15,7 +16,9 @@ class SteamContentService(private val clientManager: SteamClientManager) {
         const val STARDEW_APP_ID = 413150
     }
 
-    data class BranchInfo(val name: String, val buildId: Long, val passwordRequired: Boolean, val timeUpdated: Long)
+    data class BranchInfo(val name: String, val buildId: Long, val passwordRequired: Boolean,
+                          val timeUpdated: Long, val manifestFingerprint: String? = null,
+                          val depotCount: Int = 0)
 
     data class AppContentInfo(val branches: List<BranchInfo>)
 
@@ -70,11 +73,24 @@ class SteamContentService(private val clientManager: SteamClientManager) {
 
             AppLogger.d(TAG, "Branch '$name': buildId=$buildId, timeUpdated=$timeUpdated, pwdRequired=$pwdRequired")
 
+            // Every depot manifest identity comes from this same live PICS response.
+            // Missing/ambiguous data is fail-closed for M24 live transfer; PICS
+            // manifest references are NOT per-file signed manifest verification.
+            val manifestIds = depots.children.mapNotNull { depot ->
+                val id = depot.name?.toIntOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
+                val gid = depot["manifests"][name]["gid"].asLong()
+                if (gid <= 0L) null else id to gid.toString()
+            }.toMap()
+            val snapshot = runCatching {
+                M24DepotManifestIdentity.snapshot(name, buildId, manifestIds)
+            }.getOrNull()
             BranchInfo(
                 name = name,
                 buildId = buildId,
                 passwordRequired = pwdRequired,
-                timeUpdated = timeUpdated
+                timeUpdated = timeUpdated,
+                manifestFingerprint = snapshot?.fingerprint,
+                depotCount = snapshot?.depotCount ?: 0
             )
         }.sortedWith(compareByDescending<BranchInfo> { it.name == "public" }.thenByDescending { it.timeUpdated })
 

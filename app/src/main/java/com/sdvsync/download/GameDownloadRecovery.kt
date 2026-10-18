@@ -19,7 +19,8 @@ data class GameDownloadCheckpoint(
     val verify: Boolean,
     val token: String,
     val steamBuildId: Long = 0L,
-    val stagingDirectory: String? = null
+    val stagingDirectory: String? = null,
+    val depotManifestFingerprint: String? = null
 ) {
     fun matches(directory: File, branch: String, os: String, verify: Boolean): Boolean {
         val safe = GameDownloadRecovery.safeDestination(directory)
@@ -88,7 +89,11 @@ class GameDownloadRecovery(private val privateRoot: File) {
                 "Invalid M24 staging directory identity"
             }
         }
-        return GameDownloadCheckpoint(directory, branch, os, verify, token, buildId, stagePath)
+        val manifestHash = props.getProperty("pics_depot_manifest_fingerprint")
+        check(manifestHash == null || manifestHash.matches(Regex("[0-9a-f]{64}"))) {
+            "Corrupt PICS depot manifest fingerprint in journal"
+        }
+        return GameDownloadCheckpoint(directory, branch, os, verify, token, buildId, stagePath, manifestHash)
     }
 
     /** Only call this for a NEW, already preflighted empty installation directory. */
@@ -196,6 +201,45 @@ class GameDownloadRecovery(private val privateRoot: File) {
         } finally { temp.delete() }
     }
 
+
+    /** Bind the fresh PICS depot manifest *identity* to an owned M24 stage.
+     * Does not establish authentic depot file contents or a Steam entitlement.
+     */
+    @Synchronized fun bindDepotManifestFingerprint(fingerprint: String) {
+        check(fingerprint.matches(Regex("[0-9a-f]{64}"))) { "Invalid PICS depot fingerprint" }
+        val current = pending() ?: error("Missing owned M24 journal")
+        check(current.stagingDirectory != null && current.steamBuildId > 0L &&
+            current.matches(File(current.directory), current.branch, current.os, current.verify)) {
+            "PICS manifest cannot bind an unowned or legacy download"
+        }
+        check(current.depotManifestFingerprint == null || current.depotManifestFingerprint == fingerprint) {
+            "Steam depot manifest identity changed; partial bytes preserved"
+        }
+        if (current.depotManifestFingerprint == fingerprint) return
+        val props = Properties().apply { journal.inputStream().use { load(it) } }
+        props.setProperty("pics_depot_manifest_fingerprint", fingerprint)
+        val temp = File(privateRoot, "m24-pics-${System.nanoTime()}.tmp")
+        try {
+            temp.outputStream().use { out ->
+                props.store(out, "PICS depot manifest identity only; not signed file proof")
+                out.flush()
+                if (out is java.io.FileOutputStream) out.fd.sync()
+            }
+            // Do not fall back to non-atomic replacement for this binding.
+            Files.move(temp.toPath(), journal.toPath(),
+                StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        } finally { temp.delete() }
+    }
+
+    @Synchronized fun requireDepotManifestFingerprint(fingerprint: String) {
+        val current = pending() ?: error("Missing owned M24 journal")
+        check(current.stagingDirectory != null && current.steamBuildId > 0L &&
+            current.depotManifestFingerprint != null &&
+            current.depotManifestFingerprint == fingerprint &&
+            current.matches(File(current.directory), current.branch, current.os, current.verify)) {
+            "Steam PICS depot manifest identity missing or changed; bytes preserved"
+        }
+    }
 
     /** Resolve a journal-owned stage. No metadata or path alone can authorize a
      * write into a destination or into a different staging tree.

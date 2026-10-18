@@ -63,7 +63,7 @@ def generate(root=ROOT,env=None):
         require(term in mgr,'MANAGER_GATE_MISSING')
     for term in ('recheckBranch()', 'SteamContentService(clientManager)',
                  'recovery.requireSteamBuildId(expectedBuildId)',
-                 'verifyFiles(installDir, stageRoot, completedFiles, ::recheckBranch)',
+                 'verifyFiles(installDir, stageRoot, completedFiles, ::recheckBranch, checkNotNull(sessionManifestFingerprint))',
                  'recovery.requireActiveStage(installRoot)',
                  'promoteStaged(File(installDir))',
                  'LOCAL_SHA256_ONLY_MANIFEST_UNATTESTED',

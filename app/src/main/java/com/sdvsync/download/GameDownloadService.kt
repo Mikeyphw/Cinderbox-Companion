@@ -156,9 +156,18 @@ class GameDownloadService : Service() {
             require(verify && expectedBuildId > 0L) { "Unverified Steam build selection" }
             check(clientManager.isLoggedIn) { "Steam sign-in required" }
             val content = SteamContentService(clientManager)
+            var sessionManifestFingerprint: String? = null
             suspend fun recheckBranch() {
-                val observed = content.getAppBranches().branches.firstOrNull { it.name == branch }?.buildId
-                M24SteamSelectionPolicy.requireBound(clientManager.isLoggedIn, expectedBuildId, observed)
+                val selected = content.getAppBranches().branches.firstOrNull { it.name == branch }
+                M24SteamSelectionPolicy.requireBound(clientManager.isLoggedIn, expectedBuildId, selected?.buildId)
+                val fingerprint = selected?.manifestFingerprint
+                    ?: error("PICS branch has no usable depot manifest IDs; no live transfer permitted")
+                if (sessionManifestFingerprint != null) {
+                    check(sessionManifestFingerprint == fingerprint) {
+                        "Steam depot manifest identity changed during download; staged bytes preserved"
+                    }
+                }
+                sessionManifestFingerprint = fingerprint
             }
             recheckBranch()
             val installRoot = File(installDir)
@@ -179,6 +188,9 @@ class GameDownloadService : Service() {
             GameDownloadRecovery(filesDir).requireMatching(installRoot, branch, os, verify)
             val recovery = GameDownloadRecovery(filesDir)
             recovery.requireSteamBuildId(expectedBuildId)
+            val manifestFingerprint = checkNotNull(sessionManifestFingerprint)
+            recovery.bindDepotManifestFingerprint(manifestFingerprint)
+            recovery.requireDepotManifestFingerprint(manifestFingerprint)
             if (recovery.isPromotedStage(installRoot)) {
                 // Crash occurred after atomic rename, before final ledger/journal
                 // commit. Rehash the installed bytes without contacting downloader.
@@ -383,7 +395,7 @@ class GameDownloadService : Service() {
 
             // Every M24 live transfer requires a local SHA-256 ledger. This does
             // not attest an independent signed Steam depot manifest.
-            verifyFiles(installDir, stageRoot, completedFiles, ::recheckBranch)
+            verifyFiles(installDir, stageRoot, completedFiles, ::recheckBranch, checkNotNull(sessionManifestFingerprint))
         } catch (e: CancellationException) {
             AppLogger.d(TAG, "Download cancelled")
             GameDownloadManager._progress.value = DownloadProgress(
@@ -428,7 +440,8 @@ class GameDownloadService : Service() {
      * This is local integrity checking; Steam authenticates chunks during transfer.
      */
     private suspend fun verifyFiles(installDir: String, stageRoot: File,
-        completedFiles: Set<String>, recheckBranch: suspend () -> Unit) {
+        completedFiles: Set<String>, recheckBranch: suspend () -> Unit,
+        expectedManifestFingerprint: String) {
         val root = stageRoot
         GameDownloadManager._progress.value = DownloadProgress(
             state = DownloadState.VERIFYING, totalFilesToVerify = completedFiles.size
@@ -458,6 +471,8 @@ class GameDownloadService : Service() {
         }
         // Final PICS check after hashing, before the only filesystem commit.
         recheckBranch()
+        // Crash recovery must still own the same PICS manifest identity.
+        GameDownloadRecovery(filesDir).requireDepotManifestFingerprint(expectedManifestFingerprint)
         // Atomic same-volume publish requires an ABSENT target. No copy fallback.
         GameDownloadRecovery(filesDir).promoteStaged(File(installDir))
         // The final ledger must refer to the published destination, not the stage.
