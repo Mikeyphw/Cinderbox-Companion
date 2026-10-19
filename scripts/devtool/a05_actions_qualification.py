@@ -137,8 +137,23 @@ def verify_local(root:Path, *, run_id:int, attempt:int, source_sha:str, require_
             raise ProofError('Machine receipts incomplete')
         for name in FILES[3:]:
             data=_json(root/name)
-            if data.get('ok') is not True or data.get('exit_code') != 0 or data.get('result',{}).get('success') is not True:
+            if data.get('ok') is not True or data.get('exit_code') != 0:
                 raise ProofError('Native machine execution did not pass: '+name)
+            # Standard JSON API returns result.success. A --machine-file invoke
+            # envelope instead contains a canonical EXO operation and totals.
+            result=data.get('result')
+            if result is not None:
+                if not isinstance(result,dict) or result.get('success') is not True:
+                    raise ProofError('Native machine execution did not pass: '+name)
+            elif name!='devtool-invoke.json':
+                raise ProofError('Native machine result missing: '+name)
+            else:
+                machine=data.get('machine')
+                if not isinstance(machine,dict) or machine.get('operation',{}).get('status')!='ok':
+                    raise ProofError('Native EXO operation did not pass: '+name)
+                totals=data.get('totals')
+                if not isinstance(totals,dict) or totals.get('failed',0)!=0 or totals.get('errors',0)!=0:
+                    raise ProofError('Native EXO failure counters nonzero: '+name)
     return {'overall':'PASS_CINDERBOX_A05_LOCAL_EVIDENCE_VERIFIED', 'run_id':run_id,
             'attempt':attempt,'source_sha':source_sha,'devtool_sha':DEVTOOL_SHA,
             'release_qualified':False,'device_qualified':False}
@@ -149,6 +164,27 @@ def _gh_api(endpoint):
     try:return json.loads(p.stdout)
     except json.JSONDecodeError as e:raise ProofError('Invalid GitHub response') from e
 
+def _frozen_mode_contract(expected_sha:str)->None:
+    """Confirm job guards in Git source at the *dispatched* commit.
+
+    Some GitHub workflow_dispatch runs omit inputs from GET /actions/runs/{id}.
+    Use job conclusions as a substitute ONLY when the frozen workflow has the
+    two exact mode guards. Never silently trust today's mutable worktree.
+    """
+    p=subprocess.run(['git','-c',f'safe.directory={ROOT}','-C',str(ROOT),
+                      'show',f'{expected_sha}:{WORKFLOW}'],
+                     capture_output=True,text=True,timeout=20)
+    if p.returncode:
+        raise ProofError('Cannot verify immutable workflow at dispatched source commit')
+    flow=p.stdout
+    required=(
+        "  build-debug-apk:\n    if: ${{ inputs.a05_mode != 'native-only' }}",
+        "  a05-native-devtool-dag:\n    if: ${{ inputs.a05_mode == 'native-only' || inputs.a05_mode == 'both' }}",
+        "        options: ['off', 'native-only', 'both']",
+    )
+    if any(flow.count(fragment)!=1 for fragment in required) or flow.count('  workflow_dispatch:')!=1:
+        raise ProofError('Dispatched source lacks exact mutually constrained A05 mode guards')
+
 def verify_run(run_id:int, out:Path, expected_sha:str, mode:str):
     if run_id<1 or not _SHA.fullmatch(expected_sha) or mode not in ('native-only','both'):
         raise ProofError('Exact run ID, source SHA and scope are required')
@@ -158,8 +194,16 @@ def verify_run(run_id:int, out:Path, expected_sha:str, mode:str):
         run.get('path','').split('@')[0].lstrip('/')) != (
          run_id,expected_sha,'workflow_dispatch','completed',WORKFLOW):
         raise ProofError('Remote GitHub run has mismatched source/workflow/event/status')
-    if run.get('inputs',{}).get('a05_mode') != mode:
+    inputs=run.get('inputs')
+    if inputs is not None and not isinstance(inputs,dict):
+        raise ProofError('Unexpected GitHub workflow inputs structure')
+    if isinstance(inputs,dict) and 'a05_mode' in inputs and inputs['a05_mode']!=mode:
         raise ProofError('Selected workflow input mode does not match the expected A05 mode')
+    # No input supplied by the remote API? Prove it from Git-pinned guards and
+    # exact jobs, never by assuming that absent means native-only.
+    missing_mode=not isinstance(inputs,dict) or 'a05_mode' not in inputs
+    if missing_mode:
+        _frozen_mode_contract(expected_sha)
     attempt=run.get('run_attempt')
     if not isinstance(attempt,int) or attempt<1:raise ProofError('Missing exact GitHub run attempt')
     jobs=_gh_api(base+'/jobs?per_page=100')
@@ -168,9 +212,15 @@ def verify_run(run_id:int, out:Path, expected_sha:str, mode:str):
     matched=[j for j in items if j.get('name') == 'A05 native DAG + EXO evidence' and j.get('run_attempt',attempt)==attempt]
     if len(matched)!=1 or matched[0].get('conclusion')!='success':raise ProofError('Native A05 DAG job not successful')
     if run.get('conclusion')!='success':raise ProofError('GitHub workflow not successful')
+    build=[j for j in items if j.get('name') == 'build-debug-apk' and j.get('run_attempt',attempt)==attempt]
+    if len(build)!=1:raise ProofError('Expected exactly one Android build job for exact run attempt')
     if mode=='both':
-        build=[j for j in items if j.get('name') == 'build-debug-apk' and j.get('run_attempt',attempt)==attempt]
-        if len(build)!=1 or build[0].get('conclusion')!='success':raise ProofError('Android build job not successful')
+        if build[0].get('conclusion')!='success':raise ProofError('Android build job not successful')
+    elif build[0].get('conclusion')!='skipped':
+        raise ProofError('Native-only mode did not skip Android build job')
+    if missing_mode and (matched[0].get('status') not in (None,'completed')
+                         or build[0].get('status') not in (None,'completed')):
+        raise ProofError('Incomplete job conclusions cannot establish omitted dispatch mode')
     artifacts=_gh_api(base+'/artifacts?per_page=100')
     data=artifacts.get('artifacts',[])
     if artifacts.get('total_count')!=len(data):raise ProofError('Unpaged artifact collection')

@@ -91,3 +91,35 @@ claim installed-wheel distribution qualification.
 After local A05-R1 acceptance and a branch push, create a **new**
 `native-only` workflow dispatch (do not replay attempt 1 of run 39296491876).
 Pass the NEW run ID and the NEW branch HEAD to the existing exact-run verifier.
+
+## A05-R2: qualify existing successful run without redispatch
+
+GitHub [run 39301086093](https://github.com/Mikeyphw/Cinderbox-Companion/actions/runs/39301086093)
+completed successfully at commit `7675f3471326b3ca52a9474a17d96a6bde2943d6`
+with attempt `1`. The native DAG succeeded and the Android build was skipped
+as required for `native-only`. Artifact ID `12211842809` includes the complete
+successful plan, preflight and invoke evidence. The first verifier falsely
+refused because the GitHub workflow-run REST response lacked `inputs`, and it
+would then have falsely rejected the successful `--machine-file` invoke JSON
+for lacking `result.success`.
+
+A05-R2 repairs *only* the read-only verifier. If GitHub inputs are missing,
+prove the dispatch scope using the source-bound job guards committed at the
+**selected remote run's exact SHA**, and the exact job conclusions. Present
+conflicting inputs still refuse. The EXO invoke receipt must have success,
+exit zero, operation status `ok` and zero failure/error counters. The complete
+artifact SHA256 manifest must match. No source-only qualification implies
+an Android device, signed distribution or release qualification.
+
+After installing A05-R2, use the existing successful run ID:
+
+```sh
+python3 scripts/devtool/a05_actions_qualification.py verify-run \
+  --run-id 39301086093 \
+  --sha 7675f3471326b3ca52a9474a17d96a6bde2943d6 \
+  --mode native-only \
+  --out "$HOME/cinderbox-a05-39301086093"
+```
+
+Do not repeat or replay that GitHub dispatch. The output folder must be empty
+or absent; the verification command downloads the exact artifact read-only.

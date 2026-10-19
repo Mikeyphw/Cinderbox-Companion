@@ -45,3 +45,30 @@ be reconciled into it in the next Devtool-core overlay. Do not rewrite history.
 - **Disposition:** first GitHub run FAILED, artifact incomplete and correctly
   unqualified. Cinderbox A05-R1 local source acceptance pending, live rerun
   pending. Nothing is release/device qualified.
+
+## 2026-10-19 — A05-R2: GitHub omits workflow_dispatch inputs + machine-file envelope (LIVE-A05-02)
+
+- **Observed live evidence:** run `39301086093`, attempt `1`, Cinderbox commit
+  `7675f3471326b3ca52a9474a17d96a6bde2943d6`; native DAG job
+  `118226159093` **success**, Android build job `118226161404` **skipped**;
+  artifact `12211842809`, name `cinderbox-a05-native-dag`, SHA-256 ZIP digest
+  `f21e550f4a632a492a4f73e07a75859d01394a63173d68f832bd354fd86671ea`.
+- **Defect A:** GitHub's actual workflow-run REST document omits `inputs`
+  entirely. The verifier incorrectly treats absence as a proven mismatch.
+- **Defect B:** `invoke --machine-file` emits `ok`, `exit_code`, EXO machine
+  operation state and failure counters; unlike `plan/preflight --json`, it
+  does not contain `result.success`. The verifier wrongly required it.
+- **Repair:** if dispatch inputs are genuinely absent, examine job conclusions
+  **only after verifying the immutable workflow at that exact run's source
+  commit contains the mutually constraining mode guards**. Explicitly present
+  contradictory inputs still refuse. For `native-only`, require A05 job success
+  and Android build skipped; for `both`, both jobs must succeed. Recognize the
+  canonical invoke envelope and fail closed on missing/failed operation and
+  any nonzero failure counters. Keep internal SHA256SUMS, run attempt, source,
+  artifact identity and remote conclusion requirements intact.
+- **Affected:** Cinderbox A05-R1 remote verifier, future GitHub Actions
+  consumers of Devtool machine-file; no change to CI execution or signing.
+- **Qualification:** GitHub run success and downloaded artifact bytes checked;
+  formal user-local `PASS_CINDERBOX_A05_GITHUB_RUN_VERIFIED` receipt pending
+  A05-R2 installation. Device/release qualifications remain false. Separate
+  Devtool-core wheel packaging repair remains OPEN.
