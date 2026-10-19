@@ -2,6 +2,8 @@ package com.sdvsync.ui.viewmodels
 
 import android.content.Context
 import android.os.Environment
+import android.net.Uri
+import com.sdvsync.local.M24AndroidFolderPicker
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sdvsync.R
@@ -16,7 +18,6 @@ import com.sdvsync.local.M23CinderboxFirstPolicy
 import com.sdvsync.local.InstallAssessment
 import com.sdvsync.local.InstallHealth
 import com.sdvsync.local.StoragePreflight
-import com.sdvsync.local.StoragePlanner
 import java.io.File
 import com.sdvsync.download.GitHubReleaseChecker
 import com.sdvsync.download.SmapiSetupProgress
@@ -64,7 +65,6 @@ data class GameDownloadState(
     val destinationCode: M23CinderboxFirstPolicy.Code = M23CinderboxFirstPolicy.Code.DESTINATION_UNREADABLE,
     val storageReady: Boolean = false,
     val storageDetail: String = "Storage not checked",
-    val estimatedGameSizeGiB: String = "",
     val verifyAfterDownload: Boolean = true,
     val hasRecoverableDownload: Boolean = false,
     val downloadProgress: DownloadProgress = DownloadProgress(),
@@ -351,9 +351,15 @@ class GameDownloadViewModel(
         _state.value = _state.value.copy(branchPassword = password)
     }
 
-    fun updateStorageEstimate(value: String) {
-        // User-specified guess only. Steam may require more; no inferred depot size.
-        _state.update { it.copy(estimatedGameSizeGiB = value.take(4)) }
+    fun chooseAndroidFolder(uri: Uri) {
+        runCatching { M24AndroidFolderPicker.resolve(context, uri) }
+            .onSuccess { directory ->
+                updateInstallDirectory(directory.absolutePath)
+                _state.update { it.copy(error = null) }
+            }
+            .onFailure { error ->
+                _state.update { it.copy(error = error.message ?: "Unsupported folder selection") }
+            }
     }
 
     fun toggleVerification() {
@@ -390,17 +396,6 @@ class GameDownloadViewModel(
         // not an authorization or a blanket blocker for another destination.
         val destination = M23CinderboxFirstPolicy.assess(
             File(current.installDirectory), File(CinderboxPaths.ROOT_DIR))
-        val capacity = runCatching {
-            StoragePlanner.downloadPlan(File(current.installDirectory),
-                StoragePlanner.parseGiB(current.estimatedGameSizeGiB))
-        }.getOrElse { problem ->
-            _state.update { it.copy(error = problem.message ?: "Invalid capacity estimate") }
-            return
-        }
-        if (capacity.sufficient == false || capacity.sufficient == null) {
-            _state.update { it.copy(error = capacity.detail) }
-            return
-        }
         val resume = try {
             downloadManager.canResume(File(current.installDirectory), current.selectedBranch,
                 current.selectedOs, current.verifyAfterDownload)
@@ -455,8 +450,7 @@ class GameDownloadViewModel(
                 installDirectory = current.installDirectory,
                 os = current.selectedOs,
                 verifyAfterDownload = current.verifyAfterDownload,
-                branchBuildId = selectedBranchInfo.buildId,
-                estimatedPayloadBytes = capacity.payloadBytes
+                branchBuildId = selectedBranchInfo.buildId
             )
         } catch (e: Exception) {
             _state.value = _state.value.copy(error = e.message ?: "Storage is unavailable")

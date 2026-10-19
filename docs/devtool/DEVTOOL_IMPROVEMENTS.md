@@ -216,3 +216,10 @@ This ledger is cumulative; append future Devtool gaps and campaign findings rath
 - Affected: Cinderbox-Companion; `SteamContentService`, `GameDownloadService`, `GameDownloadManager`, download UI, CI APK qualification.
 - Mitigation: dynamically resolve only PICS-advertised shared depot/parent pairs against fresh parent PICS appinfo; fail closed on denied/unavailable parent, no local manifest trust substitution; preserve staged content. Move prereq checks within progress error handling; inspect Android installed app read-only, avoid redundant Cinderbox download, avoid implicit SMAPI reinstall.
 - Status: IMPLEMENTED_SOURCE_PENDING_CI_AND_LIVE_ACCEPTANCE. No Steam signature or release qualification claims.
+
+## M24 verification completion and folder choice (2026-10-19)
+
+- **Evidence:** Real 100%-of-hashing UI apparently frozen before additional manifest/PICS and post-promotion rechecks; source used unlabelled `overallPercent` for a single pass. Android destination previously required typing a filesystem path; manual size guess made download fail despite unknown reliable depot sizes.
+- **Affected:** Cinderbox Companion `GameDownloadService`, `GameFileIntegrity`, cross-check, Compose screen, VM/manager; Devtool M11/M24 source regressions.
+- **Change:** Named verification stages and per-stage progress during double-hash, cached manifest comparison, network identity recheck, atomic publication, and post-promotion verification. Android `OpenDocumentTree` maps supported primary internal-storage subfolders only; other providers reject safely. Removed the Steam download storage budget UI and mandatory guessed payload but retained protected Cinderbox tree, writable-path and fail-closed integrity gates. No restart or deletion.
+- **Status:** IMPLEMENTED_SOURCE_ONLY. Android Gradle CI, picker on-device and actual final Steam transfer still need testing.

@@ -9,7 +9,8 @@ import okio.Path.Companion.toPath
  * checksum, NOT a Valve signature. PICS IDs are a separate live-session binding.
  */
 object M24DepotManifestCrosscheck {
-    fun verify(stage: File, picsIds: Map<Int, String>, completedDepots: Set<Int>? = null): M24DepotFileProof.Result {
+    fun verify(stage: File, picsIds: Map<Int, String>, completedDepots: Set<Int>? = null,
+               progress: (Int, Int) -> Unit = { _, _ -> }): M24DepotFileProof.Result {
         require(picsIds.isNotEmpty() && picsIds.size <= 128) { "Missing live PICS manifest identities" }
         val expected = LinkedHashMap<String, M24DepotFileProof.FileEntry>()
         val config = File(stage, ".DepotDownloader")
@@ -61,6 +62,6 @@ object M24DepotManifestCrosscheck {
                 require(previous == null || previous == entry) { "Conflicting depot files" }
             }
         }
-        return M24DepotFileProof.verify(stage, expected)
+        return M24DepotFileProof.verify(stage, expected, progress)
     }
 }

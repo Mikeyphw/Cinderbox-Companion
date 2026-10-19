@@ -95,6 +95,11 @@ jobs:
       - name: M24 staging and crash-recovery source regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m24_staged_gate.py' -v
 
+      - name: M24 verification phase and Android folder picker regressions
+        run: |
+          python3 -m unittest discover -s scripts/devtool -p 'test_m24_verify_ux_gate.py' -v
+          python3 scripts/devtool/m24_verify_ux_gate.py
+
       - name: M24 shared depot parent PICS and setup source gate
         run: python3 scripts/devtool/m24_shared_depot_gate.py
 

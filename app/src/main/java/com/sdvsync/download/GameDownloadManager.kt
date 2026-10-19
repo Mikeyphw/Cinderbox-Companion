@@ -45,6 +45,7 @@ data class DownloadProgress(
     val depotPhase: String = "",
     val filesDownloaded: Int = 0,
     val errorMessage: String? = null,
+    val verificationPhase: String = "",
     val verifiedFiles: Int = 0,
     val totalFilesToVerify: Int = 0,
     val verificationPassed: Boolean = true,
@@ -169,12 +170,8 @@ class GameDownloadManager(
         installDirectory: String,
         os: String = "windows",
         verifyAfterDownload: Boolean = true,
-        branchBuildId: Long = 0L,
-        estimatedPayloadBytes: Long? = null
+        branchBuildId: Long = 0L
     ) {
-        require(estimatedPayloadBytes != null && estimatedPayloadBytes > 0L) {
-            "M24 needs an explicit positive, conservative size estimate"
-        }
         require(verifyAfterDownload && branchBuildId > 0L) {
             "M24 requires an authenticated PICS build and local verification"
         }
@@ -191,9 +188,6 @@ class GameDownloadManager(
             "Destination overlaps Cinderbox or cannot be safely inspected"
         }
         StoragePreflight.requireWritable(directory)
-        check(StoragePlanner.downloadPlan(directory, estimatedPayloadBytes).sufficient == true) {
-            "Storage budget unknown or insufficient; request a better estimate"
-        }
         GameDownloadRecovery.safeDestination(directory)
         val checkpoint = recovery.pending()
         if (checkpoint == null) {
@@ -223,8 +217,7 @@ class GameDownloadManager(
             installDir = installDirectory,
             os = os,
             verify = verifyAfterDownload,
-            expectedBuildId = branchBuildId,
-            estimatedPayloadBytes = estimatedPayloadBytes
+            expectedBuildId = branchBuildId
         )
     }
 

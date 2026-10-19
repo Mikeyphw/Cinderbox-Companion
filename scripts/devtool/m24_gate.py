@@ -61,7 +61,7 @@ def generate(root=ROOT,env=None):
     for term in ('require(verifyAfterDownload && branchBuildId > 0L)',
                  'recovery.bindSteamBuildId(branchBuildId)','recovery.requireSteamBuildId(branchBuildId)',
                  'recovery.beginStaged(directory, branch, os, verifyAfterDownload)',
-                 'expectedBuildId = branchBuildId', 'StoragePlanner.downloadPlan(directory, estimatedPayloadBytes).sufficient == true'):
+                 'expectedBuildId = branchBuildId', 'StoragePreflight.requireWritable(directory)'):
         require(term in mgr,'MANAGER_GATE_MISSING')
     for term in ('recheckBranch()', 'SteamContentService(clientManager)',
                  'recovery.requireSteamBuildId(expectedBuildId)',
@@ -70,12 +70,13 @@ def generate(root=ROOT,env=None):
                  'promoteStaged(File(installDir))',
                  'M24DepotManifestCrosscheck.verify(root, depotIds, completedDepots)',
                  'PICS_BOUND_DEPOT_SHA1_UNSIGNED',
-                 'StoragePlanner.downloadPlan(installRoot, estimatedPayloadBytes).sufficient == true'):
+                 'StoragePreflight.requireWritable(installRoot)'):
         require(term in svc,'SERVICE_GATE_MISSING')
     require('M24DepotManifestCrosscheck.verify(destination, depotIds, completedDepots)' in svc,'PROMOTED_RECONCILIATION_MANIFEST_MISSING')
     require(svc.count('recheckBranch()')>=3,'PRE_AND_POST_PICS_CHECK_REQUIRED')
     require('private val' not in get('app/src/main/java/com/sdvsync/download/M24DepotFileProof.kt') or 'verify(stage:' in get('app/src/main/java/com/sdvsync/download/M24DepotFileProof.kt'), 'MANIFEST_PROOF_SOURCE_MISSING')
-    require('capacity.sufficient == false || capacity.sufficient == null' in ui,'UNKNOWN_CAPACITY_MUST_BLOCK')
+    require('StoragePreflight.check(File(current.installDirectory))' in ui,'DESTINATION_WRITE_PREFLIGHT_REQUIRED')
+    require('Storage budget' not in screen and 'estimatedGameSizeGiB' not in ui,'REMOVED_DOWNLOAD_BUDGET_PRESENT')
     require('selectedBranchInfo.buildId' in ui and '!current.verifyAfterDownload' in ui,'UI_LIVE_GUARD_MISSING')
     require('File integrity verification — required' in screen and 'LOCAL_SHA256_ONLY_MANIFEST_UNATTESTED' in screen,'USER_STATUS_UNSAFE')
     kt=get('app/src/androidTest/java/com/sdvsync/qualification/M24SteamDownloadSafetyDeviceTest.kt')

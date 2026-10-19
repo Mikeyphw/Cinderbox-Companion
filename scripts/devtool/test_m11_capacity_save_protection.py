@@ -5,23 +5,24 @@ ROOT=Path(__file__).resolve().parents[2]
 def src(path): return (ROOT/path).read_text(encoding='utf-8')
 
 class M11Contracts(unittest.TestCase):
-    def test_capacity_guards_copies_and_download_estimations(self):
+    def test_copy_budget_guard_and_download_without_user_size_guess(self):
         planner=src('app/src/main/java/com/sdvsync/local/StoragePlanner.kt')
         vm=src('app/src/main/java/com/sdvsync/ui/viewmodels/GameDownloadViewModel.kt')
         manager=src('app/src/main/java/com/sdvsync/download/GameDownloadManager.kt')
         self.assertIn('payloadBytes == null',planner)
         self.assertIn('availableBytes',planner)
         self.assertIn('DEFAULT_RESERVE',planner)
-        self.assertIn('StoragePlanner.downloadPlan(',vm)
-        self.assertIn('capacity.sufficient == false',vm)
+        self.assertIn('StoragePreflight.check(File(current.installDirectory))',vm)
+        self.assertNotIn('StoragePlanner.downloadPlan(',vm)
+        self.assertNotIn('Storage budget',src('app/src/main/java/com/sdvsync/ui/screens/GameDownloadScreen.kt'))
         self.assertIn('StoragePlanner.copyPlan(destDir, filesToCopy.map { it.first })',manager)
         self.assertIn('if (copyBudget.sufficient != true)',manager)
 
-    def test_visible_planner_no_fabricated_steam_size(self):
+    def test_removed_manual_download_storage_budget(self):
         ui=src('app/src/main/java/com/sdvsync/ui/screens/GameDownloadScreen.kt')
-        self.assertIn('Estimated game download size (GiB, optional)',ui)
-        self.assertIn('Available:',ui)
-        self.assertIn('estimates do not verify steam depot size',ui.lower())
+        self.assertNotIn('Estimated game download size',ui)
+        self.assertNotIn('Storage budget',ui)
+        self.assertIn('Choose folder with Android',ui)
 
     def test_direct_restore_never_deletes_original_before_staging(self):
         tx=src('app/src/main/java/com/sdvsync/saves/SaveRestoreTransaction.kt')

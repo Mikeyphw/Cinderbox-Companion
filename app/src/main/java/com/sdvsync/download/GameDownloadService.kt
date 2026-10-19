@@ -20,7 +20,6 @@ import com.sdvsync.logging.AppLogger
 import com.sdvsync.local.InstallationScanner
 import com.sdvsync.local.InstallHealth
 import com.sdvsync.local.StoragePreflight
-import com.sdvsync.local.StoragePlanner
 import com.sdvsync.steam.SteamClientManager
 import com.sdvsync.steam.SteamContentService
 import `in`.dragonbra.javasteam.depotdownloader.DepotDownloader
@@ -50,7 +49,6 @@ class GameDownloadService : Service() {
         private const val EXTRA_OS = "os"
         private const val EXTRA_VERIFY = "verify"
         private const val EXTRA_BUILD_ID = "steam_build_id"
-        private const val EXTRA_ESTIMATE = "estimated_payload_bytes"
 
         fun start(
             context: Context,
@@ -59,8 +57,7 @@ class GameDownloadService : Service() {
             installDir: String,
             os: String,
             verify: Boolean = true,
-            expectedBuildId: Long = 0L,
-            estimatedPayloadBytes: Long? = null
+            expectedBuildId: Long = 0L
         ) {
             val intent = Intent(context, GameDownloadService::class.java).apply {
                 putExtra(EXTRA_BRANCH, branch)
@@ -69,7 +66,6 @@ class GameDownloadService : Service() {
                 putExtra(EXTRA_OS, os)
                 putExtra(EXTRA_VERIFY, verify)
                 putExtra(EXTRA_BUILD_ID, expectedBuildId)
-                putExtra(EXTRA_ESTIMATE, estimatedPayloadBytes ?: 0L)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
@@ -112,12 +108,10 @@ class GameDownloadService : Service() {
         val os = intent.getStringExtra(EXTRA_OS) ?: "windows"
         val verify = intent.getBooleanExtra(EXTRA_VERIFY, true)
         val expectedBuildId = intent.getLongExtra(EXTRA_BUILD_ID, 0L)
-        val estimatedPayloadBytes = intent.getLongExtra(EXTRA_ESTIMATE, 0L)
 
         downloadJob?.cancel()
         downloadJob = serviceScope.launch {
-            runDownload(branch, password, installDir, os, verify,
-                expectedBuildId, estimatedPayloadBytes)
+            runDownload(branch, password, installDir, os, verify, expectedBuildId)
         }
 
         return START_NOT_STICKY
@@ -152,11 +146,9 @@ class GameDownloadService : Service() {
         installDir: String,
         os: String,
         verify: Boolean,
-        expectedBuildId: Long,
-        estimatedPayloadBytes: Long
+        expectedBuildId: Long
     ) {
         try {
-            require(estimatedPayloadBytes > 0L) { "Download requires size estimate" }
             // This verifies PICS branch identity, NOT actual license/depot entitlement.
             require(verify && expectedBuildId > 0L) { "Unverified Steam build selection" }
             check(clientManager.isLoggedIn) { "Steam sign-in required" }
@@ -199,9 +191,6 @@ class GameDownloadService : Service() {
                 "Protected Cinderbox game tree or unsafe destination"
             }
             StoragePreflight.requireWritable(installRoot)
-            check(StoragePlanner.downloadPlan(installRoot, estimatedPayloadBytes).sufficient == true) {
-                "Insufficient or unknown available storage capacity"
-            }
             // Only a checkpoint written by our manager authorizes touching partial files.
             // This also rejects intents manually dispatched to the service.
             GameDownloadRecovery(filesDir).requireMatching(installRoot, branch, os, verify)
@@ -479,12 +468,33 @@ class GameDownloadService : Service() {
         }
     }
 
+    private fun verifyingStage(phase: String, done: Int = 0, total: Int = 0,
+                               name: String = "") {
+        GameDownloadManager._progress.update { current ->
+            current.copy(state = DownloadState.VERIFYING, verificationPhase = phase,
+                verifiedFiles = done, totalFilesToVerify = total, currentFile = name,
+                // This is a per-stage percentage, never overall verification.
+                overallPercent = if (total > 0) done.toFloat() / total else 0f)
+        }
+    }
+
     private suspend fun verifyPromotedFiles(destination: File, depotIds: Map<Int, String>,
         completedDepots: Set<Int>? = null) {
-        M24DepotManifestCrosscheck.verify(destination, depotIds, completedDepots)
+        val activeJob = currentCoroutineContext()[Job]
+        verifyingStage("Rechecking published Steam depot files")
+        M24DepotManifestCrosscheck.verify(destination, depotIds, completedDepots) { done, total ->
+            activeJob?.ensureActive()
+            verifyingStage("Rechecking published Steam depot files", done, total)
+        }
+        verifyingStage("Writing final integrity receipt")
         // Interrupted after atomic promotion: no transfer or destructive replay.
-        val report = GameFileIntegrity(filesDir).verifyAndRecord(destination)
+        val report = GameFileIntegrity(filesDir).verifyAndRecord(destination,
+            phaseProgress = { phase, done, total, name ->
+                activeJob?.ensureActive()
+                verifyingStage("Final integrity: $phase", done, total, name)
+            })
         check(report.passed) { "Promoted files failed local SHA-256 verification" }
+        verifyingStage("Completing recovery journal")
         GameDownloadRecovery(filesDir).completed()
         GameDownloadManager._progress.value = DownloadProgress(
             state = DownloadState.COMPLETED, overallPercent = 1f,
@@ -494,30 +504,23 @@ class GameDownloadService : Service() {
         )
     }
 
-    /** Persist SHA-256 hashes and detect changed/unreadable game files.
-     * This is local integrity checking; Steam authenticates chunks during transfer.
+    /** The number shown during verification belongs to the current hashing step,
+     * not to the entire integrity/publication pipeline. Stage bytes are preserved
+     * on any failure and only an absent target may be atomically published.
      */
     private suspend fun verifyFiles(installDir: String, stageRoot: File,
         completedFiles: Set<String>, recheckBranch: suspend () -> Unit,
         expectedManifestFingerprint: String, depotIds: Map<Int, String>,
         completedDepots: Set<Int>) {
         val root = stageRoot
-        GameDownloadManager._progress.value = DownloadProgress(
-            state = DownloadState.VERIFYING, totalFilesToVerify = completedFiles.size
-        )
-        updateNotification(getString(R.string.download_notification_verifying, 0))
+        verifyingStage("Checking staged files")
+        updateNotification("Verifying staged files")
         val activeJob = currentCoroutineContext()[Job]
-        val report = GameFileIntegrity(filesDir).verifyAndRecord(root) { done, total, name ->
-            activeJob?.ensureActive()
-            val percent = if (total > 0) done.toFloat() / total else 0f
-            GameDownloadManager._progress.update {
-                it.copy(state = DownloadState.VERIFYING, verifiedFiles = done,
-                    totalFilesToVerify = total, overallPercent = percent, currentFile = name)
-            }
-            if (done % maxOf(1, total / 20) == 0 || done == total) {
-                updateNotification(getString(R.string.download_notification_verifying, (percent * 100).toInt()))
-            }
-        }
+        val report = GameFileIntegrity(filesDir).verifyAndRecord(root,
+            phaseProgress = { phase, done, total, name ->
+                activeJob?.ensureActive()
+                verifyingStage("Local integrity: $phase", done, total, name)
+            })
         if (!report.passed) {
             GameDownloadManager._progress.value = DownloadProgress(
                 state = DownloadState.ERROR, verificationPassed = false,
@@ -528,24 +531,22 @@ class GameDownloadService : Service() {
             updateNotification("File verification failed. Retry to repair this download.")
             return
         }
-        // Fail closed unless all PICS-bound depot manifests are cached and every
-        // resulting staged file matches its manifest content hash. This does
-        // not verify Valve's signature or independently prove entitlement.
-        M24DepotManifestCrosscheck.verify(root, depotIds, completedDepots)
-        // Final PICS check after hashing, before the only filesystem commit.
+        verifyingStage("Checking Steam depot manifests")
+        updateNotification("Checking Steam depot manifests")
+        M24DepotManifestCrosscheck.verify(root, depotIds, completedDepots) { done, total ->
+            activeJob?.ensureActive()
+            verifyingStage("Checking Steam depot manifests", done, total)
+        }
+        // Fresh network PICS requests can be slow; never leave '100% complete'
+        // displayed after the file-count phase finishes.
+        verifyingStage("Rechecking Steam branch and depot identity")
+        updateNotification("Rechecking Steam branch")
         recheckBranch()
-        // Crash recovery must still own the same PICS manifest identity.
         GameDownloadRecovery(filesDir).requireDepotManifestFingerprint(expectedManifestFingerprint)
-        // Atomic same-volume publish requires an ABSENT target. No copy fallback.
+        verifyingStage("Publishing verified files atomically")
+        updateNotification("Publishing verified files")
         GameDownloadRecovery(filesDir).promoteStaged(File(installDir))
-        // The final ledger must refer to the published destination, not the stage.
         verifyPromotedFiles(File(installDir), depotIds, completedDepots)
-        GameDownloadManager._progress.value = DownloadProgress(
-            state = DownloadState.COMPLETED, overallPercent = 1f,
-            verifiedFiles = report.files, totalFilesToVerify = report.files,
-            verificationPassed = true,
-            integrityScope = "PICS_BOUND_DEPOT_SHA1_UNSIGNED"
-        )
         updateNotification(getString(R.string.download_complete))
     }
 
@@ -586,7 +587,8 @@ class GameDownloadService : Service() {
                 builder.setProgress(0, 0, true)
             }
             DownloadState.VERIFYING -> {
-                builder.setProgress(100, (progress.overallPercent * 100).toInt(), false)
+                // The current step can reach 100% before manifest and publish checks.
+                builder.setProgress(0, 0, true)
             }
             else -> {}
         }

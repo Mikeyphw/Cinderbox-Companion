@@ -27,13 +27,14 @@ object M24DepotFileProof {
     /** Strict expected set, excluding only the SDK's own metadata directory.
      * No preexisting Cinderbox or outside directory is ever an input to this function.
      */
-    fun verify(stage: File, expected: Map<String, FileEntry>): Result {
+    fun verify(stage: File, expected: Map<String, FileEntry>,
+               progress: (Int, Int) -> Unit = { _, _ -> }): Result {
         require(stage.isDirectory && !Files.isSymbolicLink(stage.toPath())) { "Owned stage missing or linked" }
         require(expected.isNotEmpty() && expected.size <= 100000) { "No bounded depot file list" }
         val canonical = stage.canonicalFile
         val seen = HashSet<String>()
         var total = 0L
-        expected.forEach { (path, entry) ->
+        expected.entries.forEachIndexed { index, (path, entry) ->
             require(checkedPath(path) == path && entry.size >= 0 && hashPattern.matches(entry.sha1)) {
                 "Untrusted depot file entry"
             }
@@ -59,6 +60,7 @@ object M24DepotFileProof {
             val observed = hash.digest().joinToString("") { "%02x".format(it) }
             check(observed == entry.sha1) { "Depot manifest hash mismatch" }
             total = Math.addExact(total, entry.size)
+            progress(index + 1, expected.size)
         }
         val disk = stage.walkTopDown().onEnter { directory ->
             require(!Files.isSymbolicLink(directory.toPath())) { "Linked staging directory" }

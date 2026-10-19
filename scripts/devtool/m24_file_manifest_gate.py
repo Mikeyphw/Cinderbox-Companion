@@ -39,7 +39,7 @@ def generate(root=ROOT, env=None):
     proof=source(FILES[0]);adapter=source(FILES[1]);service=source(FILES[2]);steam=source(FILES[3]);device=source(FILES[4]);runner=source(FILES[5]);cfg=source('.devtool.toml')
     for phrase in ('fun verify(stage:', 'SHA-1', 'Unsafe depot manifest path', 'Missing or unlisted staged files','Files.isSymbolicLink'):
         if phrase not in proof:raise ValueError('CONTENT_PROOF_CONTRACT_MISSING')
-    for phrase in ('Util.loadManifestFromFile(', 'manifest.manifestGID == gid.toLong()', 'M24DepotFileProof.verify(stage, expected)', 'Conflicting depot files', 'completedDepots: Set<Int>? = null'):
+    for phrase in ('Util.loadManifestFromFile(', 'manifest.manifestGID == gid.toLong()', 'M24DepotFileProof.verify(stage, expected, progress)', 'Conflicting depot files', 'completedDepots: Set<Int>? = null'):
         if phrase not in adapter:raise ValueError('DEPOT_ADAPTER_CONTRACT_MISSING')
     for phrase in ('M24DepotManifestCrosscheck.verify(root, depotIds, completedDepots)', 'M24DepotManifestCrosscheck.verify(destination, depotIds, completedDepots)', 'PICS_BOUND_DEPOT_SHA1_UNSIGNED', 'recheckBranch()'):
         if phrase not in service:raise ValueError('PRE_PROMOTION_BOUNDARY_MISSING')

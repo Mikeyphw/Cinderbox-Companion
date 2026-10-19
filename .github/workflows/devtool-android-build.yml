@@ -138,6 +138,9 @@ jobs:
       - name: M18 genuine process recovery host regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m18_*.py' -v
 
+      - name: M24 Android folder picker and verification progress source gate
+        run: python3 scripts/devtool/m24_verify_ux_gate.py
+
       - name: M24 selection, recovery and evidence source regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m24_gate.py' -v
 

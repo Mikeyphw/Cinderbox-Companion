@@ -160,6 +160,11 @@ description = "M24 real depot PICS mismatch diagnosis and truthful progress pres
 workflow = "m24-live-clarity-check"
 target = "cinderbox"
 
+[wrapper.commands.m24-verify-ux-check]
+description = "M24 verification phase visibility, Android folder picker and no manual Steam storage budget"
+workflow = "m24-verify-ux-check"
+target = "cinderbox"
+
 [wrapper.commands.m24-handoff-check]
 description = "M24 live depot startup status, bounded stall and cancellable completion source tests"
 workflow = "m24-handoff-check"
@@ -405,6 +410,12 @@ command = ["python3", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p
 inputs = ["scripts/devtool/test_m24_staged_gate.py", "scripts/devtool/m24_staged_device_run.py", "app/src/test/java/com/sdvsync/download/M24StagedGameTransactionTest.kt", "app/src/androidTest/java/com/sdvsync/qualification/M24StagedTransactionDeviceTest.kt", "app/src/main/java/com/sdvsync/download/GameDownloadRecovery.kt"]
 metadata = { read_only = true, area = "m24-staged-game-commit", device_required = false, root_required = false }
 
+[targets.cinderbox.jobs.m24-verify-ux-source]
+runner = "command"
+command = ["python3", "scripts/devtool/m24_verify_ux_gate.py"]
+inputs = ["scripts/devtool/m24_verify_ux_gate.py", "scripts/devtool/test_m24_verify_ux_gate.py", "app/src/main/java/com/sdvsync/download/GameFileIntegrity.kt", "app/src/main/java/com/sdvsync/download/GameDownloadService.kt", "app/src/main/java/com/sdvsync/download/GameDownloadManager.kt", "app/src/main/java/com/sdvsync/local/M24*Folder*", "app/src/main/java/com/sdvsync/ui/viewmodels/GameDownloadViewModel.kt", "app/src/main/java/com/sdvsync/ui/screens/GameDownloadScreen.kt", ".github/workflows/**"]
+metadata = { read_only = true, area = "m24-verify-ux-folder-picker", device_required = false, root_required = false }
+
 [targets.cinderbox.jobs.m24-source]
 runner = "command"
 command = ["python3", "scripts/devtool/m24_gate.py"]
@@ -612,6 +623,10 @@ m24-handoff-check = [
   { id = "security", ref = "job:security-contract", depends_on = [] },
   { id = "tests", ref = "job:m24-handoff-tests", depends_on = ["security"] },
   { id = "gate", ref = "job:m24-handoff-source", depends_on = ["tests"] },
+]
+m24-verify-ux-check = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "gate", ref = "job:m24-verify-ux-source", depends_on = ["security"] },
 ]
 m24-file-check = [
   { id = "security", ref = "job:security-contract", depends_on = [] },
