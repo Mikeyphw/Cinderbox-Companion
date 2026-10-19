@@ -437,12 +437,29 @@ jobs:
           test "$(git -C "$RUNNER_TEMP/devtool-a05" rev-parse HEAD)" = "$A05_DEVTOOL_SHA"
           python3 -m venv "$RUNNER_TEMP/devtool-a05-venv"
           "$RUNNER_TEMP/devtool-a05-venv/bin/python" -m pip install --disable-pip-version-check "$RUNNER_TEMP/devtool-a05"
+          # Source-bound runtime: the A04 wheel omits core_cli_schema.json.
+          # The immutable checkout (verified above) is the import authority.
+          test -s "$RUNNER_TEMP/devtool-a05/devtool/core_cli_schema.json"
+          export PYTHONPATH="$RUNNER_TEMP/devtool-a05"
+          "$RUNNER_TEMP/devtool-a05-venv/bin/python" - <<'PY'
+          import os
+          from pathlib import Path
+          import devtool
+          from devtool.core_parser import canonical_cli_schema
+          expected = Path(os.environ['RUNNER_TEMP']) / 'devtool-a05' / 'devtool' / '__init__.py'
+          actual = Path(devtool.__file__).resolve()
+          if actual != expected.resolve():
+              raise RuntimeError(f'Pinned source import mismatch: {actual}')
+          canonical_cli_schema()
+          PY
+          "$RUNNER_TEMP/devtool-a05-venv/bin/python" -m devtool --help >/dev/null
       - name: Native target-local DAG plan and preflight
         shell: bash
         env:
           DEVTOOL_XDG_DIR: ${{ runner.temp }}/devtool-a05-state
         run: |
           set -euo pipefail
+          export PYTHONPATH="$RUNNER_TEMP/devtool-a05"
           PY="$RUNNER_TEMP/devtool-a05-venv/bin/python"
           "$PY" -m devtool --repo "$GITHUB_WORKSPACE" plan --target cinderbox m24-verify-ux-check --json > "$RUNNER_TEMP/devtool-plan.json"
           "$PY" -m devtool --repo "$GITHUB_WORKSPACE" preflight --target cinderbox --workflow m24-verify-ux-check --json > "$RUNNER_TEMP/devtool-preflight.json"
@@ -452,6 +469,7 @@ jobs:
           DEVTOOL_XDG_DIR: ${{ runner.temp }}/devtool-a05-state
         run: |
           set -euo pipefail
+          export PYTHONPATH="$RUNNER_TEMP/devtool-a05"
           "$RUNNER_TEMP/devtool-a05-venv/bin/python" -m devtool --repo "$GITHUB_WORKSPACE" --machine-file "$RUNNER_TEMP/devtool-invoke.json" invoke --target cinderbox m24-verify-ux-check
       - name: Write bounded source/run/attempt evidence even after failures
         if: always()

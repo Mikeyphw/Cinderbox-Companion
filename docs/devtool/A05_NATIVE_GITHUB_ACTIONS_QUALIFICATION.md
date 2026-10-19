@@ -71,3 +71,23 @@ If a workflow's resource is not accessible, distinguish `gh auth status`,
 `gh api repos/Mikeyphw/Cinderbox-Companion`, `gh workflow list`, and the
 selected exact run. The generic GitHub 404 is not evidence that all repository
 access is broken. Inspect the selected workflow and ID before redispatching.
+
+## A05-R1: source-runtime repair after actual GitHub attempt
+
+The initial GitHub run [39296491876](https://github.com/Mikeyphw/Cinderbox-Companion/actions/runs/39296491876)
+failed after installing frozen Devtool A04: its wheel omitted the canonical
+`core_cli_schema.json`. The first plan step could not import Devtool. The
+existing uploader correctly archived an **incomplete** result; that attempt
+MUST NOT be qualified or rerun as an unchanged source.
+
+A05-R1 retains the Devtool source SHA `08eb13991b5d1c623b64fdd8f9524418ee27207e`.
+Each CLI subprocess now imports directly from its **verified, immutable source
+checkout** while the venv supplies dependencies. The workflow confirms the
+CLI schema is available and the imported `devtool.__file__` belongs to the
+pinned checkout before any plan/preflight/invoke action. This is a source-only
+workaround for a distinct **OPEN** Devtool wheel packaging bug; it does not
+claim installed-wheel distribution qualification.
+
+After local A05-R1 acceptance and a branch push, create a **new**
+`native-only` workflow dispatch (do not replay attempt 1 of run 39296491876).
+Pass the NEW run ID and the NEW branch HEAD to the existing exact-run verifier.

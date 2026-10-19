@@ -23,3 +23,25 @@ be reconciled into it in the next Devtool-core overlay. Do not rewrite history.
   persistence remains unresolved; external XDG state isolation is a workaround,
   not formal closure. Independently reported GitHub 404 requires exact resource
   identification; `--auth gh` repository/workflow diagnosis already passed.
+
+## 2026-10-19 — A05-R1: GitHub wheel schema omission (LIVE-A05-01)
+
+- **Observed remote evidence:** workflow run `39296491876` at Cinderbox commit
+  `b7559c0277f34e3ada9638ef605b6af68ec658ee`, attempt 1,
+  job `118210275751` and artifact `12208156319`.
+- **Root cause:** pinned Devtool A04 successfully cloned and built its wheel,
+  but the wheel excluded `devtool/core_cli_schema.json` even though
+  `devtool/core_parser.py` requires it at module import. The first DAG plan
+  aborted with `FileNotFoundError`; later preflight/invoke did not run.
+- **Consumer mitigation:** import the exact hash-verified Devtool source checkout
+  using `PYTHONPATH` inside each CI step, and assert origin and canonical
+  schema presence before invoking anything. Retain the pinned venv to install
+  dependencies; no floating branch or remote dispatch replay.
+- **Affected:** Cinderbox source-only GitHub A05 workflow and Devtool Python
+  wheel distribution; other installed-wheel consumers potentially affected.
+- **Producer action OPEN:** add `core_cli_schema.json` to Devtool
+  `pyproject.toml` setuptools package-data; build wheel and **test CLI from an
+  installed wheel outside the source tree**, preserving JSON schema identity.
+- **Disposition:** first GitHub run FAILED, artifact incomplete and correctly
+  unqualified. Cinderbox A05-R1 local source acceptance pending, live rerun
+  pending. Nothing is release/device qualified.

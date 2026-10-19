@@ -61,8 +61,14 @@ def source():
            'if: always()', 'contents: read',
            "if: ${{ inputs.a05_mode == 'native-only' || inputs.a05_mode == 'both' }}",
            "if: ${{ inputs.a05_mode != 'native-only' }}",
-           "options: ['off', 'native-only', 'both']")):
+           "options: ['off', 'native-only', 'both']",
+           'test -s "$RUNNER_TEMP/devtool-a05/devtool/core_cli_schema.json"',
+           'actual != expected.resolve()',
+           "canonical_cli_schema()")):
         raise ProofError('A05 registered workflow missing source-bound execution/evidence')
+    lane = flow.split('  a05-native-devtool-dag:', 1)[-1]
+    if lane.count('export PYTHONPATH="$RUNNER_TEMP/devtool-a05"') != 3:
+        raise ProofError('All Devtool CLI phases must execute the frozen source checkout')
     lane = flow.split('  a05-native-devtool-dag:', 1)[-1]
     if any(x in lane for x in ('release_qualified: true', 'adb install', 'assembleRelease', 'secrets.', 'contents: write', 'sudo ')):
         raise ProofError('A05 native lane must never claim release qualification or install')
