@@ -419,7 +419,6 @@ jobs:
     env:
       A07_DEVTOOL_SHA: 409c5527532eaa1ee62b8111e030732d3f9e2791
       PYTHONDONTWRITEBYTECODE: '1'
-      DEVTOOL_XDG_DIR: ${{ runner.temp }}/devtool-a07-state
     steps:
       - name: Checkout exact Cinderbox commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -476,6 +475,8 @@ jobs:
           PY
           "$RUNNER_TEMP/devtool-a07-venv/bin/python" -m devtool --help >/dev/null
       - name: Native build DAG plan and preflight
+        env:
+          DEVTOOL_XDG_DIR: ${{ runner.temp }}/devtool-a07-state
         shell: bash
         run: |
           set -euo pipefail
@@ -496,6 +497,7 @@ jobs:
       - name: Invoke native security to APK to verification DAG
         shell: bash
         env:
+          DEVTOOL_XDG_DIR: ${{ runner.temp }}/devtool-a07-state
           CINDERBOX_DEBUG_STORE_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_STORE_PASSWORD }}
           CINDERBOX_DEBUG_KEY_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_KEY_PASSWORD }}
         run: |

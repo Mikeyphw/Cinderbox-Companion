@@ -48,6 +48,24 @@ class A07ContractTests(unittest.TestCase):
                  'GITHUB_RUN_ID':'99','GITHUB_RUN_ATTEMPT':'1'}):
             return a.record(machine,machine,proof,False)
 
+    def test_job_level_runner_context_is_rejected(self):
+        job = (a.ROOT / a.WORKFLOW).read_text('utf8').split(
+            '  a07-native-debug-build:', 1)[1].split('  # A05: source-only', 1)[0]
+        a.guard_a07_runner_environment(job)
+        # A regression to the exact HTTP 422 condition must fail locally.
+        wrong = job.replace('    steps:\n',
+            '      DEVTOOL_XDG_DIR: ${{ runner.temp }}/devtool-a07-state\n    steps:\n', 1)
+        with self.assertRaises(a.Refused):
+            a.guard_a07_runner_environment(wrong)
+
+    def test_missing_step_level_runner_context_is_rejected(self):
+        job = (a.ROOT / a.WORKFLOW).read_text('utf8').split(
+            '  a07-native-debug-build:', 1)[1].split('  # A05: source-only', 1)[0]
+        wrong = job.replace(
+            '          DEVTOOL_XDG_DIR: ${{ runner.temp }}/devtool-a07-state\n', '', 1)
+        with self.assertRaises(a.Refused):
+            a.guard_a07_runner_environment(wrong)
+
     def test_good_local_consistency_does_not_qualify_github(self):
         with tempfile.TemporaryDirectory() as t:
             m,p=self.fixture(Path(t))

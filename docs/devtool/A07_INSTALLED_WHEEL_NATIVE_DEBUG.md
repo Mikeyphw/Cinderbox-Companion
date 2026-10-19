@@ -38,3 +38,7 @@ python3 scripts/devtool/a07_native_debug.py verify-run \
 Safety rules: don't accept a wheel source import, a modified Debug signer, missing or duplicate APKs, a non-successful DAG node, incomplete machine JSON, unverifiable GitHub run, or any claim of release or device qualification. Failure is non-qualification, not an instruction to install or publish anything.
 
 A07 explicitly requires `a05_mode=native-only` so the established heavy legacy build is skipped. The A05 read-only job also runs; the A07 remote verifier requires that A05 succeed, the legacy job be skipped, and the A07 host build succeed. Existing A05 historical evidence is not modified.
+
+## A07-R1 runner context repair
+
+GitHub rejected the first A07 dispatch (HTTP 422, workflow line 422): `runner.temp` is unavailable in job-level `env`. A07-R1 scopes `DEVTOOL_XDG_DIR` to the two Devtool-consuming steps, adds parser-context regressions, and preserves A05 and the original A07 provenance. The original A07 local acceptance is tied to its historical commit; A07-R1 validation is performed by the corrective overlay.

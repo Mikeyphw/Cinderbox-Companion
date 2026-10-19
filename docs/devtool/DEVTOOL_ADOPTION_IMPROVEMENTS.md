@@ -81,3 +81,11 @@ be reconciled into it in the next Devtool-core overlay. Do not rewrite history.
 - **Improvement:** Add an opt-in A07 job to the registered Android workflow invoking existing `security → debug APK → verify` native Devtool DAG using a pinned A06 installed wheel; retain M16 debug signer, M3/M13 provenance, SHA256, separate run/attempt artifacts and fail-closed verification. Preserve the existing A05 job and legacy Android job; A07 requires A05 native-only mode to skip the legacy build.
 - **Compatibility:** Existing M3 dispatch source gate expected two option lists and rejected previously reviewed A05 `a05_mode`. Accept exactly that reviewed third list while rejecting any other choice expansion. This is not a release permission change.
 - **Status:** Prepared overlay; local source acceptance, native host GitHub qualification, Android device qualification and release qualification tracked separately. Do not equate a prepared overlay or local tests with successful GitHub hosted build.
+
+
+## ACTIONS-A07-R1 — Invalid GitHub job-level runner context (2026-10-19)
+
+- **Evidence:** `gh workflow run devtool-android-build.yml` returned HTTP 422 at line 422, column 24: `Unrecognized named-value: 'runner'`. Commit `e29d1b030167e302245467e30152b0043496ea6a` uses `${{ runner.temp }}` in `jobs.a07-native-debug-build.env`, where the runner context is unavailable.
+- **Affected projects:** Cinderbox-Companion A07 host APK CI; reusable Devtool Actions overlay workflow-authoring checks.
+- **Repair:** Move the isolated `DEVTOOL_XDG_DIR` path into each consuming **step-level** `env` block (plan/preflight and invoke). Keep the same expression and state path at supported scope. Preserve A05, legacy build, pinned A06 wheel, debug signer, evidence and release/device boundaries. Add executable negative regressions to A07 source contract so job-level runner context fails before GitHub dispatch.
+- **Status:** Repair overlay prepared; local/source and hosted validation tracked separately. Do not claim A07 GitHub qualification until a new run and exact-run artifact verification pass.

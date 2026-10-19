@@ -78,6 +78,9 @@ def source_contract(root:Path=ROOT) -> None:
            flow.index('  a07-native-debug-build:') < flow.index('  a05-native-devtool-dag:'),
            'A07 job must precede unchanged A05 job')
     s=flow.split('  a07-native-debug-build:',1)[-1].split('  # A05: source-only',1)[0]
+    # GitHub does not expose the runner context in jobs.<job_id>.env.
+    # Keep runner.temp exclusively in individual step env mappings.
+    guard_a07_runner_environment(s)
     required=(f'A07_DEVTOOL_SHA: {PIN}', 'if: always()', 'if: success()',
               'plan --target cinderbox build --json',
               'preflight --target cinderbox --workflow build --json',
@@ -94,6 +97,23 @@ def source_contract(root:Path=ROOT) -> None:
     insist(s.count('uses: actions/upload-artifact@')==2,'Unexpected uploaded artifact type')
     insist('CINDERBOX_DEBUG_KEYSTORE_B64' in s and 'CINDERBOX_DEBUG_CERT_SHA256' in s,
            'M16 signer credential or pin missing')
+
+def guard_a07_runner_environment(job: str) -> None:
+    # Inspect only the A07 job, never A05/legacy jobs (which have their own scope).
+    header, marker, body = job.partition('    steps:\n')
+    insist(bool(marker), 'A07 job steps block missing')
+    insist('runner.temp' not in header and 'runner.' not in header,
+           'runner context is unavailable in A07 job-level expressions')
+    expected = 'DEVTOOL_XDG_DIR: ${{ runner.temp }}/devtool-a07-state'
+    insist(body.count(expected) == 2,
+           'A07 plan and invoke steps must each set isolated runner temp state')
+    plan = body.split('      - name: Native build DAG plan and preflight\n', 1)
+    invoke = body.split('      - name: Invoke native security to APK to verification DAG\n', 1)
+    insist(len(plan) == 2 and len(invoke) == 2,
+           'A07 state consumers are missing')
+    insist(plan[1].split('      - name:', 1)[0].count(expected) == 1 and
+           invoke[1].split('      - name:', 1)[0].count(expected) == 1,
+           'A07 state env must be step-scoped for plan and invoke')
 
 def check_machine(directory:Path)->None:
     for f in MACHINE:
