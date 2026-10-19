@@ -81,6 +81,7 @@ def source_contract(root:Path=ROOT) -> None:
     # GitHub does not expose the runner context in jobs.<job_id>.env.
     # Keep runner.temp exclusively in individual step env mappings.
     guard_a07_runner_environment(s)
+    guard_a07_sdk_setup(s)
     required=(f'A07_DEVTOOL_SHA: {PIN}', 'if: always()', 'if: success()',
               'plan --target cinderbox build --json',
               'preflight --target cinderbox --workflow build --json',
@@ -114,6 +115,21 @@ def guard_a07_runner_environment(job: str) -> None:
     insist(plan[1].split('      - name:', 1)[0].count(expected) == 1 and
            invoke[1].split('      - name:', 1)[0].count(expected) == 1,
            'A07 state env must be step-scoped for plan and invoke')
+
+def guard_a07_sdk_setup(job: str) -> None:
+    """Reject retired Android SDK `tools` package before dispatch.
+
+    android-actions/setup-android@v3 defaults to the removed 'tools platform-tools'
+    when `with.packages` is missing. Require the reviewed supported package.
+    """
+    step_name = '      - name: Set up Android SDK\n'
+    parts = job.split(step_name)
+    insist(len(parts) == 2, 'A07 Android SDK setup step missing/ambiguous')
+    block = parts[1].split('      - name:', 1)[0]
+    insist(block == ('        uses: android-actions/setup-android@v3\n'
+                     '        with:\n'
+                     '          packages: platform-tools\n'),
+           'A07 SDK setup must explicitly request supported platform-tools only')
 
 def check_machine(directory:Path)->None:
     for f in MACHINE:

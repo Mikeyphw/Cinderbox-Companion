@@ -66,6 +66,27 @@ class A07ContractTests(unittest.TestCase):
         with self.assertRaises(a.Refused):
             a.guard_a07_runner_environment(wrong)
 
+    def test_retired_android_sdk_tools_default_is_rejected(self):
+        job = (a.ROOT / a.WORKFLOW).read_text('utf8').split(
+            '  a07-native-debug-build:', 1)[1].split('  # A05: source-only', 1)[0]
+        a.guard_a07_sdk_setup(job)
+        wrong = job.replace(
+            '        uses: android-actions/setup-android@v3\n'
+            '        with:\n'
+            '          packages: platform-tools\n',
+            '        uses: android-actions/setup-android@v3\n', 1)
+        with self.assertRaises(a.Refused):
+            a.guard_a07_sdk_setup(wrong)
+
+    def test_retired_or_unpinned_sdk_package_list_is_rejected(self):
+        job = (a.ROOT / a.WORKFLOW).read_text('utf8').split(
+            '  a07-native-debug-build:', 1)[1].split('  # A05: source-only', 1)[0]
+        for other in ('tools platform-tools', 'tools', 'platform-tools emulator', ''):
+            with self.subTest(other=other):
+                wrong = job.replace('packages: platform-tools', 'packages: '+other, 1)
+                with self.assertRaises(a.Refused):
+                    a.guard_a07_sdk_setup(wrong)
+
     def test_good_local_consistency_does_not_qualify_github(self):
         with tempfile.TemporaryDirectory() as t:
             m,p=self.fixture(Path(t))
