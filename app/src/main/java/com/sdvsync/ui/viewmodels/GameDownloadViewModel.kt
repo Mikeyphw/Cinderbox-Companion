@@ -77,6 +77,7 @@ data class GameDownloadState(
     val cinderboxUpdateAvailable: Boolean = false,
     val latestCinderboxVersion: String? = null,
     val installedCinderboxVersion: String? = null,
+    val cinderboxPackageInstalled: Boolean = false,
     val smapiUpdateAvailable: Boolean = false,
     val latestSmapiVersion: String? = null,
     val installedSmapiVersion: String? = null,
@@ -108,6 +109,15 @@ class GameDownloadViewModel(
     private var cinderboxJob: Job? = null
     private var pendingSetupType: String? = null
 
+    /** Read-only Android PackageManager presence, not a preference or files on disk. */
+    private fun installedCinderboxVersionFromPackage(): String? = try {
+        context.packageManager.getPackageInfo("com.game.cinderbox", 0).versionName ?: "installed"
+    } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
+        null
+    } catch (_: SecurityException) {
+        null
+    }
+
     init {
         val defaultDir = Environment.getExternalStoragePublicDirectory(
             Environment.DIRECTORY_DOWNLOADS
@@ -131,7 +141,8 @@ class GameDownloadViewModel(
                 File(selectedDir), File(CinderboxPaths.ROOT_DIR)).code,
             storageReady = false,
             storageDetail = "Write access will be tested only when you start a download.",
-            isCinderboxSetup = fileAccessDetector.getSetupType() == SETUP_TYPE_CINDERBOX
+            isCinderboxSetup = fileAccessDetector.getSetupType() == SETUP_TYPE_CINDERBOX,
+            cinderboxPackageInstalled = installedCinderboxVersionFromPackage() != null
         )
         if (pending != null) downloadManager.restoreInterruptedProgress()
 
@@ -171,7 +182,9 @@ class GameDownloadViewModel(
                     GitHubReleaseChecker.CINDERBOX_REPO,
                     GitHubReleaseChecker.CINDERBOX_ASSET_PATTERN
                 )
-                val installedCinderbox = releaseChecker.getInstalledVersion(GitHubReleaseChecker.KEY_CINDERBOX_VERSION)
+                val installedCinderboxPackage = installedCinderboxVersionFromPackage()
+                val installedCinderbox = installedCinderboxPackage
+                    ?: releaseChecker.getInstalledVersion(GitHubReleaseChecker.KEY_CINDERBOX_VERSION)
 
                 val smapiRelease = releaseChecker.getLatestRelease(
                     GitHubReleaseChecker.SMAPI_REPO,
@@ -182,6 +195,7 @@ class GameDownloadViewModel(
                 _state.value = _state.value.copy(
                     latestCinderboxVersion = cinderboxRelease?.version,
                     installedCinderboxVersion = installedCinderbox,
+                    cinderboxPackageInstalled = installedCinderboxPackage != null,
                     cinderboxUpdateAvailable = releaseChecker.isUpdateAvailable(
                         installedCinderbox,
                         cinderboxRelease?.version
@@ -202,11 +216,14 @@ class GameDownloadViewModel(
     }
 
     fun refreshInstalledVersions() {
-        val cinderbox = releaseChecker.getInstalledVersion(GitHubReleaseChecker.KEY_CINDERBOX_VERSION)
+        val installedCinderboxPackage = installedCinderboxVersionFromPackage()
+        val cinderbox = installedCinderboxPackage
+            ?: releaseChecker.getInstalledVersion(GitHubReleaseChecker.KEY_CINDERBOX_VERSION)
         val smapi = releaseChecker.getInstalledVersion(GitHubReleaseChecker.KEY_SMAPI_VERSION)
         _state.update {
             it.copy(
                 installedCinderboxVersion = cinderbox,
+                cinderboxPackageInstalled = installedCinderboxPackage != null,
                 installedSmapiVersion = smapi,
                 cinderboxUpdateAvailable = releaseChecker.isUpdateAvailable(cinderbox, it.latestCinderboxVersion),
                 smapiUpdateAvailable = releaseChecker.isUpdateAvailable(smapi, it.latestSmapiVersion)

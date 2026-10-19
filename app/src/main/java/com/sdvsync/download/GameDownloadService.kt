@@ -173,8 +173,15 @@ class GameDownloadService : Service() {
                         "Steam depot manifest identity changed during download; staged bytes preserved"
                     }
                 }
-                val ids = selected?.depotManifestIds ?: emptyMap()
-                check(ids.isNotEmpty() && ids.size == selected?.depotCount) { "PICS depot manifest identities missing" }
+                val directIds = selected?.depotManifestIds ?: emptyMap()
+                check(directIds.isNotEmpty() && directIds.size == selected?.depotCount) {
+                    "PICS depot manifest identities missing"
+                }
+                val sharedSources = selected?.sharedDepotFromApps ?: emptyMap()
+                // Parent GIDs must be obtained independently from fresh authenticated
+                // Steam PICS; JavaSteam's cached .manifest/.sha is not an authority.
+                val inheritedIds = content.resolveSharedDepotManifests(branch, sharedSources)
+                val ids = M24SharedDepotBinding.merge(directIds, sharedSources, inheritedIds)
                 if (sessionDepotManifestIds != null) {
                     check(sessionDepotManifestIds == ids) { "PICS depot manifests changed" }
                 }

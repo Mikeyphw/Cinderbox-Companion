@@ -233,11 +233,11 @@ class GameDownloadManager(
     }
 
     suspend fun downloadCinderboxApk() {
-        StoragePreflight.requireWritable(File(CinderboxPaths.DESKTOP_DIR))
-        StoragePreflight.requireWritable(context.cacheDir)
         _cinderboxProgress.value = CinderboxDownloadProgress(isDownloading = true)
         withContext(Dispatchers.IO) {
             try {
+                // APK download only writes app-private cache, not the installed game.
+                StoragePreflight.requireWritable(context.cacheDir)
                 val releaseInfo = checkNotNull(releaseChecker.getLatestRelease(
                     GitHubReleaseChecker.CINDERBOX_REPO, GitHubReleaseChecker.CINDERBOX_ASSET_PATTERN
                 )) { "Could not find Cinderbox release" }
@@ -275,9 +275,11 @@ class GameDownloadManager(
     }
 
     suspend fun downloadSmapiZip(): File? = withContext(Dispatchers.IO) {
-        StoragePreflight.requireWritable(File(CinderboxPaths.SMAPI_DIR))
-        StoragePreflight.requireWritable(context.cacheDir)
+        _smapiProgress.value = SmapiSetupProgress(isDownloading = true)
         try {
+            // Any denied target permission becomes visible in the SMAPI error card.
+            StoragePreflight.requireWritable(File(CinderboxPaths.SMAPI_DIR))
+            StoragePreflight.requireWritable(context.cacheDir)
             val releaseInfo = checkNotNull(releaseChecker.getLatestRelease(
                 GitHubReleaseChecker.SMAPI_REPO, GitHubReleaseChecker.SMAPI_ASSET_PATTERN
             )) { "Could not find SMAPI release" }

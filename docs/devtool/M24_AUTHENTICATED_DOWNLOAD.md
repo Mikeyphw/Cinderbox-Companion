@@ -78,3 +78,8 @@ longer displayed as authoritative zero-percent progress. Debug logs contain only
 public numerical depot IDs (not access tokens, GIDs, paths, account IDs, or
 passwords). A mismatch names the missing depot(s) and preserves the checkpoint.
 This patch is diagnostic and UI remediation, NOT closure of live-transfer proof.
+
+### Live shared depots and auxiliary setup (2026-10-19)
+The Windows shared redistributable depot IDs `229002` and `229012` are advertised under Stardew Valley's PICS appinfo with `depotfromapp=228980`, but their `gid` values originate from the parent Steam application. M24 now resolves each PICS-advertised child→parent mapping through a separate live Steam PICS product-info response before validating cached manifests; it fails closed without that response. The fingerprint still binds the primary app; inherited GIDs are rechecked for drift throughout the session. Existing stage data is not deleted or implicitly moved. This is not Valve-signature verification.
+
+SMAPI and Cinderbox APK setup errors must be visible (including storage-preflight errors). Detected SMAPI files must not be replaced automatically; Cinderbox APK presence is queried from the Android package manager rather than inferred solely from saved release labels.

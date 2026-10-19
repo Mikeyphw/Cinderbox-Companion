@@ -210,3 +210,9 @@ This ledger is cumulative; append future Devtool gaps and campaign findings rath
   before implementing any authenticated manifest resolution (do not silently
   accept unbound depots).
 - **Status:** UI/observability implemented; PICS root-cause and release closure OPEN.
+
+### M24 shared Steam depot provenance and auxiliary download feedback (2026-10-19)
+- Evidence: Real live Steam transfer reached 256.7 MB, 3,609 completed files; final verification failed on shared depots `229002,229012`, which are inherited Windows redistributables from app `228980`, not directly published GIDs under app `413150`. Android Companion SMAPI and Cinderbox download buttons could appear inert: StoragePreflight outside exception-handling; Cinderbox update UI used stored release version rather than actual installed package.
+- Affected: Cinderbox-Companion; `SteamContentService`, `GameDownloadService`, `GameDownloadManager`, download UI, CI APK qualification.
+- Mitigation: dynamically resolve only PICS-advertised shared depot/parent pairs against fresh parent PICS appinfo; fail closed on denied/unavailable parent, no local manifest trust substitution; preserve staged content. Move prereq checks within progress error handling; inspect Android installed app read-only, avoid redundant Cinderbox download, avoid implicit SMAPI reinstall.
+- Status: IMPLEMENTED_SOURCE_PENDING_CI_AND_LIVE_ACCEPTANCE. No Steam signature or release qualification claims.

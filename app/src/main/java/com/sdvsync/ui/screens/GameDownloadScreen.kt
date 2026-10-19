@@ -713,7 +713,8 @@ fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
                 onReset = { viewModel.resetSmapiSetup() },
                 updateAvailable = state.smapiUpdateAvailable,
                 latestVersion = state.latestSmapiVersion,
-                installedVersion = state.installedSmapiVersion
+                installedVersion = state.installedSmapiVersion,
+                installedStatus = state.primarySmapiStatus
             )
 
             Spacer(Modifier.height(24.dp))
@@ -726,7 +727,8 @@ fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
                 onReset = { viewModel.resetCinderboxDownload() },
                 updateAvailable = state.cinderboxUpdateAvailable,
                 latestVersion = state.latestCinderboxVersion,
-                installedVersion = state.installedCinderboxVersion
+                installedVersion = state.installedCinderboxVersion,
+                packageInstalled = state.cinderboxPackageInstalled
             )
 
             Spacer(Modifier.height(24.dp))
@@ -742,8 +744,24 @@ private fun SmapiSetupSection(
     onReset: () -> Unit,
     updateAvailable: Boolean = false,
     latestVersion: String? = null,
-    installedVersion: String? = null
+    installedVersion: String? = null,
+    installedStatus: M23InstallationDiscovery.Status = M23InstallationDiscovery.Status.MISSING
 ) {
+    var confirmSmapiReplacement by remember { mutableStateOf(false) }
+    if (confirmSmapiReplacement) {
+        AlertDialog(
+            onDismissRequest = { confirmSmapiReplacement = false },
+            title = { Text("Replace existing SMAPI?") },
+            text = { Text("Existing SMAPI files were detected. Updating could replace them. Back up your SMAPI setup first; this action does not touch Steam game files.") },
+            confirmButton = { TextButton(onClick = {
+                confirmSmapiReplacement = false
+                onExtract()
+            }) { Text("Update SMAPI") } },
+            dismissButton = { TextButton(onClick = {
+                confirmSmapiReplacement = false
+            }) { Text("Cancel") } }
+        )
+    }
     SectionHeader(stringResource(R.string.smapi_setup_title))
     Spacer(Modifier.height(8.dp))
 
@@ -841,6 +859,20 @@ private fun SmapiSetupSection(
             }
         }
 
+        smapiProgress.errorMessage != null && !smapiProgress.completed -> {
+            StardewCard {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("SMAPI setup could not start: ${smapiProgress.errorMessage}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            StardewOutlinedButton(onClick = onReset, modifier = Modifier.fillMaxWidth()) {
+                Text("Dismiss error")
+            }
+        }
+
         smapiProgress.completed -> {
             // Completed state
             StardewCard {
@@ -876,7 +908,8 @@ private fun SmapiSetupSection(
         }
 
         else -> {
-            // Idle state
+            // Idle state; detected SMAPI is never automatically overwritten.
+            val alreadyPresent = installedStatus == M23InstallationDiscovery.Status.CANDIDATE_UNVERIFIED
             StardewCard {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
@@ -884,6 +917,12 @@ private fun SmapiSetupSection(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (alreadyPresent) {
+                        Spacer(Modifier.height(4.dp))
+                        Text("Existing SMAPI detected (version/compatibility not authenticated).",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     if (installedVersion != null) {
                         Spacer(Modifier.height(4.dp))
                         Text(
@@ -903,8 +942,8 @@ private fun SmapiSetupSection(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            StardewButton(
-                onClick = onExtract,
+            if (!alreadyPresent || (updateAvailable && latestVersion != null)) StardewButton(
+                onClick = { if (alreadyPresent) confirmSmapiReplacement = true else onExtract() },
                 variant = StardewButtonVariant.Action,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !isCopying
@@ -1030,7 +1069,8 @@ private fun CinderboxSection(
     onReset: () -> Unit,
     updateAvailable: Boolean = false,
     latestVersion: String? = null,
-    installedVersion: String? = null
+    installedVersion: String? = null,
+    packageInstalled: Boolean = false
 ) {
     val context = LocalContext.current
 
@@ -1141,7 +1181,7 @@ private fun CinderboxSection(
         }
 
         else -> {
-            // Idle
+            // Package presence comes from Android, not just the last downloaded version.
             StardewCard {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
@@ -1149,6 +1189,12 @@ private fun CinderboxSection(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (packageInstalled) {
+                        Spacer(Modifier.height(4.dp))
+                        Text("Cinderbox is already installed on this device.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary)
+                    }
                     if (installedVersion != null) {
                         Spacer(Modifier.height(4.dp))
                         Text(
@@ -1168,7 +1214,7 @@ private fun CinderboxSection(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            StardewButton(
+            if (!packageInstalled || (updateAvailable && latestVersion != null)) StardewButton(
                 onClick = onDownload,
                 variant = StardewButtonVariant.Action,
                 modifier = Modifier.fillMaxWidth()

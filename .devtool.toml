@@ -150,6 +150,11 @@ description = "M24 bounded depot manifest file hash verification; source-bound, 
 workflow = "m24-file-check"
 target = "cinderbox"
 
+[wrapper.commands.m24-shared-depot-check]
+description = "M24 live shared Steam depot parent-PICS binding and setup UX safety"
+workflow = "m24-shared-depot-check"
+target = "cinderbox"
+
 [wrapper.commands.m24-live-clarity-check]
 description = "M24 real depot PICS mismatch diagnosis and truthful progress presentation"
 workflow = "m24-live-clarity-check"
@@ -465,6 +470,12 @@ command = ["python3", "scripts/devtool/m24_provenance_gate.py"]
 inputs = ["scripts/devtool/m24_provenance_gate.py", "scripts/devtool/m24_real_substrate.py", "scripts/devtool/test_m24_real_substrate.py", ".devtool.toml", ".github/workflows/**", "docs/devtool/M24_AUTHENTICATED_DOWNLOAD.md"]
 metadata = { read_only = true, area = "m24-source-bound-apk-provenance", root_required = false, device_required = false, evidence = "source-sha256-json" }
 
+[targets.cinderbox.jobs.m24-shared-depot-source]
+runner = "command"
+command = ["python3", "scripts/devtool/m24_shared_depot_gate.py"]
+inputs = ["scripts/devtool/m24_shared_depot_gate.py", "app/src/main/java/com/sdvsync/download/M24SharedDepotBinding.kt", "app/src/main/java/com/sdvsync/steam/SteamContentService.kt", "app/src/main/java/com/sdvsync/download/GameDownloadService.kt", "app/src/main/java/com/sdvsync/download/GameDownloadManager.kt", "app/src/main/java/com/sdvsync/ui/viewmodels/GameDownloadViewModel.kt", "app/src/main/java/com/sdvsync/ui/screens/GameDownloadScreen.kt", "app/src/test/java/com/sdvsync/download/M24SharedDepotBindingTest.kt"]
+metadata = { read_only = true, area = "m24-parent-pics-and-setup", root_required = false, device_required = false }
+
 [targets.cinderbox.workflows]
 security = ["job:security-contract"]
 quick = [
@@ -587,6 +598,10 @@ m24-pics-check = [
   { id = "security", ref = "job:security-contract", depends_on = [] },
   { id = "tests", ref = "job:m24-pics-tests", depends_on = ["security"] },
   { id = "gate", ref = "job:m24-pics-source", depends_on = ["tests"] },
+]
+m24-shared-depot-check = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "gate", ref = "job:m24-shared-depot-source", depends_on = ["security"] },
 ]
 m24-live-clarity-check = [
   { id = "security", ref = "job:security-contract", depends_on = [] },
