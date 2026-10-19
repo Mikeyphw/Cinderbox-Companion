@@ -70,7 +70,7 @@ def check_source(root: Path) -> None:
     dispatched = (root / ".github/workflows/devtool-android-build.yml").read_text()
     push = (root / ".github/workflows/build.yml").read_text()
     allowed = re.findall(r"(?m)^\s*options: \[([^\]]+)\]\s*$", dispatched)
-    if allowed != ["'debug'", "'apk'"]:
+    if allowed != ["'debug'", "'apk'", "'off', 'native-only', 'both'"]:
         raise QualificationError("Devtool dispatch must remain debug APK only")
     if "test \"$DT_VARIANT\" = 'debug'" not in dispatched:
         raise QualificationError("Devtool build variant is not fail-closed")

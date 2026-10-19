@@ -26,6 +26,11 @@ on:
         type: choice
         required: true
         options: ['apk']
+      a07_native_build:
+        description: 'Opt in to A07 native debug APK DAG (requires a05_mode=native-only)'
+        type: boolean
+        required: true
+        default: false
       a05_mode:
         description: 'A05 native source DAG only, both lanes, or preserve existing Android build'
         type: choice
@@ -402,6 +407,147 @@ jobs:
           name: m14-androidtest-apk
           if-no-files-found: error
           path: app/build/outputs/apk/androidTest/debug/*.apk
+          retention-days: 14
+
+  a07-native-debug-build:
+    if: ${{ inputs.a07_native_build == true && inputs.a05_mode == 'native-only' }}
+    name: A07 installed-wheel native debug DAG
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    permissions:
+      contents: read
+    env:
+      A07_DEVTOOL_SHA: 409c5527532eaa1ee62b8111e030732d3f9e2791
+      PYTHONDONTWRITEBYTECODE: '1'
+      DEVTOOL_XDG_DIR: ${{ runner.temp }}/devtool-a07-state
+    steps:
+      - name: Checkout exact Cinderbox commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Validate exact source and debug-only native DAG
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_REPOSITORY" = 'Mikeyphw/Cinderbox-Companion'
+          python3 scripts/devtool/a07_native_debug.py source
+          python3 scripts/devtool/m3_build_evidence.py source
+          python3 scripts/devtool/m13_qualification.py source
+          python3 scripts/devtool/m16_debug_signing.py source
+      - name: Set up JDK 17
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install fixed Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Configure Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+      - name: Install A06 wheel from immutable Devtool commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --no-checkout https://github.com/Mikeyphw/devtool.git "$RUNNER_TEMP/devtool-a07-source"
+          git -C "$RUNNER_TEMP/devtool-a07-source" checkout --detach "$A07_DEVTOOL_SHA"
+          test "$(git -C "$RUNNER_TEMP/devtool-a07-source" rev-parse HEAD)" = "$A07_DEVTOOL_SHA"
+          python3 -m venv "$RUNNER_TEMP/devtool-a07-venv"
+          "$RUNNER_TEMP/devtool-a07-venv/bin/python" -m pip install --disable-pip-version-check "$RUNNER_TEMP/devtool-a07-source"
+          unset PYTHONPATH
+          "$RUNNER_TEMP/devtool-a07-venv/bin/python" - <<'PY'
+          import os
+          from pathlib import Path
+          import devtool
+          from devtool.core_parser import canonical_cli_schema
+          source = Path(os.environ['RUNNER_TEMP']) / 'devtool-a07-source'
+          wheel = Path(devtool.__file__).resolve()
+          if source in wheel.parents or 'site-packages' not in wheel.parts:
+              raise RuntimeError('CLI imported from source checkout, not installed wheel')
+          if not (wheel.parent / 'core_cli_schema.json').is_file():
+              raise RuntimeError('Installed A06 wheel lacks canonical CLI schema')
+          if canonical_cli_schema().get('kind') != 'devtool.canonical-cli-schema':
+              raise RuntimeError('Installed CLI schema invalid')
+          print('PASS_A07_INSTALLED_WHEEL_SMOKE:', wheel)
+          PY
+          "$RUNNER_TEMP/devtool-a07-venv/bin/python" -m devtool --help >/dev/null
+      - name: Native build DAG plan and preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset PYTHONPATH
+          PY="$RUNNER_TEMP/devtool-a07-venv/bin/python"
+          "$PY" -m devtool --repo "$GITHUB_WORKSPACE" plan --target cinderbox build --json > "$RUNNER_TEMP/a07-plan.json"
+          "$PY" -m devtool --repo "$GITHUB_WORKSPACE" preflight --target cinderbox --workflow build --json > "$RUNNER_TEMP/a07-preflight.json"
+      - name: M16 provision pinned persistent debug signer
+        env:
+          CINDERBOX_DEBUG_KEYSTORE_B64: ${{ secrets.CINDERBOX_DEBUG_KEYSTORE_B64 }}
+          CINDERBOX_DEBUG_STORE_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_STORE_PASSWORD }}
+          CINDERBOX_DEBUG_KEY_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_KEY_PASSWORD }}
+          CINDERBOX_DEBUG_CERT_SHA256: ${{ vars.CINDERBOX_DEBUG_CERT_SHA256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/devtool/m16_debug_signing.py provision --path "$RUNNER_TEMP/cinderbox-a07-debug.p12"
+      - name: Invoke native security to APK to verification DAG
+        shell: bash
+        env:
+          CINDERBOX_DEBUG_STORE_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_STORE_PASSWORD }}
+          CINDERBOX_DEBUG_KEY_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          unset PYTHONPATH
+          chmod +x ./gradlew
+          "$RUNNER_TEMP/devtool-a07-venv/bin/python" -m devtool --repo "$GITHUB_WORKSPACE" --machine-file "$RUNNER_TEMP/a07-invoke.json" invoke --target cinderbox build
+      - name: Verify stable M16 debug APK signer
+        env:
+          CINDERBOX_DEBUG_CERT_SHA256: ${{ vars.CINDERBOX_DEBUG_CERT_SHA256 }}
+        run: python3 scripts/devtool/m16_debug_signing.py verify --apk-dir app/build/outputs/apk/debug
+      - name: Stage exactly one APK and generate existing M3 and M13 provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apks=(app/build/outputs/apk/debug/*.apk)
+          test "${#apks[@]}" -eq 1
+          test -f "${apks[0]}" && test ! -L "${apks[0]}"
+          stage="$RUNNER_TEMP/cinderbox-a07-apk"
+          mkdir -p "$stage"
+          cp -- "${apks[0]}" "$stage/debug.apk"
+          (cd "$stage" && sha256sum debug.apk > SHA256SUMS)
+          python3 scripts/devtool/m3_build_evidence.py generate --apk-dir "$stage" --output "$stage/M3_PROVENANCE.json"
+          python3 scripts/devtool/m13_qualification.py finalize --source-sha "$GITHUB_SHA" --provenance "$stage/M3_PROVENANCE.json" --apk "$stage/debug.apk" --output "$stage/M13_QUALIFICATION.json"
+      - name: Record exact native machine receipts and verify host evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/devtool/a07_native_debug.py record --input-dir "$RUNNER_TEMP" --evidence-dir "$RUNNER_TEMP/cinderbox-a07-evidence" --apk-dir "$RUNNER_TEMP/cinderbox-a07-apk"
+          python3 scripts/devtool/a07_native_debug.py verify-local --input-dir "$RUNNER_TEMP/cinderbox-a07-evidence" --apk-dir "$RUNNER_TEMP/cinderbox-a07-apk" --sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT"
+      - name: Record bounded failure evidence
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/devtool/a07_native_debug.py record --incomplete --input-dir "$RUNNER_TEMP" --evidence-dir "$RUNNER_TEMP/cinderbox-a07-evidence"
+      - name: Upload exact A07 machine evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cinderbox-a07-machine-evidence
+          path: ${{ runner.temp }}/cinderbox-a07-evidence/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload host-qualified debug APK (no device/release qualification)
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cinderbox-a07-debug-apk
+          path: ${{ runner.temp }}/cinderbox-a07-apk/
+          if-no-files-found: error
           retention-days: 14
 
   # A05: source-only Devtool DAG. Independent of debug APK signing/build.

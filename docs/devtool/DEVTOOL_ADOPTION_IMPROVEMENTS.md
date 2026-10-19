@@ -72,3 +72,12 @@ be reconciled into it in the next Devtool-core overlay. Do not rewrite history.
   formal user-local `PASS_CINDERBOX_A05_GITHUB_RUN_VERIFIED` receipt pending
   A05-R2 installation. Device/release qualifications remain false. Separate
   Devtool-core wheel packaging repair remains OPEN.
+
+
+## ACTIONS-A07 — Native installed-wheel host debug build (2026-10-19)
+
+- **Evidence:** Cinderbox A05's hosted DAG passed after a temporary source-checkout workaround. Producer A06 commit `409c5527532eaa1ee62b8111e030732d3f9e2791` packages `core_cli_schema.json` in the installed wheel; local A06 acceptance was independently reproduced (3 tests, no skips). Hosted wheel smoke was still open when A07 was prepared.
+- **Affected consumers:** Cinderbox-Companion; reusable pattern for Skybind, Studyflow and other adopters after acceptance.
+- **Improvement:** Add an opt-in A07 job to the registered Android workflow invoking existing `security → debug APK → verify` native Devtool DAG using a pinned A06 installed wheel; retain M16 debug signer, M3/M13 provenance, SHA256, separate run/attempt artifacts and fail-closed verification. Preserve the existing A05 job and legacy Android job; A07 requires A05 native-only mode to skip the legacy build.
+- **Compatibility:** Existing M3 dispatch source gate expected two option lists and rejected previously reviewed A05 `a05_mode`. Accept exactly that reviewed third list while rejecting any other choice expansion. This is not a release permission change.
+- **Status:** Prepared overlay; local source acceptance, native host GitHub qualification, Android device qualification and release qualification tracked separately. Do not equate a prepared overlay or local tests with successful GitHub hosted build.
