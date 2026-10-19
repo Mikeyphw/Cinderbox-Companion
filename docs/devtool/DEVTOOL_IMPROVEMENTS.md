@@ -197,3 +197,16 @@ This ledger is cumulative; append future Devtool gaps and campaign findings rath
 - **Affected projects:** Cinderbox Companion / Steam depot downloader adapter / Devtool Android qualification.
 - **Remediation:** Add constant-label status mapping (no raw paths), monotonic first-content and transfer-stall limits, prompt SDK failure detection, cancellable completion-future wait, source-bound negative tests and CI. Preserve owned partial bytes and do not touch imported Cinderbox game.
 - **Status:** IMPLEMENTED_PENDING_CI_AND_REAL_DEVICE; 16 historical synthetic M24 cases remain accepted. New live acceptance remains blocked until a successful licensed transfer is observed.
+
+### M24 live depot/PICS evidence diagnostic (2026-10-18, open)
+
+- **Evidence:** Real Windows depot transfer reached 54.6 MB, 1,124 completed
+  files and 784 KB/s while the UI reported depot 413151 at 0%, then failed
+  `Completed depots are not PICS-bound` at verifier time.
+- **Affected:** Cinderbox-Companion SteamContentService / JavaSteam bridge,
+  GameDownloadService, user-facing download progress and CI acceptance workflow.
+- **Action:** Source-pinned strict mismatch diagnostics and transparent byte/file
+  progress now implemented. Actual missing PICS IDs must be inspected on-device
+  before implementing any authenticated manifest resolution (do not silently
+  accept unbound depots).
+- **Status:** UI/observability implemented; PICS root-cause and release closure OPEN.

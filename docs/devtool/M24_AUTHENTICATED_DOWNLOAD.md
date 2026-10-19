@@ -63,3 +63,18 @@ remain disallowed until real-source and device receipts independently close them
 ### M24 live depot handoff visibility (pending device retest)
 
 The initial authorized real transfer was observed stuck in the UI at “Waiting for depot progress…”. This means `onDownloadStarted` fired but no chunk/file progress callback was received; it does not by itself prove a CDN or Steam entitlement failure. JavaSteam 1.8.0 reports manifest and file allocation stages through `onStatusUpdate`, previously logged but not displayed. The adapter now maps those messages only to safe constant UI labels, checks the SDK failure flag promptly, replaces blocking `awaitCompletion()` with a cancellable completion-future await, and emits `STEAM_DEPOT_FIRST_CONTENT_TIMEOUT` after 240 seconds without content or `STEAM_DEPOT_CONTENT_STALLED` after 300 seconds without transfer activity. Neither timeout deletes owned checkpoint or staged bytes. The actual cause of a particular device hang still needs sanitized live logs; this is not an authenticated Steam entitlement receipt or release qualification.
+
+## M24 live Windows depot mismatch and progress clarity (2026-10-18)
+
+On a user-authorized isolated real Steam transfer, Android reported nonzero bytes and
+files but subsequently failed closed with `Completed depots are not PICS-bound`.
+The observed Windows depot ID was `413151`. Do not suppress or bypass this gate:
+M24 PICS enumeration and SDK-completed depot selection must be reconciled against
+actual authenticated branch metadata before staging can be published.
+
+Progress now distinguishes transfer bytes, last-reported rate and completed files
+from an unavailable overall total. A zero/stale per-depot SDK percentage is no
+longer displayed as authoritative zero-percent progress. Debug logs contain only
+public numerical depot IDs (not access tokens, GIDs, paths, account IDs, or
+passwords). A mismatch names the missing depot(s) and preserves the checkpoint.
+This patch is diagnostic and UI remediation, NOT closure of live-transfer proof.

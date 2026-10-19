@@ -16,6 +16,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.sdvsync.R
 import com.sdvsync.download.CinderboxDownloadProgress
 import com.sdvsync.download.DownloadState
+import com.sdvsync.download.M24DepotProgressPolicy
 import com.sdvsync.download.SmapiSetupProgress
 import com.sdvsync.ui.components.ArrowLeftData
 import com.sdvsync.ui.components.CinderboxWizardDialog
@@ -387,21 +388,20 @@ fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            stringResource(R.string.download_verify_toggle),
+                            "File integrity verification — required",
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Text(
-                            stringResource(R.string.download_verify_desc),
+                            "Always checked before publishing this download. " +
+                                "The final Steam manifest source is not independently signed-verified.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    // Do not display a disabled switch that looks switched off.
                     Spacer(Modifier.width(12.dp))
-                    Switch(
-                        checked = true,
-                        onCheckedChange = null,
-                        enabled = false
-                    )
+                    Text("Required", style = MaterialTheme.typography.bodySmall,
+                         color = MaterialTheme.colorScheme.primary)
                 }
             }
 
@@ -961,17 +961,14 @@ private fun DownloadProgressSection(
                 Spacer(Modifier.height(8.dp))
             }
 
-            // Size + speed
-            val sizeText = buildString {
-                append(formatBytes(downloadedBytes))
-                if (bytesPerSecond > 0) {
-                    append(" \u2022 ")
-                    append(formatBytes(bytesPerSecond))
-                    append("/s")
-                }
-            }
             Text(
-                sizeText,
+                "Received: ${formatBytes(downloadedBytes)}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                if (bytesPerSecond > 0) "Last reported transfer rate: ${formatBytes(bytesPerSecond)}/s"
+                else "Transfer rate: waiting for next data event",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -979,25 +976,40 @@ private fun DownloadProgressSection(
             Spacer(Modifier.height(8.dp))
 
             Text(
-                "Files received: $filesDownloaded (overall game size not yet available)",
+                "Completed files: $filesDownloaded  •  Total game size: unknown",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                depotPhase.ifBlank { "Contacting Steam CDN; waiting for first depot chunk…" },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(8.dp))
             if (currentDepotId != null) {
-                Text(
-                    "Depot $currentDepotId: ${(currentDepotPercent * 100).toInt()}% (not overall game progress)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(4.dp))
-                PixelProgressBar(progress = currentDepotPercent)
-            } else {
-                Text(
-                    depotPhase.ifBlank { "Contacting Steam CDN; waiting for first depot chunk…" },
-                    style = MaterialTheme.typography.bodySmall
-                )
+                val depotPercentage = M24DepotProgressPolicy.displayedDepotPercent(
+                    currentDepotPercent, downloadedBytes)
+                if (depotPercentage != null) {
+                    Text(
+                        "Depot $currentDepotId: $depotPercentage% of this depot (not the game)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    PixelProgressBar(progress = currentDepotPercent)
+                } else {
+                    Text(
+                        "Receiving depot $currentDepotId • Depot percentage not available yet",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
+            Spacer(Modifier.height(4.dp))
+            Text("No reliable overall download percentage or ETA is available.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             Spacer(Modifier.height(12.dp))
 

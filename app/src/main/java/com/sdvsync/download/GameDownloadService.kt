@@ -441,6 +441,8 @@ class GameDownloadService : Service() {
 
             // Every M24 live transfer requires a local SHA-256 ledger. This does
             // not attest an independent signed Steam depot manifest.
+            AppLogger.i(TAG, "M24 downloaded depot IDs=${completedDepots.toSortedSet().joinToString(",")}; " +
+                "PICS-bound IDs=${checkNotNull(sessionDepotManifestIds).keys.sorted().joinToString(",")}")
             verifyFiles(installDir, stageRoot, completedFiles, ::recheckBranch,
                 checkNotNull(sessionManifestFingerprint), checkNotNull(sessionDepotManifestIds), completedDepots.toSet())
         } catch (e: CancellationException) {
@@ -571,11 +573,13 @@ class GameDownloadService : Service() {
             .setOngoing(true)
 
         when (progress.state) {
-            DownloadState.DOWNLOADING, DownloadState.VERIFYING -> {
-                builder.setProgress(100, (progress.overallPercent * 100).toInt(), false)
-            }
-            DownloadState.PREPARING -> {
+            DownloadState.DOWNLOADING, DownloadState.PREPARING -> {
+                // JavaSteam supplies a percentage for an individual depot, not
+                // a trustworthy game-wide total. An indeterminate bar is truthful.
                 builder.setProgress(0, 0, true)
+            }
+            DownloadState.VERIFYING -> {
+                builder.setProgress(100, (progress.overallPercent * 100).toInt(), false)
             }
             else -> {}
         }

@@ -81,6 +81,15 @@ class SteamContentService(private val clientManager: SteamClientManager) {
                 val gid = depot["manifests"][name]["gid"].asLong()
                 if (gid <= 0L) null else id to gid.toString()
             }.toMap()
+            val numericDepots = depots.children.mapNotNull { child ->
+                child.name?.toIntOrNull()?.takeIf { it > 0 }
+            }.toSortedSet()
+            if (name == "public") {
+                // IDs are non-secret; never log gid, account, token, password or raw PICS records.
+                AppLogger.i(TAG, "M24 PICS public numeric depot IDs=${numericDepots.joinToString(",")}; " +
+                    "manifest-bound IDs=${manifestIds.keys.sorted().joinToString(",")}; " +
+                    "IDs lacking direct public gid=${(numericDepots - manifestIds.keys).joinToString(",")}")
+            }
             val snapshot = runCatching {
                 M24DepotManifestIdentity.snapshot(name, buildId, manifestIds)
             }.getOrNull()

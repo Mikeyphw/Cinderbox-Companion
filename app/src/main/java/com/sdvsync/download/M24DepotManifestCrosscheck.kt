@@ -21,8 +21,14 @@ object M24DepotManifestCrosscheck {
         // reconciliation may infer them only from a matching cached manifest;
         // it never claims proof of entitlement or a complete app/depot inventory.
         val selected = if (completedDepots != null) {
-            require(completedDepots.isNotEmpty() && completedDepots.size <= 128 &&
-                completedDepots.all { it in picsIds }) { "Completed depots are not PICS-bound" }
+            require(completedDepots.isNotEmpty() && completedDepots.size <= 128) {
+                "No bounded completed depot list to verify; staged bytes preserved"
+            }
+            val missing = (completedDepots - picsIds.keys).sorted()
+            check(missing.isEmpty()) {
+                "PICS manifest ID missing for completed depot(s) ${missing.joinToString(",")}; " +
+                    "downloaded bytes and checkpoint preserved"
+            }
             completedDepots
         } else {
             picsIds.filter { (id, gid) ->

@@ -77,7 +77,7 @@ def generate(root=ROOT,env=None):
     require('private val' not in get('app/src/main/java/com/sdvsync/download/M24DepotFileProof.kt') or 'verify(stage:' in get('app/src/main/java/com/sdvsync/download/M24DepotFileProof.kt'), 'MANIFEST_PROOF_SOURCE_MISSING')
     require('capacity.sufficient == false || capacity.sufficient == null' in ui,'UNKNOWN_CAPACITY_MUST_BLOCK')
     require('selectedBranchInfo.buildId' in ui and '!current.verifyAfterDownload' in ui,'UI_LIVE_GUARD_MISSING')
-    require('enabled = false' in screen and 'LOCAL_SHA256_ONLY_MANIFEST_UNATTESTED' in screen,'USER_STATUS_UNSAFE')
+    require('File integrity verification — required' in screen and 'LOCAL_SHA256_ONLY_MANIFEST_UNATTESTED' in screen,'USER_STATUS_UNSAFE')
     kt=get('app/src/androidTest/java/com/sdvsync/qualification/M24SteamDownloadSafetyDeviceTest.kt')
     discovered=re.findall(r'@Test fun (m24_\d\d\w+)\s*\(',kt)
     require(tuple(discovered)==METHODS,'DEVICE_CASE_MATRIX_CHANGED')
