@@ -26,6 +26,12 @@ on:
         type: choice
         required: true
         options: ['apk']
+      a05_mode:
+        description: 'A05 native source DAG only, both lanes, or preserve existing Android build'
+        type: choice
+        required: true
+        default: 'off'
+        options: ['off', 'native-only', 'both']
 
 permissions:
   contents: read
@@ -36,6 +42,7 @@ concurrency:
 
 jobs:
   build-debug-apk:
+    if: ${{ inputs.a05_mode != 'native-only' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     permissions:
@@ -397,3 +404,73 @@ jobs:
           path: app/build/outputs/apk/androidTest/debug/*.apk
           retention-days: 14
 
+  # A05: source-only Devtool DAG. Independent of debug APK signing/build.
+  # No Android device, Steam login or release material is used.
+  a05-native-devtool-dag:
+    if: ${{ inputs.a05_mode == 'native-only' || inputs.a05_mode == 'both' }}
+    name: A05 native DAG + EXO evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      A05_DEVTOOL_SHA: 08eb13991b5d1c623b64fdd8f9524418ee27207e
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Checkout exact consumer source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Verify immutable consumer checkout and source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_REPOSITORY" = 'Mikeyphw/Cinderbox-Companion'
+          python3 scripts/devtool/a05_actions_qualification.py source
+      - name: Install pinned Devtool A04 (no floating runtime)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --no-checkout https://github.com/Mikeyphw/devtool.git "$RUNNER_TEMP/devtool-a05"
+          git -C "$RUNNER_TEMP/devtool-a05" checkout --detach "$A05_DEVTOOL_SHA"
+          test "$(git -C "$RUNNER_TEMP/devtool-a05" rev-parse HEAD)" = "$A05_DEVTOOL_SHA"
+          python3 -m venv "$RUNNER_TEMP/devtool-a05-venv"
+          "$RUNNER_TEMP/devtool-a05-venv/bin/python" -m pip install --disable-pip-version-check "$RUNNER_TEMP/devtool-a05"
+      - name: Native target-local DAG plan and preflight
+        shell: bash
+        env:
+          DEVTOOL_XDG_DIR: ${{ runner.temp }}/devtool-a05-state
+        run: |
+          set -euo pipefail
+          PY="$RUNNER_TEMP/devtool-a05-venv/bin/python"
+          "$PY" -m devtool --repo "$GITHUB_WORKSPACE" plan --target cinderbox m24-verify-ux-check --json > "$RUNNER_TEMP/devtool-plan.json"
+          "$PY" -m devtool --repo "$GITHUB_WORKSPACE" preflight --target cinderbox --workflow m24-verify-ux-check --json > "$RUNNER_TEMP/devtool-preflight.json"
+      - name: Invoke native DAG and retain machine evidence
+        shell: bash
+        env:
+          DEVTOOL_XDG_DIR: ${{ runner.temp }}/devtool-a05-state
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/devtool-a05-venv/bin/python" -m devtool --repo "$GITHUB_WORKSPACE" --machine-file "$RUNNER_TEMP/devtool-invoke.json" invoke --target cinderbox m24-verify-ux-check
+      - name: Write bounded source/run/attempt evidence even after failures
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/devtool/a05_actions_qualification.py record \
+            --evidence-dir "$RUNNER_TEMP/cinderbox-a05-evidence" \
+            --input-dir "$RUNNER_TEMP" \
+            --repo "$GITHUB_REPOSITORY" \
+            --sha "$GITHUB_SHA" \
+            --devtool-sha "$A05_DEVTOOL_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --attempt "$GITHUB_RUN_ATTEMPT"
+      - name: Upload read-only A05 machine evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cinderbox-a05-native-dag
+          path: ${{ runner.temp }}/cinderbox-a05-evidence/
+          if-no-files-found: error
+          retention-days: 14

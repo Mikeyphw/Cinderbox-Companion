@@ -665,3 +665,9 @@ m23-full = [
 output_directory = ".devtool/build-artifacts"
 output_name = "cinderbox-companion"
 collision = "unique"
+
+# A05: source-only native target-local DAG used by the registered Actions workflow.
+[wrapper.commands.a05-check]
+description = "A05 native M24 verification/Android picker source DAG (no device mutation)"
+workflow = "m24-verify-ux-check"
+target = "cinderbox"

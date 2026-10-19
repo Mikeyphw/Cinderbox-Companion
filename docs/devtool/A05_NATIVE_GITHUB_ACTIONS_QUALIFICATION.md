@@ -1,0 +1,73 @@
+# ACTIONS-A05 — Cinderbox native Devtool DAG evidence pilot
+
+## Scope
+
+The existing `.github/workflows/devtool-android-build.yml` remains the registered
+workflow. Its established debug APK, debug signing, Gradle, CI artifact and
+source gates remain unchanged **by default**. The new `a05_mode` dispatch
+input has three explicitly different behaviors:
+
+- `off` (default): run the existing build job, do not run A05.
+- `native-only`: skip the existing build job and run only the source-only A05 DAG.
+- `both`: run the existing Android build plus independent source-only A05 DAG.
+
+A05 executes pre-existing target-local `m24-verify-ux-check` (security contract
+→ M24 verification UX/folder picker), via Devtool plan, preflight and invoke.
+It adds only the `a05-check` wrapper alias. It does **not** perform Steam
+operations, Android instrumentation, app install, signing or publication.
+
+## Frozen identities
+
+- Cinderbox parent: `ebac91b1deb7da65aa2905e3d75e1825a5ec4097`.
+- Devtool source: `08eb13991b5d1c623b64fdd8f9524418ee27207e` (A04 accepted).
+- Host: `ubuntu-24.04`. No root/Android/device tokens or privileged writes.
+- Checkout and upload-artifact Actions pinned to full Git SHAs in the A05 job.
+- Evidence artifact: `cinderbox-a05-native-dag`, retained 14 days.
+
+The evidence includes the exact GitHub `run_id` and `run_attempt`, consumer
+`GITHUB_SHA`, Devtool SHA, canonical plan/preflight/invoke machine JSON and a
+SHA256SUMS manifest. Collection occurs even when DAG execution fails. The
+verifier refuses to mark missing, failed or mismatched evidence successful.
+
+## Run after source merge or branch push
+
+The workflow must be present on GitHub at the selected ref. Using the
+feature branch from this snapshot, run:
+
+```sh
+gh workflow run devtool-android-build.yml \
+  --repo Mikeyphw/Cinderbox-Companion \
+  --ref feature/m24-steam-download-safety \
+  -f project_dir=. -f module=app -f variant=debug -f format=apk \
+  -f a05_mode=native-only
+```
+
+Observe the exact run with `gh run list --repo Mikeyphw/Cinderbox-Companion
+--workflow devtool-android-build.yml --branch feature/m24-steam-download-safety
+--limit 5`. Then verify **one explicitly selected run and commit**:
+
+```sh
+python3 scripts/devtool/a05_actions_qualification.py verify-run \
+  --run-id YOUR_RUN_ID --sha YOUR_EXACT_CINDERBOX_HEAD_SHA \
+  --mode native-only --out "$HOME/cinderbox-a05-YOUR_RUN_ID"
+```
+
+For a combined Android build plus A05, dispatch `a05_mode=both` and verify
+with `--mode both`. The verifier requires both GitHub jobs to succeed in this
+mode. Do not interpret the source-only job as Android-device qualification.
+
+## Acceptance boundaries
+
+A local receipt from `python3 scripts/devtool/a05_acceptance.py` records source
+and tests **only**. It cannot create an external GitHub run or qualify the
+Android APK, device, user sign-in or release. These are separate obligations.
+Remote verification only succeeds after exact-run, attempt, source and checksum
+verification. No credential values or private application data enter the
+A05 evidence artifact.
+
+## Troubleshooting
+
+If a workflow's resource is not accessible, distinguish `gh auth status`,
+`gh api repos/Mikeyphw/Cinderbox-Companion`, `gh workflow list`, and the
+selected exact run. The generic GitHub 404 is not evidence that all repository
+access is broken. Inspect the selected workflow and ID before redispatching.
