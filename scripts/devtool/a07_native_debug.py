@@ -71,7 +71,8 @@ def source_contract(root:Path=ROOT) -> None:
            "options: ['off', 'native-only', 'both']" in flow and
            'a07_native_build:' in flow and
            'type: boolean' in flow and
-           'default: false' in flow, 'A05 choice/A07 boolean dispatch drift')
+           'default: true' in flow and
+           "default: 'native-only'" in flow, 'A05 choice/A07 boolean dispatch drift')
     insist("if: ${{ inputs.a07_native_build == true && inputs.a05_mode == 'native-only' }}" in flow,
            'A07 dispatch must disable the legacy build')
     insist(flow.count('  a07-native-debug-build:')==1 and

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Source-bound M24 code/CI/evidence contract. Does not authorize a live Steam operation."""
 from __future__ import annotations
+from ci_workflow_contract import effective_ci_source
 import argparse, hashlib, json, os, re, subprocess, sys
 from pathlib import Path
 import tomllib
@@ -92,7 +93,7 @@ def generate(root=ROOT,env=None):
     require(wf[-1].get('depends_on')==['tests'],'DAG_ORDER_INVALID')
     require(cfg['wrapper']['commands']['m24-check']['workflow']=='m24-check','WRAPPER_ALIAS_MISSING')
     for pth in ('.github/workflows/build.yml','.github/workflows/devtool-android-build.yml'):
-        ci=get(pth)
+        ci=effective_ci_source(root,pth)
         require(ci.count('scripts/devtool/m24_gate.py')==1,'CI_GATE_NOT_BOUND')
         require(ci.count('test_m24_gate.py')==1,'CI_HOST_TESTS_NOT_BOUND')
         require(ci.index('scripts/devtool/m24_gate.py')<ci.index('assembleDebugAndroidTest'),'CI_ORDER_INVALID')

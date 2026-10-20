@@ -97,3 +97,48 @@ be reconciled into it in the next Devtool-core overlay. Do not rewrite history.
 - **Repair:** In the A07 SDK setup step, explicitly request `with: packages: platform-tools`, retaining existing `android-actions/setup-android@v3` and separately pinned compile SDK/build tools. Add fail-closed source-contract validation and negative tests for omitted or retired SDK packages. Preserve previously qualified A05, M16 signer, A06 wheel pin, M3/M13 evidence, device and release boundaries.
 - **Preventive recommendation:** Implement source-bound GitHub Actions checks for removed Android SDK packages (and job/step expression scopes) before dispatch; update generated workflow templates to avoid deprecated defaults. Review other setup-android@v3 consumers without altering them automatically.
 - **Status:** R2 repair prepared and locally validated; GitHub-hosted A07 APK and exact-run artifact qualification pending a new run. Do not treat the failed run as qualification.
+
+
+## 2026-10-20 — A10 duplicate legacy CI body + native-default ergonomics
+
+- **Evidence:** Cinderbox commit `cb218cba` had an extensive `build.yml`
+  push/PR APK workflow and a second, copied legacy full build job inside
+  `devtool-android-build.yml`; A07's hosted native DAG had already passed
+  run `39336899057`, but a new manual dispatch defaulted to the legacy job.
+- **Impact:** duplicated Gradle tests/build/signing configuration could drift;
+  the native path was not the normal manually dispatched path.
+- **Fix (source-stage):** add `workflow_call` to the existing, unchanged push/PR
+  workflow; dispatch delegates its fallback via a reusable job, selecting
+  native A07+A05 by default. Preserve manual fallback, source gates,
+  existing APK/instrumentation artifact names and minimal read-only permissions.
+- **Acceptance:** local source/negative checks before push; new exact-commit
+  native-default and reusable legacy-fallback hosted run acceptance remain OPEN.
+  Full push/PR default migration is DEFERRED until parity and required
+  regression/instrumentation gates are demonstrated on the revised source.
+- **Status:** SOURCE_TESTED_ONLY; preserve all earlier A05–A07 receipts.
+
+
+### A10 source-contract reconciliation (same root cause)
+
+- **Evidence:** M13/M16 and M5–M24 source checks historically asserted that
+  complete M3–M24/instrumentation steps appeared in **both** YAML files. Real
+  source deduplication therefore initially refused, despite the canonical
+  `build.yml` retaining its steps. M3G also depended on the old Gradle
+  command's exact textual formatting.
+- **Resolution:** add `ci_workflow_contract.py`, verifying the exact delegated
+  same-repository job, source-bound unchanged legacy CI body, signing/artifact
+  handoff and native default; project only the canonical legacy branch to the
+  existing milestone *source* checks. Preserve raw source digests independently.
+  M13/M16 separately verify native debug, signer and release-policy boundaries.
+- **Limits:** source tests do NOT claim that A07 executes all legacy milestone
+  regressions; automatic push/PR and explicit fallback continue doing so.
+  Kotlin-heavy M24 synthetic proof and the first revised GitHub runs remain
+  additional acceptance. No silent native failure → legacy re-dispatch.
+- **Status:** LOCAL_CONTRACT_VERIFIED; REMOTE_ACCEPTANCE_PENDING.
+
+## 2026-10-20 — ACTIONS-A10 executable-mode overlay regression
+
+- **Evidence:** Native A10 rehearsal on the exact `cb218cba` Cinderbox tree passed source tests and auto-commit, but the initial overlay ZIP demoted `scripts/devtool/m24_provenance_gate.py` from Git mode `100755` to `100644`, even though its content checksum still matched.
+- **Impact:** Reusable CI source checks could remain green while direct script execution lost the executable bit. This is an overlay ZIP packaging issue, not a reason to weaken source qualification.
+- **Correction:** Emit POSIX file modes from the frozen Git source in native ZIP entries; validate the executable gate and compare all affected paths' post-commit modes with their parent. Rehearse the full native apply again before installation.
+- **Status:** corrected in A10 bundle; hosted GitHub acceptance remains outstanding.

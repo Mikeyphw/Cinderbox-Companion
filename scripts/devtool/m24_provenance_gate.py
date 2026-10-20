@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from ci_workflow_contract import effective_ci_source
 """M24 CI/source-bound gate for a strictly read-only APK and Cinderbox probe."""
 import argparse
 import hashlib
@@ -33,7 +34,7 @@ def generate():
     assert 'installed_source_verified' in probe and 'signed_depot_manifest_verified=False' in probe
     assert all(term not in probe for term in ['"install",','"uninstall",','"clear",','"reboot",'])
     for wf in (".github/workflows/build.yml", ".github/workflows/devtool-android-build.yml"):
-        text=contents[wf].decode()
+        text=effective_ci_source(ROOT,wf)
         assert text.count("scripts/devtool/m24_provenance_gate.py")==1
         assert text.count("test_m24_real_substrate.py")==1
         assert text.index("scripts/devtool/m24_provenance_gate.py")<text.index("assembleDebugAndroidTest")

@@ -1,8 +1,9 @@
 """M11 source regression: true unknown-size semantics, save preservation and CI wiring."""
 from pathlib import Path
 import unittest
+from ci_workflow_contract import effective_ci_source
 ROOT=Path(__file__).resolve().parents[2]
-def src(path): return (ROOT/path).read_text(encoding='utf-8')
+def src(path): return effective_ci_source(ROOT,path)
 
 class M11Contracts(unittest.TestCase):
     def test_copy_budget_guard_and_download_without_user_size_guess(self):

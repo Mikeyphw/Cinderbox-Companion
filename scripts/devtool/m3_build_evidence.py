@@ -72,8 +72,20 @@ def check_source(root: Path) -> None:
     allowed = re.findall(r"(?m)^\s*options: \[([^\]]+)\]\s*$", dispatched)
     if allowed != ["'debug'", "'apk'", "'off', 'native-only', 'both'"]:
         raise QualificationError("Devtool dispatch must remain debug APK only")
-    if "test \"$DT_VARIANT\" = 'debug'" not in dispatched:
-        raise QualificationError("Devtool build variant is not fail-closed")
+    # The dispatch's legacy lane is a reusable-workflow call, not duplicated
+    # shell steps. The only allowed variant/format still comes from fixed inputs.
+    legacy_delegate = ("  build-debug-apk:\n"
+                       "    if: ${{ inputs.a05_mode != 'native-only' }}\n"
+                       "    uses: ./.github/workflows/build.yml\n"
+                       "    permissions:\n"
+                       "      contents: read\n"
+                       "    secrets: inherit\n")
+    if legacy_delegate not in dispatched or dispatched.count('uses: ./.github/workflows/build.yml') != 1:
+        raise QualificationError('Dispatch must reuse the guarded canonical legacy build')
+    if '  workflow_call:' not in push or '  push:' not in push or '  pull_request:' not in push:
+        raise QualificationError('Canonical legacy CI must support push/PR and guarded reuse')
+    if "default: 'native-only'" not in dispatched or 'default: true' not in dispatched:
+        raise QualificationError('Native build is not the default dispatch lane')
     for name, body in (("dispatch", dispatched), ("push", push)):
         if not re.search(r"(?m)^permissions:\s*\n\s*contents: read\s*$", body):
             raise QualificationError(f"{name} workflow must use read-only repository permissions")

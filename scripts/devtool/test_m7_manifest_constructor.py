@@ -2,6 +2,7 @@
 from pathlib import Path
 import unittest
 
+from ci_workflow_contract import effective_ci_source
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -18,7 +19,7 @@ class M7ModManifestConstructorRegression(unittest.TestCase):
 
     def test_jvm_tests_remain_in_ci(self):
         for path in ('.github/workflows/build.yml', '.github/workflows/devtool-android-build.yml'):
-            workflow = (ROOT / path).read_text('utf-8')
+            workflow = effective_ci_source(ROOT,path)
             self.assertIn('testDebugUnitTest', workflow)
 
 

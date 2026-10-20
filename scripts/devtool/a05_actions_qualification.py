@@ -212,7 +212,11 @@ def verify_run(run_id:int, out:Path, expected_sha:str, mode:str):
     matched=[j for j in items if j.get('name') == 'A05 native DAG + EXO evidence' and j.get('run_attempt',attempt)==attempt]
     if len(matched)!=1 or matched[0].get('conclusion')!='success':raise ProofError('Native A05 DAG job not successful')
     if run.get('conclusion')!='success':raise ProofError('GitHub workflow not successful')
-    build=[j for j in items if j.get('name') == 'build-debug-apk' and j.get('run_attempt',attempt)==attempt]
+    # GitHub reports a reused workflow's child as `build-debug-apk / build`
+    # on the active fallback, while a skipped reusable job can still be just
+    # `build-debug-apk`. Bind both to the exact source-guarded job identity.
+    build=[j for j in items if j.get('name') in ('build-debug-apk','build-debug-apk / build')
+           and j.get('run_attempt',attempt)==attempt]
     if len(build)!=1:raise ProofError('Expected exactly one Android build job for exact run attempt')
     if mode=='both':
         if build[0].get('conclusion')!='success':raise ProofError('Android build job not successful')

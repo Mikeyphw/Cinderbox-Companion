@@ -1,8 +1,9 @@
 """M9 source contracts. JVM tests separately exercise actual staged filesystem transitions."""
 from pathlib import Path
 import unittest
+from ci_workflow_contract import effective_ci_source
 R=Path(__file__).resolve().parents[2]
-def read(path):return (R/path).read_text(encoding='utf-8')
+def read(path):return effective_ci_source(R,path)
 class M9BatchContracts(unittest.TestCase):
  def test_all_archive_mods_commit_as_one_transaction(self):
   s=read('app/src/main/java/com/sdvsync/mods/ModFileManager.kt')

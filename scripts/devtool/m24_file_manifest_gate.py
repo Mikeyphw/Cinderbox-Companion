@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """M24 bounded cached-depot-file content proof source gate. No live Steam test here."""
 from pathlib import Path
+from ci_workflow_contract import effective_ci_source
 import hashlib, json, os, re, subprocess, sys, argparse
 ROOT=Path(__file__).resolve().parents[2]
 FILES=(
@@ -53,7 +54,7 @@ def generate(root=ROOT, env=None):
     nodes=settings['targets']['cinderbox']['workflows']['m24-file-check']
     if [node['id'] for node in nodes]!=['security','tests','gate']:raise ValueError('DEVTOOL_DAG_INVALID')
     for ci in FILES[8:10]:
-        if source(ci).count('scripts/devtool/m24_file_manifest_gate.py')!=1:raise ValueError('CI_GATE_NOT_BOUND')
+        if effective_ci_source(root,ci).count('scripts/devtool/m24_file_manifest_gate.py')!=1:raise ValueError('CI_GATE_NOT_BOUND')
     return dict(schema_version=1,producer='cinderbox-m24-depot-file-proof-source',overall='PASS_M24_DEPOT_FILE_PROOF_SOURCE',source_sha=sha,
                 source_sha256={k:hashlib.sha256(v).hexdigest() for k,v in sorted(raw.items())},synthetic_cases=list(METHODS),
                 device_executed=False,installed_source_verified=False,live_download_performed=False,

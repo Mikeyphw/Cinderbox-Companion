@@ -61,6 +61,21 @@ class R2ProofTests(unittest.TestCase):
             self.assertFalse(proof['release_qualified'])
             self.assertFalse(proof['device_qualified'])
 
+    def test_reused_legacy_child_name_in_both_mode(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);inp=root/'input';inp.mkdir();machine_outputs(inp)
+            source=root/'fixture';a05.record(source,SHA,a05.DEVTOOL_SHA,a05.REPO,RUN,1,inp)
+            target=root/'download';run,jobs,artifacts=api_objects(mode='both',inputs={'a05_mode':'both'})
+            jobs['jobs'][1]['name']='build-debug-apk / build'
+            def gh_download(cmd,**kwargs):
+                for path in source.iterdir():shutil.copyfile(path,target/path.name)
+                return subprocess.CompletedProcess(cmd,0,'','')
+            with patch.object(a05,'_gh_api',side_effect=[run,jobs,artifacts]):
+                with patch.object(a05.subprocess,'run',side_effect=gh_download):
+                    proof=a05.verify_run(RUN,target,SHA,'both')
+            self.assertEqual(proof['overall'],'PASS_CINDERBOX_A05_GITHUB_RUN_VERIFIED')
+            self.assertEqual(proof['mode'],'both')
+
     def test_explicit_conflicting_input_still_refused(self):
         run,_,_=api_objects(inputs={'a05_mode':'off'})
         with tempfile.TemporaryDirectory() as d:

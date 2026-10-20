@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Source-bound M23 Android test APK lane contract; NOT a device-PASS receipt."""
 from __future__ import annotations
+from ci_workflow_contract import effective_ci_source
 import argparse, hashlib, json, os, re, subprocess
 from pathlib import Path
 import tomllib
@@ -85,7 +86,7 @@ def generate(root:Path=ROOT,env:dict|None=None)->dict:
     if graph[-1].get('depends_on') != ['inventory']:
         raise GateError('DEVTOOL_DEPENDENCY_MISSING')
     for f in ('.github/workflows/build.yml','.github/workflows/devtool-android-build.yml'):
-        workflow=data[f].decode()
+        workflow=effective_ci_source(root,f)
         if workflow.count('scripts/devtool/m23_device_test_gate.py')!=1:
             raise GateError('CI_DEVICE_TEST_GATE_MISSING')
         if workflow.index('scripts/devtool/m23_device_test_gate.py')>workflow.index('assembleDebugAndroidTest'):

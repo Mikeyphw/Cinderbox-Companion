@@ -1,6 +1,7 @@
 name: Build Debug APK
 
 on:
+  workflow_call:
   push:
     branches: [ main, master, 'security/**' ]
   pull_request:
@@ -311,6 +312,50 @@ jobs:
             app/build/outputs/apk/debug/M3_PROVENANCE.json
             app/build/outputs/apk/debug/M13_QUALIFICATION.json
           retention-days: 14
+      # A10: keep the original Devtool legacy artifact contract only when
+      # called by the manual workflow. Source/pull-request CI retains its
+      # original artifact and full M3–M24 source/instrumentation gates.
+      - name: Stage original Devtool manual fallback artifact
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apks=(app/build/outputs/apk/debug/*.apk)
+          test "${#apks[@]}" -eq 1
+          test -f "${apks[0]}" && test ! -L "${apks[0]}"
+          stage="$RUNNER_TEMP/cinderbox-devtool-debug"
+          mkdir -p "$stage"
+          cp -- "${apks[0]}" "$stage/debug.apk"
+          (cd "$stage" && sha256sum debug.apk > SHA256SUMS)
+          {
+            printf 'repository=%s\n' "$GITHUB_REPOSITORY"
+            printf 'commit=%s\n' "$GITHUB_SHA"
+            printf 'ref=%s\n' "$GITHUB_REF"
+            printf 'workflow_run=%s\n' "$GITHUB_RUN_ID"
+            printf 'variant=debug\nformat=apk\nmodule=app\n'
+          } > "$stage/BUILD_INFO.txt"
+          python3 scripts/devtool/m3_build_evidence.py generate \
+            --apk-dir "$stage" --output "$stage/M3_PROVENANCE.json"
+          python3 scripts/devtool/m13_qualification.py finalize \
+            --source-sha "$GITHUB_SHA" \
+            --provenance "$stage/M3_PROVENANCE.json" \
+            --apk "$stage/debug.apk" \
+            --output "$stage/M13_QUALIFICATION.json"
+      - name: Upload original Devtool manual fallback artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: devtool-android-debug-apk
+          path: |
+            ${{ runner.temp }}/cinderbox-devtool-debug/debug.apk
+            ${{ runner.temp }}/cinderbox-devtool-debug/SHA256SUMS
+            ${{ runner.temp }}/cinderbox-devtool-debug/BUILD_INFO.txt
+            ${{ runner.temp }}/cinderbox-devtool-debug/M3_PROVENANCE.json
+            ${{ runner.temp }}/cinderbox-devtool-debug/M13_QUALIFICATION.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: M23 synthetic Android test source contract
         run: |
           python3 -m unittest discover -s scripts/devtool -p 'test_m23_device_test_gate.py' -v

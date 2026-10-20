@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """M24 PICS depot-manifest *identity* source gate; no Steam account or file manifest proof."""
 from __future__ import annotations
+from ci_workflow_contract import effective_ci_source
 import argparse,hashlib,json,os,re,subprocess,sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
@@ -58,7 +59,7 @@ def generate(root=ROOT,env=None):
  wf=cfg['targets']['cinderbox']['workflows']['m24-pics-check']
  if [n['id'] for n in wf]!=['security','tests','gate']:raise ValueError('DAG_INVALID')
  for workflow in PATHS[8:10]:
-  if source(workflow).count('scripts/devtool/m24_pics_gate.py')!=1:raise ValueError('CI_BINDING_MISSING')
+  if effective_ci_source(root,workflow).count('scripts/devtool/m24_pics_gate.py')!=1:raise ValueError('CI_BINDING_MISSING')
  return dict(schema_version=1,producer='cinderbox-m24-pics-identity-source',overall='PASS_PICS_IDENTITY_SOURCE_ONLY',source_commit=sha.stdout.strip(),source_sha256={k:hashlib.sha256(v).hexdigest() for k,v in sorted(data.items())},synthetic_cases=list(METHODS),device_executed=False,steam_entitlement_verified=False,signed_depot_file_manifest_verified=False,real_download_performed=False,installed_source_verified=False,release_qualified=False,publication_allowed=False)
 def main():
  ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--output',type=Path);args=ap.parse_args()
