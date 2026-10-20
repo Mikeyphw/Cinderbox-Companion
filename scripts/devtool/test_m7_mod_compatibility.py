@@ -1,8 +1,9 @@
 """M7A source contract tests (no Gradle required); Android JVM tests verify semantics."""
 from pathlib import Path
 import unittest
+from ci_workflow_contract import effective_ci_source
 ROOT=Path(__file__).resolve().parents[2]
-def read(path):return (ROOT/path).read_text(encoding='utf-8')
+def read(path):return effective_ci_source(ROOT,path)
 class M7ProfileSafetyTest(unittest.TestCase):
  def test_profile_apply_uses_guarded_transaction(self):
   s=read('app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt')

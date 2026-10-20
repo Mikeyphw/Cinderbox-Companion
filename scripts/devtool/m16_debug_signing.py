@@ -111,10 +111,21 @@ def source_contract(root: Path):
     need(all(t in gradle for t in ('CINDERBOX_REQUIRE_PERSISTENT_DEBUG_SIGNING',
          'CINDERBOX_DEBUG_KEYSTORE_PATH', 'signingConfigs.getByName("ciDebug")')),
          'GRADLE_SIGNING_CONFIG_INCOMPLETE')
-    for fn in ('build.yml', 'devtool-android-build.yml'):
-        body = (root/'.github/workflows'/fn).read_text()
-        for token in ('m16_debug_signing.py provision', 'm16_debug_signing.py verify',
-                      'M16 persistent debug signing regressions', B64, STORE, KEY, PIN):
+    # Canonical legacy host CI owns the full signer regression and Android
+    # instrumentation lanes. The manual dispatch delegates its fallback there
+    # instead of keeping a second copy of the entire pipeline.
+    legacy=(root/'.github/workflows/build.yml').read_text()
+    manual=(root/'.github/workflows/devtool-android-build.yml').read_text()
+    need('  workflow_call:' in legacy and
+         'uses: ./.github/workflows/build.yml' in manual and
+         "if: ${{ inputs.a05_mode != 'native-only' }}" in manual,
+         'M16_LEGACY_DELEGATION_MISSING')
+    for fn,body,required in (
+        ('build.yml', legacy, ('M16 persistent debug signing regressions',)),
+        ('devtool-android-build.yml',manual,('m16_debug_signing.py source',
+                                            'invoke --target cinderbox build'))):
+        for token in ('m16_debug_signing.py provision','m16_debug_signing.py verify',
+                      B64, STORE, KEY, PIN, *required):
             need(token in body, 'WORKFLOW_SIGNING_INCOMPLETE:' + fn)
         need('assembleRelease' not in body, 'DEBUG_WORKFLOW_MUST_NOT_BUILD_RELEASE')
     print('M16 source contract: PASS')

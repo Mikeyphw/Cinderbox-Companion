@@ -12,6 +12,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import com.sdvsync.MainActivity
 import com.sdvsync.R
@@ -20,6 +21,7 @@ import com.sdvsync.local.InstallationScanner
 import com.sdvsync.local.InstallHealth
 import com.sdvsync.local.StoragePreflight
 import com.sdvsync.steam.SteamClientManager
+import com.sdvsync.steam.SteamContentService
 import `in`.dragonbra.javasteam.depotdownloader.DepotDownloader
 import `in`.dragonbra.javasteam.depotdownloader.IDownloadListener
 import `in`.dragonbra.javasteam.depotdownloader.data.AppItem
@@ -31,6 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.future.await
 import org.koin.android.ext.android.inject
 
 class GameDownloadService : Service() {
@@ -45,6 +48,7 @@ class GameDownloadService : Service() {
         private const val EXTRA_INSTALL_DIR = "install_dir"
         private const val EXTRA_OS = "os"
         private const val EXTRA_VERIFY = "verify"
+        private const val EXTRA_BUILD_ID = "steam_build_id"
 
         fun start(
             context: Context,
@@ -52,7 +56,8 @@ class GameDownloadService : Service() {
             password: String?,
             installDir: String,
             os: String,
-            verify: Boolean = true
+            verify: Boolean = true,
+            expectedBuildId: Long = 0L
         ) {
             val intent = Intent(context, GameDownloadService::class.java).apply {
                 putExtra(EXTRA_BRANCH, branch)
@@ -60,6 +65,7 @@ class GameDownloadService : Service() {
                 putExtra(EXTRA_INSTALL_DIR, installDir)
                 putExtra(EXTRA_OS, os)
                 putExtra(EXTRA_VERIFY, verify)
+                putExtra(EXTRA_BUILD_ID, expectedBuildId)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
@@ -83,6 +89,9 @@ class GameDownloadService : Service() {
     // Track cumulative bytes per depot (callback values are cumulative, not deltas)
     private val depotBytes = ConcurrentHashMap<Int, Long>()
     private val failedItems = AtomicBoolean(false)
+    // Monotonic progress probes: status text cannot hide a zero-byte stalled transfer.
+    private val lastDepotContentMs = AtomicLong(0L)
+    private val depotContentObserved = AtomicBoolean(false)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -98,10 +107,11 @@ class GameDownloadService : Service() {
         val installDir = intent?.getStringExtra(EXTRA_INSTALL_DIR) ?: return START_NOT_STICKY
         val os = intent.getStringExtra(EXTRA_OS) ?: "windows"
         val verify = intent.getBooleanExtra(EXTRA_VERIFY, true)
+        val expectedBuildId = intent.getLongExtra(EXTRA_BUILD_ID, 0L)
 
         downloadJob?.cancel()
         downloadJob = serviceScope.launch {
-            runDownload(branch, password, installDir, os, verify)
+            runDownload(branch, password, installDir, os, verify, expectedBuildId)
         }
 
         return START_NOT_STICKY
@@ -135,9 +145,42 @@ class GameDownloadService : Service() {
         password: String?,
         installDir: String,
         os: String,
-        verify: Boolean
+        verify: Boolean,
+        expectedBuildId: Long
     ) {
         try {
+            // This verifies PICS branch identity, NOT actual license/depot entitlement.
+            require(verify && expectedBuildId > 0L) { "Unverified Steam build selection" }
+            check(clientManager.isLoggedIn) { "Steam sign-in required" }
+            val content = SteamContentService(clientManager)
+            var sessionManifestFingerprint: String? = null
+            var sessionDepotManifestIds: Map<Int, String>? = null
+            suspend fun recheckBranch() {
+                val selected = content.getAppBranches().branches.firstOrNull { it.name == branch }
+                M24SteamSelectionPolicy.requireBound(clientManager.isLoggedIn, expectedBuildId, selected?.buildId)
+                val fingerprint = selected?.manifestFingerprint
+                    ?: error("PICS branch has no usable depot manifest IDs; no live transfer permitted")
+                if (sessionManifestFingerprint != null) {
+                    check(sessionManifestFingerprint == fingerprint) {
+                        "Steam depot manifest identity changed during download; staged bytes preserved"
+                    }
+                }
+                val directIds = selected?.depotManifestIds ?: emptyMap()
+                check(directIds.isNotEmpty() && directIds.size == selected?.depotCount) {
+                    "PICS depot manifest identities missing"
+                }
+                val sharedSources = selected?.sharedDepotFromApps ?: emptyMap()
+                // Parent GIDs must be obtained independently from fresh authenticated
+                // Steam PICS; JavaSteam's cached .manifest/.sha is not an authority.
+                val inheritedIds = content.resolveSharedDepotManifests(branch, sharedSources)
+                val ids = M24SharedDepotBinding.merge(directIds, sharedSources, inheritedIds)
+                if (sessionDepotManifestIds != null) {
+                    check(sessionDepotManifestIds == ids) { "PICS depot manifests changed" }
+                }
+                sessionDepotManifestIds = ids
+                sessionManifestFingerprint = fingerprint
+            }
+            recheckBranch()
             val installRoot = File(installDir)
             // Defense in depth for restarted/explicit service intents, even if the
             // UI and GameDownloadManager path gates were bypassed.
@@ -151,6 +194,18 @@ class GameDownloadService : Service() {
             // Only a checkpoint written by our manager authorizes touching partial files.
             // This also rejects intents manually dispatched to the service.
             GameDownloadRecovery(filesDir).requireMatching(installRoot, branch, os, verify)
+            val recovery = GameDownloadRecovery(filesDir)
+            recovery.requireSteamBuildId(expectedBuildId)
+            val manifestFingerprint = checkNotNull(sessionManifestFingerprint)
+            recovery.bindDepotManifestFingerprint(manifestFingerprint)
+            recovery.requireDepotManifestFingerprint(manifestFingerprint)
+            if (recovery.isPromotedStage(installRoot)) {
+                // Crash occurred after atomic rename, before final ledger/journal
+                // commit. Rehash the installed bytes without contacting downloader.
+                verifyPromotedFiles(installRoot, checkNotNull(sessionDepotManifestIds))
+                return
+            }
+            val stageRoot = recovery.requireActiveStage(installRoot)
             GameDownloadManager._progress.value = DownloadProgress(state = DownloadState.PREPARING)
             updateNotification(getString(R.string.download_preparing))
 
@@ -198,14 +253,20 @@ class GameDownloadService : Service() {
             lastSpeedBytes.set(0L)
             depotBytes.clear()
             failedItems.set(false)
+            depotContentObserved.set(false)
+            lastDepotContentMs.set(SystemClock.elapsedRealtime())
             val completedFiles = Collections.synchronizedSet(mutableSetOf<String>())
+            val completedDepots = Collections.synchronizedSet(mutableSetOf<Int>())
 
             downloader.addListener(object : IDownloadListener {
                 override fun onDownloadStarted(item: DownloadItem) {
                     try {
                         AppLogger.d(TAG, "Download started for item")
                         // A second item can start after other depots already transferred data.
-                        GameDownloadManager._progress.update { it.copy(state = DownloadState.DOWNLOADING) }
+                        GameDownloadManager._progress.update { it.copy(
+                            state = DownloadState.DOWNLOADING,
+                            depotPhase = "Locating Steam depots and requesting content…"
+                        ) }
                         updateNotification(getString(R.string.download_downloading))
                     } catch (e: Exception) {
                         AppLogger.e(TAG, "Error in onDownloadStarted", e)
@@ -219,6 +280,8 @@ class GameDownloadService : Service() {
                     uncompressedBytes: Long
                 ) {
                     try {
+                        depotContentObserved.set(true)
+                        lastDepotContentMs.set(SystemClock.elapsedRealtime())
                         // Callbacks are cumulative per depot and may arrive from parallel workers.
                         depotBytes.compute(depotId) { _, previous ->
                             maxOf(previous ?: 0L, uncompressedBytes.coerceAtLeast(0L))
@@ -256,6 +319,8 @@ class GameDownloadService : Service() {
 
                 override fun onFileCompleted(depotId: Int, fileName: String, depotPercentComplete: Float) {
                     try {
+                        depotContentObserved.set(true)
+                        lastDepotContentMs.set(SystemClock.elapsedRealtime())
                         completedFiles.add(fileName)
                         GameDownloadManager._progress.update { current ->
                             current.copy(
@@ -276,6 +341,9 @@ class GameDownloadService : Service() {
                 override fun onDepotCompleted(depotId: Int, compressedBytes: Long, uncompressedBytes: Long) {
                     try {
                         AppLogger.d(TAG, "Depot $depotId completed: ${uncompressedBytes / 1024 / 1024} MB")
+                        depotContentObserved.set(true)
+                        lastDepotContentMs.set(SystemClock.elapsedRealtime())
+                        completedDepots.add(depotId)
                         depotBytes.compute(depotId) { _, previous ->
                             maxOf(previous ?: 0L, uncompressedBytes.coerceAtLeast(0L))
                         }
@@ -312,14 +380,18 @@ class GameDownloadService : Service() {
                 }
 
                 override fun onStatusUpdate(message: String) {
-                    AppLogger.d(TAG, "Status: $message")
+                    // The SDK can include actual file paths in its status messages.
+                    // Use an allowlist of static labels, never raw SDK status text.
+                    val phase = M24DepotHandoffPolicy.safePhase(message) ?: return
+                    GameDownloadManager._progress.update { it.copy(depotPhase = phase) }
+                    AppLogger.d(TAG, "Depot phase: $phase")
                 }
             })
 
             val appItem = AppItem(
                 appId = 413150,
                 installToGameNameDirectory = false,
-                installDirectory = installDir,
+                installDirectory = stageRoot.absolutePath,
                 branch = branch,
                 branchPassword = password ?: "",
                 downloadAllPlatforms = false,
@@ -333,26 +405,42 @@ class GameDownloadService : Service() {
                 manifest = emptyList()
             )
 
+            val waitStartMs = SystemClock.elapsedRealtime()
             downloader.add(appItem)
             downloader.finishAdding()
-            downloader.awaitCompletion()
+            // JavaSteam.awaitCompletion() calls CompletableFuture.join(), blocking
+            // a coroutine thread and masking an SDK failure before completion.
+            // Poll cancellably, detect SDK failure and missing bytes, then await
+            // the exact same future to propagate any terminal exception.
+            val completion = downloader.getCompletion()
+            while (!completion.isDone) {
+                currentCoroutineContext().ensureActive()
+                M24DepotHandoffPolicy.failureCode(
+                    SystemClock.elapsedRealtime(), waitStartMs, lastDepotContentMs.get(),
+                    depotContentObserved.get(), failedItems.get()
+                )?.let { code ->
+                    AppLogger.w(TAG, "Steam depot handoff stopped: $code")
+                    error(code)
+                }
+                delay(1_000L)
+            }
+            completion.await()
 
             // A per-item callback can report failure without throwing awaitCompletion().
             check(!failedItems.get() && GameDownloadManager._progress.value.state != DownloadState.ERROR) {
                 "Steam reported a failed depot or file download"
             }
-            AppLogger.d(TAG, "Download pipeline finished")
+            // An interrupted network session or branch update must not be recorded
+            // as a successful download even if the SDK returned from awaitCompletion.
+            recheckBranch()
+            AppLogger.d(TAG, "Download pipeline finished; PICS build rechecked")
 
-            if (verify) {
-                verifyFiles(installDir, completedFiles)
-            } else {
-                GameDownloadRecovery(filesDir).completed()
-                GameDownloadManager._progress.value = DownloadProgress(
-                    state = DownloadState.COMPLETED,
-                    overallPercent = 1f
-                )
-                updateNotification(getString(R.string.download_complete))
-            }
+            // Every M24 live transfer requires a local SHA-256 ledger. This does
+            // not attest an independent signed Steam depot manifest.
+            AppLogger.i(TAG, "M24 downloaded depot IDs=${completedDepots.toSortedSet().joinToString(",")}; " +
+                "PICS-bound IDs=${checkNotNull(sessionDepotManifestIds).keys.sorted().joinToString(",")}")
+            verifyFiles(installDir, stageRoot, completedFiles, ::recheckBranch,
+                checkNotNull(sessionManifestFingerprint), checkNotNull(sessionDepotManifestIds), completedDepots.toSet())
         } catch (e: CancellationException) {
             AppLogger.d(TAG, "Download cancelled")
             GameDownloadManager._progress.value = DownloadProgress(
@@ -380,27 +468,59 @@ class GameDownloadService : Service() {
         }
     }
 
-    /** Persist SHA-256 hashes and detect changed/unreadable game files.
-     * This is local integrity checking; Steam authenticates chunks during transfer.
-     */
-    private suspend fun verifyFiles(installDir: String, completedFiles: Set<String>) {
-        val root = File(installDir)
-        GameDownloadManager._progress.value = DownloadProgress(
-            state = DownloadState.VERIFYING, totalFilesToVerify = completedFiles.size
-        )
-        updateNotification(getString(R.string.download_notification_verifying, 0))
-        val activeJob = currentCoroutineContext()[Job]
-        val report = GameFileIntegrity(filesDir).verifyAndRecord(root) { done, total, name ->
-            activeJob?.ensureActive()
-            val percent = if (total > 0) done.toFloat() / total else 0f
-            GameDownloadManager._progress.update {
-                it.copy(state = DownloadState.VERIFYING, verifiedFiles = done,
-                    totalFilesToVerify = total, overallPercent = percent, currentFile = name)
-            }
-            if (done % maxOf(1, total / 20) == 0 || done == total) {
-                updateNotification(getString(R.string.download_notification_verifying, (percent * 100).toInt()))
-            }
+    private fun verifyingStage(phase: String, done: Int = 0, total: Int = 0,
+                               name: String = "") {
+        GameDownloadManager._progress.update { current ->
+            current.copy(state = DownloadState.VERIFYING, verificationPhase = phase,
+                verifiedFiles = done, totalFilesToVerify = total, currentFile = name,
+                // This is a per-stage percentage, never overall verification.
+                overallPercent = if (total > 0) done.toFloat() / total else 0f)
         }
+    }
+
+    private suspend fun verifyPromotedFiles(destination: File, depotIds: Map<Int, String>,
+        completedDepots: Set<Int>? = null) {
+        val activeJob = currentCoroutineContext()[Job]
+        verifyingStage("Rechecking published Steam depot files")
+        M24DepotManifestCrosscheck.verify(destination, depotIds, completedDepots) { done, total ->
+            activeJob?.ensureActive()
+            verifyingStage("Rechecking published Steam depot files", done, total)
+        }
+        verifyingStage("Writing final integrity receipt")
+        // Interrupted after atomic promotion: no transfer or destructive replay.
+        val report = GameFileIntegrity(filesDir).verifyAndRecord(destination,
+            phaseProgress = { phase, done, total, name ->
+                activeJob?.ensureActive()
+                verifyingStage("Final integrity: $phase", done, total, name)
+            })
+        check(report.passed) { "Promoted files failed local SHA-256 verification" }
+        verifyingStage("Completing recovery journal")
+        GameDownloadRecovery(filesDir).completed()
+        GameDownloadManager._progress.value = DownloadProgress(
+            state = DownloadState.COMPLETED, overallPercent = 1f,
+            verifiedFiles = report.files, totalFilesToVerify = report.files,
+            verificationPassed = true,
+            integrityScope = "PICS_BOUND_DEPOT_SHA1_UNSIGNED"
+        )
+    }
+
+    /** The number shown during verification belongs to the current hashing step,
+     * not to the entire integrity/publication pipeline. Stage bytes are preserved
+     * on any failure and only an absent target may be atomically published.
+     */
+    private suspend fun verifyFiles(installDir: String, stageRoot: File,
+        completedFiles: Set<String>, recheckBranch: suspend () -> Unit,
+        expectedManifestFingerprint: String, depotIds: Map<Int, String>,
+        completedDepots: Set<Int>) {
+        val root = stageRoot
+        verifyingStage("Checking staged files")
+        updateNotification("Verifying staged files")
+        val activeJob = currentCoroutineContext()[Job]
+        val report = GameFileIntegrity(filesDir).verifyAndRecord(root,
+            phaseProgress = { phase, done, total, name ->
+                activeJob?.ensureActive()
+                verifyingStage("Local integrity: $phase", done, total, name)
+            })
         if (!report.passed) {
             GameDownloadManager._progress.value = DownloadProgress(
                 state = DownloadState.ERROR, verificationPassed = false,
@@ -411,13 +531,22 @@ class GameDownloadService : Service() {
             updateNotification("File verification failed. Retry to repair this download.")
             return
         }
-        // Do not retire recovery until the file audit and ledger commit both succeeded.
-        GameDownloadRecovery(filesDir).completed()
-        GameDownloadManager._progress.value = DownloadProgress(
-            state = DownloadState.COMPLETED, overallPercent = 1f,
-            verifiedFiles = report.files, totalFilesToVerify = report.files,
-            verificationPassed = true
-        )
+        verifyingStage("Checking Steam depot manifests")
+        updateNotification("Checking Steam depot manifests")
+        M24DepotManifestCrosscheck.verify(root, depotIds, completedDepots) { done, total ->
+            activeJob?.ensureActive()
+            verifyingStage("Checking Steam depot manifests", done, total)
+        }
+        // Fresh network PICS requests can be slow; never leave '100% complete'
+        // displayed after the file-count phase finishes.
+        verifyingStage("Rechecking Steam branch and depot identity")
+        updateNotification("Rechecking Steam branch")
+        recheckBranch()
+        GameDownloadRecovery(filesDir).requireDepotManifestFingerprint(expectedManifestFingerprint)
+        verifyingStage("Publishing verified files atomically")
+        updateNotification("Publishing verified files")
+        GameDownloadRecovery(filesDir).promoteStaged(File(installDir))
+        verifyPromotedFiles(File(installDir), depotIds, completedDepots)
         updateNotification(getString(R.string.download_complete))
     }
 
@@ -452,10 +581,13 @@ class GameDownloadService : Service() {
             .setOngoing(true)
 
         when (progress.state) {
-            DownloadState.DOWNLOADING, DownloadState.VERIFYING -> {
-                builder.setProgress(100, (progress.overallPercent * 100).toInt(), false)
+            DownloadState.DOWNLOADING, DownloadState.PREPARING -> {
+                // JavaSteam supplies a percentage for an individual depot, not
+                // a trustworthy game-wide total. An indeterminate bar is truthful.
+                builder.setProgress(0, 0, true)
             }
-            DownloadState.PREPARING -> {
+            DownloadState.VERIFYING -> {
+                // The current step can reach 100% before manifest and publish checks.
                 builder.setProgress(0, 0, true)
             }
             else -> {}

@@ -8,6 +8,7 @@ from unittest.mock import patch
 from argparse import Namespace
 import tempfile
 
+from ci_workflow_contract import effective_ci_source
 HERE=Path(__file__).resolve().parent
 ROOT=HERE.parents[1]
 sys.path.insert(0,str(HERE))
@@ -164,7 +165,7 @@ class TestM20Campaign(TestCase):
 
     def test_ci_source_signing_and_one_apk_build(self):
         for file in ('build.yml','devtool-android-build.yml'):
-            text=(ROOT/'.github/workflows'/file).read_text()
+            text=effective_ci_source(ROOT,'.github/workflows/'+file)
             self.assertIn(m20.CI_STEP,text)
             self.assertIn("-p 'test_m20_*.py'",text)
             self.assertEqual(text.count('M14 compile isolated Android instrumentation APK'),1)

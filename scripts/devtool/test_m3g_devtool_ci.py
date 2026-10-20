@@ -2,6 +2,7 @@
 import pathlib
 import unittest
 
+from ci_workflow_contract import effective_ci_source
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 FLOW = ROOT / '.github/workflows/devtool-android-build.yml'
 CI = ROOT / 'scripts/devtool/m3g_devtool_ci.sh'
@@ -9,7 +10,7 @@ CI = ROOT / 'scripts/devtool/m3g_devtool_ci.sh'
 class DevtoolActionsContract(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.workflow = FLOW.read_text()
+        cls.workflow = effective_ci_source(ROOT,'.github/workflows/devtool-android-build.yml')
         cls.script = CI.read_text()
 
     def test_dispatch_entrypoint(self):
@@ -20,7 +21,7 @@ class DevtoolActionsContract(unittest.TestCase):
     def test_debug_only(self):
         self.assertIn("options: ['debug']", self.workflow)
         self.assertIn("options: ['apk']", self.workflow)
-        self.assertIn('test "$DT_VARIANT" = \u0027debug\u0027', self.workflow)
+        self.assertIn("default: 'native-only'", self.workflow)
         self.assertNotIn('DEVTOOL_RELEASE_KEYSTORE', self.workflow)
 
     def test_android_toolchain(self):
@@ -28,10 +29,10 @@ class DevtoolActionsContract(unittest.TestCase):
         self.assertIn("'platforms;android-35'", self.workflow)
 
     def test_android_ci_tests_before_artifact(self):
-        self.assertIn('testDebugUnitTest :app:lintDebug :app:assembleDebug', self.workflow)
-        self.assertIn('verify_debug_apk.py', self.workflow)
+        self.assertIn('./gradlew testDebugUnitTest lintDebug assembleDebug', self.workflow)
+        self.assertIn('invoke --target cinderbox build', self.workflow)
         self.assertIn('name: devtool-android-debug-apk', self.workflow)
-        self.assertLess(self.workflow.index('testDebugUnitTest'), self.workflow.index('Upload debug APK for Devtool Actions collection'))
+        self.assertLess(self.workflow.index('Test, lint, and build debug APK'), self.workflow.index('Stage original Devtool manual fallback artifact'))
 
     def test_read_only_permission_and_no_release_publication(self):
         self.assertIn('contents: read', self.workflow)

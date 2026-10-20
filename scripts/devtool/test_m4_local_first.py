@@ -49,10 +49,10 @@ class M4Contracts(unittest.TestCase):
         for health in ('INCOMPLETE', 'INACCESSIBLE', 'DETECTED', 'STRUCTURALLY_VALID'):
             assert 'InstallHealth.' + health in start
         assert 'if (checkpoint == null)' in start
-        assert 'recovery.beginNew(directory, branch, os, verifyAfterDownload)' in start
+        assert 'recovery.beginStaged(directory, branch, os, verifyAfterDownload)' in start
         assert 'recovery.requireMatching(directory, branch, os, verifyAfterDownload)' in start
         assert (start.index('InstallationScanner.game(directory).health') <
-                start.index('recovery.beginNew(directory, branch, os, verifyAfterDownload)'))
+                start.index('recovery.beginStaged(directory, branch, os, verifyAfterDownload)'))
 
         service = read('app/src/main/java/com/sdvsync/download/GameDownloadService.kt')
         run = service.split('    private suspend fun runDownload(', 1)[1]

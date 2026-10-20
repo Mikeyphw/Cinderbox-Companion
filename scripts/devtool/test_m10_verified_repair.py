@@ -1,8 +1,9 @@
 """M10 offline source checks. Android Kotlin/JVM tests run separately in CI."""
 from pathlib import Path
 import unittest
+from ci_workflow_contract import effective_ci_source
 ROOT = Path(__file__).resolve().parents[2]
-def read(path): return (ROOT / path).read_text(encoding='utf-8')
+def read(path): return effective_ci_source(ROOT,path)
 class M10Contracts(unittest.TestCase):
     def test_only_preverified_source_can_repair(self):
         s=read('app/src/main/java/com/sdvsync/download/VerifiedGameRepair.kt')

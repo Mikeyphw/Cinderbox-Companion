@@ -121,16 +121,35 @@ def source_audit(root: Path) -> dict:
     checks = read_source(root, 'scripts/devtool/m3_build_evidence.py')
     insist('qualified_release": False' in checks and 'publication_allowed": False' in checks,
            'M3 debug evidence release restrictions were removed')
-    for wf in WORKFLOWS:
-        body = read_source(root, wf)
-        for suite in LEGACY_SUITES:
-            insist('test_' + suite + '_*.py' in body, 'Missing milestone test lane: ' + suite)
+    # A10 removes the duplicated full legacy workflow body from the manual
+    # dispatch. Follow its exact, repository-local, guarded reusable job into
+    # the *same* canonical push/PR build file for historical milestone tests.
+    legacy=read_source(root,WORKFLOWS[0])
+    manual=read_source(root,WORKFLOWS[1])
+    for suite in LEGACY_SUITES:
+        insist('test_' + suite + '_*.py' in legacy, 'Missing milestone test lane: ' + suite)
+    insist(('  workflow_call:' in legacy and '  push:' in legacy and
+            '  pull_request:' in legacy), 'Canonical CI fallback is not callable/push/PR')
+    reuse=("  build-debug-apk:\n"
+           "    if: ${{ inputs.a05_mode != 'native-only' }}\n"
+           '    uses: ./.github/workflows/build.yml\n'
+           '    permissions:\n'
+           '      contents: read\n'
+           '    secrets: inherit\n')
+    insist(reuse in manual and manual.count('uses: ./.github/workflows/build.yml')==1,
+           'Manual CI does not use the guarded canonical legacy build')
+    insist(('  a07-native-debug-build:' in manual and
+            'invoke --target cinderbox build' in manual and
+            'a07_native_debug.py verify-local' in manual),
+           'Native debug path is missing/ungated')
+    for wf,body in ((WORKFLOWS[0],legacy),(WORKFLOWS[1],manual)):
         insist('m13_qualification.py source' in body and
-               'm13_qualification.py finalize' in body, 'Missing M13 release gate from workflow')
-        insist('m3_build_evidence.py generate' in body, 'Missing provenance producer')
-        insist('assembleDebug' in body and 'assembleRelease' not in body,
-               'Debug workflow has unexpected APK build variant')
-        insist('M13_QUALIFICATION.json' in body, 'Qualification evidence not included in artifact')
+               'm13_qualification.py finalize' in body, 'Missing M13 release gate from workflow: '+wf)
+        insist('m3_build_evidence.py generate' in body, 'Missing provenance producer: '+wf)
+        insist('assembleRelease' not in body,
+               'Debug workflow has unexpected release build variant: '+wf)
+        insist('M13_QUALIFICATION.json' in body, 'Qualification evidence not included: '+wf)
+    insist('assembleDebug' in legacy, 'Canonical CI no longer builds debug APK')
     return {'release_policy': 'BLOCKED_BY_POLICY', 'debug_source_contract': 'PASS',
             'cross_feature_checks': assessed,
             'instrumentation': 'NOT_RUN', 'real_device': 'NOT_RUN'}

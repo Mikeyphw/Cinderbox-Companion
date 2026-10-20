@@ -2,14 +2,15 @@
 from pathlib import Path
 import unittest
 
+from ci_workflow_contract import effective_ci_source
 ROOT = Path(__file__).resolve().parents[2]
-def read(rel): return (ROOT / rel).read_text(encoding='utf-8')
+def read(rel): return effective_ci_source(ROOT,rel)
 
 class M6DownloadRecoveryTest(unittest.TestCase):
     def test_resume_requires_owned_app_private_session(self):
         manager = read('app/src/main/java/com/sdvsync/download/GameDownloadManager.kt')
         self.assertIn('GameDownloadRecovery(context.filesDir)', manager)
-        self.assertIn('recovery.beginNew(', manager)
+        self.assertIn('recovery.beginStaged(', manager)
         self.assertIn('recovery.requireMatching(', manager)
         self.assertIn('fun pendingDownload()', manager)
         self.assertIn('fun discardPendingDownload()', manager)
