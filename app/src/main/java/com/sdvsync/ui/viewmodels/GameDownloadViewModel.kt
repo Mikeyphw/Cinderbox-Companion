@@ -2,6 +2,8 @@ package com.sdvsync.ui.viewmodels
 
 import android.content.Context
 import android.os.Environment
+import android.net.Uri
+import com.sdvsync.local.M24AndroidFolderPicker
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sdvsync.R
@@ -16,7 +18,6 @@ import com.sdvsync.local.M23CinderboxFirstPolicy
 import com.sdvsync.local.InstallAssessment
 import com.sdvsync.local.InstallHealth
 import com.sdvsync.local.StoragePreflight
-import com.sdvsync.local.StoragePlanner
 import java.io.File
 import com.sdvsync.download.GitHubReleaseChecker
 import com.sdvsync.download.SmapiSetupProgress
@@ -64,7 +65,6 @@ data class GameDownloadState(
     val destinationCode: M23CinderboxFirstPolicy.Code = M23CinderboxFirstPolicy.Code.DESTINATION_UNREADABLE,
     val storageReady: Boolean = false,
     val storageDetail: String = "Storage not checked",
-    val estimatedGameSizeGiB: String = "",
     val verifyAfterDownload: Boolean = true,
     val hasRecoverableDownload: Boolean = false,
     val downloadProgress: DownloadProgress = DownloadProgress(),
@@ -77,6 +77,7 @@ data class GameDownloadState(
     val cinderboxUpdateAvailable: Boolean = false,
     val latestCinderboxVersion: String? = null,
     val installedCinderboxVersion: String? = null,
+    val cinderboxPackageInstalled: Boolean = false,
     val smapiUpdateAvailable: Boolean = false,
     val latestSmapiVersion: String? = null,
     val installedSmapiVersion: String? = null,
@@ -108,6 +109,15 @@ class GameDownloadViewModel(
     private var cinderboxJob: Job? = null
     private var pendingSetupType: String? = null
 
+    /** Read-only Android PackageManager presence, not a preference or files on disk. */
+    private fun installedCinderboxVersionFromPackage(): String? = try {
+        context.packageManager.getPackageInfo("com.game.cinderbox", 0).versionName ?: "installed"
+    } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
+        null
+    } catch (_: SecurityException) {
+        null
+    }
+
     init {
         val defaultDir = Environment.getExternalStoragePublicDirectory(
             Environment.DIRECTORY_DOWNLOADS
@@ -131,7 +141,8 @@ class GameDownloadViewModel(
                 File(selectedDir), File(CinderboxPaths.ROOT_DIR)).code,
             storageReady = false,
             storageDetail = "Write access will be tested only when you start a download.",
-            isCinderboxSetup = fileAccessDetector.getSetupType() == SETUP_TYPE_CINDERBOX
+            isCinderboxSetup = fileAccessDetector.getSetupType() == SETUP_TYPE_CINDERBOX,
+            cinderboxPackageInstalled = installedCinderboxVersionFromPackage() != null
         )
         if (pending != null) downloadManager.restoreInterruptedProgress()
 
@@ -171,7 +182,9 @@ class GameDownloadViewModel(
                     GitHubReleaseChecker.CINDERBOX_REPO,
                     GitHubReleaseChecker.CINDERBOX_ASSET_PATTERN
                 )
-                val installedCinderbox = releaseChecker.getInstalledVersion(GitHubReleaseChecker.KEY_CINDERBOX_VERSION)
+                val installedCinderboxPackage = installedCinderboxVersionFromPackage()
+                val installedCinderbox = installedCinderboxPackage
+                    ?: releaseChecker.getInstalledVersion(GitHubReleaseChecker.KEY_CINDERBOX_VERSION)
 
                 val smapiRelease = releaseChecker.getLatestRelease(
                     GitHubReleaseChecker.SMAPI_REPO,
@@ -182,6 +195,7 @@ class GameDownloadViewModel(
                 _state.value = _state.value.copy(
                     latestCinderboxVersion = cinderboxRelease?.version,
                     installedCinderboxVersion = installedCinderbox,
+                    cinderboxPackageInstalled = installedCinderboxPackage != null,
                     cinderboxUpdateAvailable = releaseChecker.isUpdateAvailable(
                         installedCinderbox,
                         cinderboxRelease?.version
@@ -202,11 +216,14 @@ class GameDownloadViewModel(
     }
 
     fun refreshInstalledVersions() {
-        val cinderbox = releaseChecker.getInstalledVersion(GitHubReleaseChecker.KEY_CINDERBOX_VERSION)
+        val installedCinderboxPackage = installedCinderboxVersionFromPackage()
+        val cinderbox = installedCinderboxPackage
+            ?: releaseChecker.getInstalledVersion(GitHubReleaseChecker.KEY_CINDERBOX_VERSION)
         val smapi = releaseChecker.getInstalledVersion(GitHubReleaseChecker.KEY_SMAPI_VERSION)
         _state.update {
             it.copy(
                 installedCinderboxVersion = cinderbox,
+                cinderboxPackageInstalled = installedCinderboxPackage != null,
                 installedSmapiVersion = smapi,
                 cinderboxUpdateAvailable = releaseChecker.isUpdateAvailable(cinderbox, it.latestCinderboxVersion),
                 smapiUpdateAvailable = releaseChecker.isUpdateAvailable(smapi, it.latestSmapiVersion)
@@ -334,13 +351,20 @@ class GameDownloadViewModel(
         _state.value = _state.value.copy(branchPassword = password)
     }
 
-    fun updateStorageEstimate(value: String) {
-        // User-specified guess only. Steam may require more; no inferred depot size.
-        _state.update { it.copy(estimatedGameSizeGiB = value.take(4)) }
+    fun chooseAndroidFolder(uri: Uri) {
+        runCatching { M24AndroidFolderPicker.resolve(context, uri) }
+            .onSuccess { directory ->
+                updateInstallDirectory(directory.absolutePath)
+                _state.update { it.copy(error = null) }
+            }
+            .onFailure { error ->
+                _state.update { it.copy(error = error.message ?: "Unsupported folder selection") }
+            }
     }
 
     fun toggleVerification() {
-        _state.value = _state.value.copy(verifyAfterDownload = !_state.value.verifyAfterDownload)
+        // M24: live transfers cannot disable local integrity verification.
+        _state.value = _state.value.copy(verifyAfterDownload = true)
     }
 
     fun startDownload() {
@@ -360,27 +384,28 @@ class GameDownloadViewModel(
             return
         }
 
+        val selectedBranchInfo = current.branches.find { it.name == current.selectedBranch }
+        if (selectedBranchInfo == null || selectedBranchInfo.buildId <= 0L ||
+            !current.verifyAfterDownload) {
+            _state.value = current.copy(error =
+                "Steam branch build information is missing or local verification is disabled. Refresh branches.")
+            return
+        }
         val selectedHealth = InstallationScanner.game(File(current.installDirectory))
         // Existing imported Cinderbox game/SMAPI are primary app assets,
         // not an authorization or a blanket blocker for another destination.
         val destination = M23CinderboxFirstPolicy.assess(
             File(current.installDirectory), File(CinderboxPaths.ROOT_DIR))
-        val capacity = runCatching {
-            StoragePlanner.downloadPlan(File(current.installDirectory),
-                StoragePlanner.parseGiB(current.estimatedGameSizeGiB))
-        }.getOrElse { problem ->
-            _state.update { it.copy(error = problem.message ?: "Invalid capacity estimate") }
-            return
-        }
-        if (capacity.sufficient == false) {
-            _state.update { it.copy(error = capacity.detail) }
-            return
-        }
         val resume = try {
             downloadManager.canResume(File(current.installDirectory), current.selectedBranch,
                 current.selectedOs, current.verifyAfterDownload)
         } catch (e: Exception) {
             _state.value = current.copy(error = e.message ?: "Invalid recovery journal")
+            return
+        }
+        if (resume && downloadManager.pendingDownload()?.steamBuildId != selectedBranchInfo.buildId) {
+            _state.value = current.copy(error =
+                "Interrupted checkpoint uses a different or unknown Steam build. Files preserved; review before retry.")
             return
         }
         // A checkpoint never licenses writing inside the original Cinderbox tree.
@@ -405,8 +430,7 @@ class GameDownloadViewModel(
                 "Existing game files detected (${selectedHealth.health}). Only a matching interrupted session may resume them.")
             return
         }
-        val selectedBranchInfo = current.branches.find { it.name == current.selectedBranch }
-        if (selectedBranchInfo?.passwordRequired == true && current.branchPassword.isBlank()) {
+        if (selectedBranchInfo.passwordRequired == true && current.branchPassword.isBlank()) {
             _state.value = current.copy(error = context.getString(R.string.download_error_password_required))
             return
         }
@@ -425,7 +449,8 @@ class GameDownloadViewModel(
                 branchPassword = current.branchPassword.ifBlank { null },
                 installDirectory = current.installDirectory,
                 os = current.selectedOs,
-                verifyAfterDownload = current.verifyAfterDownload
+                verifyAfterDownload = current.verifyAfterDownload,
+                branchBuildId = selectedBranchInfo.buildId
             )
         } catch (e: Exception) {
             _state.value = _state.value.copy(error = e.message ?: "Storage is unavailable")

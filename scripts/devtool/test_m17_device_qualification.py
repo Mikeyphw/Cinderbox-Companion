@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 
+from ci_workflow_contract import effective_ci_source
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
@@ -131,7 +132,7 @@ class M17HostTests(unittest.TestCase):
 
     def test_ci_and_gradle_dependencies_without_duplicate_build(self):
         workflow=(ROOT/'.github/workflows/build.yml').read_text()
-        devtool=(ROOT/'.github/workflows/devtool-android-build.yml').read_text()
+        devtool=effective_ci_source(ROOT,'.github/workflows/devtool-android-build.yml')
         for body in [workflow,devtool]:
             self.assertIn(m17.M17_CI_STEP,body)
             self.assertIn("-p 'test_m17_*.py'",body)

@@ -3,6 +3,8 @@ package com.sdvsync.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,6 +18,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.sdvsync.R
 import com.sdvsync.download.CinderboxDownloadProgress
 import com.sdvsync.download.DownloadState
+import com.sdvsync.download.M24DepotProgressPolicy
 import com.sdvsync.download.SmapiSetupProgress
 import com.sdvsync.ui.components.ArrowLeftData
 import com.sdvsync.ui.components.CinderboxWizardDialog
@@ -30,7 +33,6 @@ import com.sdvsync.ui.components.StardewOutlinedButton
 import com.sdvsync.ui.components.StardewTopAppBar
 import com.sdvsync.ui.components.installCinderboxApk
 import com.sdvsync.ui.formatBytes
-import com.sdvsync.local.StoragePlanner
 import com.sdvsync.local.M23InstallationDiscovery
 import com.sdvsync.local.M23CinderboxFirstPolicy
 import com.sdvsync.cinderbox.CinderboxPaths
@@ -61,6 +63,11 @@ fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
                        viewModel: GameDownloadViewModel = koinViewModel()) {
     val state by viewModel.state.collectAsState()
     val wizardState by viewModel.wizardState.collectAsState()
+    val directoryPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) viewModel.chooseAndroidFolder(uri)
+    }
 
     LaunchedEffect(Unit) {
         viewModel.loadBranches()
@@ -296,6 +303,11 @@ fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
 
             StardewCard {
                 Column(modifier = Modifier.padding(12.dp)) {
+                    StardewButton(
+                        onClick = { directoryPicker.launch(null) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Choose folder with Android") }
+                    Spacer(Modifier.height(8.dp))
                     if (editingPath) {
                         OutlinedTextField(
                             value = state.installDirectory,
@@ -319,7 +331,7 @@ fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
                         )
                         Spacer(Modifier.height(8.dp))
                         StardewOutlinedButton(onClick = { editingPath = true }) {
-                            Text(stringResource(R.string.download_change_folder))
+                            Text("Enter path manually")
                         }
                     }
                 }
@@ -338,46 +350,7 @@ fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
                     color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
             Spacer(Modifier.height(12.dp))
-            // Steam depot size is not known in advance. Optional user estimate is conservative.
-            StardewCard {
-                Column(Modifier.padding(12.dp)) {
-                    Text("Storage budget", style = MaterialTheme.typography.titleSmall)
-                    OutlinedTextField(
-                        value = state.estimatedGameSizeGiB,
-                        onValueChange = viewModel::updateStorageEstimate,
-                        label = { Text("Estimated game download size (GiB, optional)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    val budget = remember(state.installDirectory, state.estimatedGameSizeGiB) {
-                        runCatching { StoragePlanner.downloadPlan(File(state.installDirectory),
-                            StoragePlanner.parseGiB(state.estimatedGameSizeGiB)) }
-                    }
-                    if (budget.isSuccess) {
-                        val plan = budget.getOrThrow()
-                        Text("Available: ${plan.availableBytes?.let(::formatBytes) ?: "unknown"}",
-                            style = MaterialTheme.typography.bodySmall)
-                        Text("Temporary workspace allowance: ${formatBytes(plan.temporaryBytes)}",
-                            style = MaterialTheme.typography.bodySmall)
-                        Text("Safety reserve: ${formatBytes(plan.reserveBytes)}",
-                            style = MaterialTheme.typography.bodySmall)
-                        plan.requiredBytes?.let { needed ->
-                            Text("Estimated required: ${formatBytes(needed)}",
-                                style = MaterialTheme.typography.bodySmall)
-                        }
-                        Text(plan.detail, style = MaterialTheme.typography.bodySmall,
-                            color = if (plan.sufficient == false) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else {
-                        Text(budget.exceptionOrNull()?.message ?: "Invalid estimate",
-                            color = MaterialTheme.colorScheme.error)
-                    }
-                    Text("Capacity estimates do not verify Steam depot size, unpacking overhead, or future device use.",
-                        style = MaterialTheme.typography.bodySmall)
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-            // Verification toggle
+            // M24: mandatory local verification (not independent Steam manifest proof).
             StardewCard {
                 Row(
                     modifier = Modifier
@@ -387,20 +360,20 @@ fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            stringResource(R.string.download_verify_toggle),
+                            "File integrity verification — required",
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Text(
-                            stringResource(R.string.download_verify_desc),
+                            "Always checked before publishing this download. " +
+                                "The final Steam manifest source is not independently signed-verified.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    // Do not display a disabled switch that looks switched off.
                     Spacer(Modifier.width(12.dp))
-                    Switch(
-                        checked = state.verifyAfterDownload,
-                        onCheckedChange = { viewModel.toggleVerification() }
-                    )
+                    Text("Required", style = MaterialTheme.typography.bodySmall,
+                         color = MaterialTheme.colorScheme.primary)
                 }
             }
 
@@ -460,6 +433,7 @@ fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
                         bytesPerSecond = state.downloadProgress.bytesPerSecond,
                         currentDepotId = state.downloadProgress.currentDepotId,
                         currentDepotPercent = state.downloadProgress.currentDepotPercent,
+                        depotPhase = state.downloadProgress.depotPhase,
                         filesDownloaded = state.downloadProgress.filesDownloaded,
                         onCancel = { viewModel.cancelDownload() }
                     )
@@ -467,54 +441,31 @@ fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
 
                 DownloadState.VERIFYING -> {
                     StardewCard {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 PixelLoadingSpinner(modifier = Modifier.size(24.dp))
                                 Spacer(Modifier.width(12.dp))
-                                Text(
-                                    stringResource(R.string.download_verifying),
-                                    style = MaterialTheme.typography.titleSmall
-                                )
+                                Text("Verifying download", style = MaterialTheme.typography.titleSmall)
                             }
                             Spacer(Modifier.height(12.dp))
-
-                            if (state.downloadProgress.currentFile.isNotEmpty()) {
-                                Text(
-                                    state.downloadProgress.currentFile,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                            Text(state.downloadProgress.verificationPhase.ifBlank { "Preparing integrity checks" },
+                                style = MaterialTheme.typography.bodyMedium)
+                            if (state.downloadProgress.totalFilesToVerify > 0) {
                                 Spacer(Modifier.height(8.dp))
+                                Text("This step: ${state.downloadProgress.verifiedFiles} of " +
+                                    "${state.downloadProgress.totalFilesToVerify} files",
+                                    style = MaterialTheme.typography.bodySmall)
+                                PixelProgressBar(progress = state.downloadProgress.overallPercent)
+                                Text("${(state.downloadProgress.overallPercent * 100).toInt()}% of this step only",
+                                    style = MaterialTheme.typography.bodySmall)
+                            } else {
+                                Text("Checking… this step has no percentage.",
+                                    style = MaterialTheme.typography.bodySmall)
                             }
-
-                            Text(
-                                stringResource(
-                                    R.string.download_verify_progress,
-                                    state.downloadProgress.verifiedFiles,
-                                    state.downloadProgress.totalFilesToVerify
-                                ),
+                            Text("Other checks and final publication may follow; " +
+                                "100% of a step does not mean the download is complete.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(Modifier.height(8.dp))
-
-                            PixelProgressBar(progress = state.downloadProgress.overallPercent)
-
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                "${(state.downloadProgress.overallPercent * 100).toInt()}%",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -541,6 +492,11 @@ fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
+                            if (progress.integrityScope == "LOCAL_SHA256_ONLY_MANIFEST_UNATTESTED") {
+                                Text("Local SHA-256 consistency passed. Independent Steam depot " +
+                                    "manifest integrity and ownership are not yet attested.",
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 stringResource(R.string.download_complete_desc, state.installDirectory),
@@ -706,7 +662,8 @@ fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
                 onReset = { viewModel.resetSmapiSetup() },
                 updateAvailable = state.smapiUpdateAvailable,
                 latestVersion = state.latestSmapiVersion,
-                installedVersion = state.installedSmapiVersion
+                installedVersion = state.installedSmapiVersion,
+                installedStatus = state.primarySmapiStatus
             )
 
             Spacer(Modifier.height(24.dp))
@@ -719,7 +676,8 @@ fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
                 onReset = { viewModel.resetCinderboxDownload() },
                 updateAvailable = state.cinderboxUpdateAvailable,
                 latestVersion = state.latestCinderboxVersion,
-                installedVersion = state.installedCinderboxVersion
+                installedVersion = state.installedCinderboxVersion,
+                packageInstalled = state.cinderboxPackageInstalled
             )
 
             Spacer(Modifier.height(24.dp))
@@ -735,8 +693,24 @@ private fun SmapiSetupSection(
     onReset: () -> Unit,
     updateAvailable: Boolean = false,
     latestVersion: String? = null,
-    installedVersion: String? = null
+    installedVersion: String? = null,
+    installedStatus: M23InstallationDiscovery.Status = M23InstallationDiscovery.Status.MISSING
 ) {
+    var confirmSmapiReplacement by remember { mutableStateOf(false) }
+    if (confirmSmapiReplacement) {
+        AlertDialog(
+            onDismissRequest = { confirmSmapiReplacement = false },
+            title = { Text("Replace existing SMAPI?") },
+            text = { Text("Existing SMAPI files were detected. Updating could replace them. Back up your SMAPI setup first; this action does not touch Steam game files.") },
+            confirmButton = { TextButton(onClick = {
+                confirmSmapiReplacement = false
+                onExtract()
+            }) { Text("Update SMAPI") } },
+            dismissButton = { TextButton(onClick = {
+                confirmSmapiReplacement = false
+            }) { Text("Cancel") } }
+        )
+    }
     SectionHeader(stringResource(R.string.smapi_setup_title))
     Spacer(Modifier.height(8.dp))
 
@@ -834,6 +808,20 @@ private fun SmapiSetupSection(
             }
         }
 
+        smapiProgress.errorMessage != null && !smapiProgress.completed -> {
+            StardewCard {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("SMAPI setup could not start: ${smapiProgress.errorMessage}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            StardewOutlinedButton(onClick = onReset, modifier = Modifier.fillMaxWidth()) {
+                Text("Dismiss error")
+            }
+        }
+
         smapiProgress.completed -> {
             // Completed state
             StardewCard {
@@ -869,7 +857,8 @@ private fun SmapiSetupSection(
         }
 
         else -> {
-            // Idle state
+            // Idle state; detected SMAPI is never automatically overwritten.
+            val alreadyPresent = installedStatus == M23InstallationDiscovery.Status.CANDIDATE_UNVERIFIED
             StardewCard {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
@@ -877,6 +866,12 @@ private fun SmapiSetupSection(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (alreadyPresent) {
+                        Spacer(Modifier.height(4.dp))
+                        Text("Existing SMAPI detected (version/compatibility not authenticated).",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     if (installedVersion != null) {
                         Spacer(Modifier.height(4.dp))
                         Text(
@@ -896,8 +891,8 @@ private fun SmapiSetupSection(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            StardewButton(
-                onClick = onExtract,
+            if (!alreadyPresent || (updateAvailable && latestVersion != null)) StardewButton(
+                onClick = { if (alreadyPresent) confirmSmapiReplacement = true else onExtract() },
                 variant = StardewButtonVariant.Action,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !isCopying
@@ -923,6 +918,7 @@ private fun DownloadProgressSection(
     bytesPerSecond: Long,
     currentDepotId: Int?,
     currentDepotPercent: Float,
+    depotPhase: String,
     filesDownloaded: Int,
     onCancel: () -> Unit
 ) {
@@ -953,17 +949,14 @@ private fun DownloadProgressSection(
                 Spacer(Modifier.height(8.dp))
             }
 
-            // Size + speed
-            val sizeText = buildString {
-                append(formatBytes(downloadedBytes))
-                if (bytesPerSecond > 0) {
-                    append(" \u2022 ")
-                    append(formatBytes(bytesPerSecond))
-                    append("/s")
-                }
-            }
             Text(
-                sizeText,
+                "Received: ${formatBytes(downloadedBytes)}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                if (bytesPerSecond > 0) "Last reported transfer rate: ${formatBytes(bytesPerSecond)}/s"
+                else "Transfer rate: waiting for next data event",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -971,22 +964,40 @@ private fun DownloadProgressSection(
             Spacer(Modifier.height(8.dp))
 
             Text(
-                "Files received: $filesDownloaded (overall game size not yet available)",
+                "Completed files: $filesDownloaded  •  Total game size: unknown",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                depotPhase.ifBlank { "Contacting Steam CDN; waiting for first depot chunk…" },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(8.dp))
             if (currentDepotId != null) {
-                Text(
-                    "Depot $currentDepotId: ${(currentDepotPercent * 100).toInt()}% (not overall game progress)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(4.dp))
-                PixelProgressBar(progress = currentDepotPercent)
-            } else {
-                Text("Waiting for depot progress…", style = MaterialTheme.typography.bodySmall)
+                val depotPercentage = M24DepotProgressPolicy.displayedDepotPercent(
+                    currentDepotPercent, downloadedBytes)
+                if (depotPercentage != null) {
+                    Text(
+                        "Depot $currentDepotId: $depotPercentage% of this depot (not the game)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    PixelProgressBar(progress = currentDepotPercent)
+                } else {
+                    Text(
+                        "Receiving depot $currentDepotId • Depot percentage not available yet",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
+            Spacer(Modifier.height(4.dp))
+            Text("No reliable overall download percentage or ETA is available.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             Spacer(Modifier.height(12.dp))
 
@@ -1007,7 +1018,8 @@ private fun CinderboxSection(
     onReset: () -> Unit,
     updateAvailable: Boolean = false,
     latestVersion: String? = null,
-    installedVersion: String? = null
+    installedVersion: String? = null,
+    packageInstalled: Boolean = false
 ) {
     val context = LocalContext.current
 
@@ -1118,7 +1130,7 @@ private fun CinderboxSection(
         }
 
         else -> {
-            // Idle
+            // Package presence comes from Android, not just the last downloaded version.
             StardewCard {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
@@ -1126,6 +1138,12 @@ private fun CinderboxSection(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (packageInstalled) {
+                        Spacer(Modifier.height(4.dp))
+                        Text("Cinderbox is already installed on this device.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary)
+                    }
                     if (installedVersion != null) {
                         Spacer(Modifier.height(4.dp))
                         Text(
@@ -1145,7 +1163,7 @@ private fun CinderboxSection(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            StardewButton(
+            if (!packageInstalled || (updateAvailable && latestVersion != null)) StardewButton(
                 onClick = onDownload,
                 variant = StardewButtonVariant.Action,
                 modifier = Modifier.fillMaxWidth()

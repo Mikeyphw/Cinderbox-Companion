@@ -42,11 +42,14 @@ data class DownloadProgress(
     // Steam's percentages refer to individual depots, not the entire game.
     val currentDepotId: Int? = null,
     val currentDepotPercent: Float = 0f,
+    val depotPhase: String = "",
     val filesDownloaded: Int = 0,
     val errorMessage: String? = null,
+    val verificationPhase: String = "",
     val verifiedFiles: Int = 0,
     val totalFilesToVerify: Int = 0,
     val verificationPassed: Boolean = true,
+    val integrityScope: String = "NOT_VERIFIED",
     val verificationErrors: List<String> = emptyList(),
     val copiedFiles: Int = 0,
     val totalFilesToCopy: Int = 0,
@@ -166,8 +169,12 @@ class GameDownloadManager(
         branchPassword: String? = null,
         installDirectory: String,
         os: String = "windows",
-        verifyAfterDownload: Boolean = true
+        verifyAfterDownload: Boolean = true,
+        branchBuildId: Long = 0L
     ) {
+        require(verifyAfterDownload && branchBuildId > 0L) {
+            "M24 requires an authenticated PICS build and local verification"
+        }
         check(_progress.value.state !in setOf(DownloadState.PREPARING,
             DownloadState.DOWNLOADING, DownloadState.VERIFYING, DownloadState.COPYING)) {
             "Another game download is already active"
@@ -193,10 +200,15 @@ class GameDownloadManager(
                 "Selected folder already contains files; choose an empty destination"
             }
             // Journal before starting the service. A process death leaves a recoverable download.
-            recovery.beginNew(directory, branch, os, verifyAfterDownload)
+            recovery.beginStaged(directory, branch, os, verifyAfterDownload)
+            recovery.bindSteamBuildId(branchBuildId)
         } else {
             // Existing game bytes are usable ONLY if this exact session created them.
             recovery.requireMatching(directory, branch, os, verifyAfterDownload)
+            recovery.requireSteamBuildId(branchBuildId)
+            check(checkpoint.stagingDirectory != null) {
+                "Legacy direct-write checkpoint cannot authorize M24 staging; preserve bytes for review"
+            }
         }
         GameDownloadService.start(
             context = context,
@@ -204,7 +216,8 @@ class GameDownloadManager(
             password = branchPassword,
             installDir = installDirectory,
             os = os,
-            verify = verifyAfterDownload
+            verify = verifyAfterDownload,
+            expectedBuildId = branchBuildId
         )
     }
 
@@ -213,11 +226,11 @@ class GameDownloadManager(
     }
 
     suspend fun downloadCinderboxApk() {
-        StoragePreflight.requireWritable(File(CinderboxPaths.DESKTOP_DIR))
-        StoragePreflight.requireWritable(context.cacheDir)
         _cinderboxProgress.value = CinderboxDownloadProgress(isDownloading = true)
         withContext(Dispatchers.IO) {
             try {
+                // APK download only writes app-private cache, not the installed game.
+                StoragePreflight.requireWritable(context.cacheDir)
                 val releaseInfo = checkNotNull(releaseChecker.getLatestRelease(
                     GitHubReleaseChecker.CINDERBOX_REPO, GitHubReleaseChecker.CINDERBOX_ASSET_PATTERN
                 )) { "Could not find Cinderbox release" }
@@ -255,9 +268,11 @@ class GameDownloadManager(
     }
 
     suspend fun downloadSmapiZip(): File? = withContext(Dispatchers.IO) {
-        StoragePreflight.requireWritable(File(CinderboxPaths.SMAPI_DIR))
-        StoragePreflight.requireWritable(context.cacheDir)
+        _smapiProgress.value = SmapiSetupProgress(isDownloading = true)
         try {
+            // Any denied target permission becomes visible in the SMAPI error card.
+            StoragePreflight.requireWritable(File(CinderboxPaths.SMAPI_DIR))
+            StoragePreflight.requireWritable(context.cacheDir)
             val releaseInfo = checkNotNull(releaseChecker.getLatestRelease(
                 GitHubReleaseChecker.SMAPI_REPO, GitHubReleaseChecker.SMAPI_ASSET_PATTERN
             )) { "Could not find SMAPI release" }

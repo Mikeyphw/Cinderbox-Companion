@@ -1,6 +1,7 @@
 name: Build Debug APK
 
 on:
+  workflow_call:
   push:
     branches: [ main, master, 'security/**' ]
   pull_request:
@@ -88,6 +89,82 @@ jobs:
 
       - name: M18 genuine process recovery host regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m18_*.py' -v
+
+      - name: M24 selection, recovery and evidence source regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m24_gate.py' -v
+
+      - name: M24 staging and crash-recovery source regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m24_staged_gate.py' -v
+
+      - name: M24 verification phase and Android folder picker regressions
+        run: |
+          python3 -m unittest discover -s scripts/devtool -p 'test_m24_verify_ux_gate.py' -v
+          python3 scripts/devtool/m24_verify_ux_gate.py
+
+      - name: M24 shared depot parent PICS and setup source gate
+        run: python3 scripts/devtool/m24_shared_depot_gate.py
+
+      - name: M24 live PICS mismatch and progress source gate
+        run: python3 scripts/devtool/m24_live_pics_progress_gate.py
+
+      - name: M24 live depot handoff watchdog regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m24_depot_handoff_gate.py' -v
+
+      - name: M24 live depot handoff source gate
+        run: python3 scripts/devtool/m24_depot_handoff_gate.py --output "$RUNNER_TEMP/cinderbox-m24-handoff-source.json"
+
+      - name: Upload M24 depot handoff source evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: m24-handoff-${{ github.run_id }}
+          path: ${{ runner.temp }}/cinderbox-m24-handoff-source.json
+
+      - name: M24 cached depot file hash cross-check regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m24_file_manifest_gate.py' -v
+
+      - name: M24 cached depot file proof source gate
+        run: python3 scripts/devtool/m24_file_manifest_gate.py --output "$RUNNER_TEMP/cinderbox-m24-file-proof.json"
+
+      - name: Upload M24 file proof source evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: m24-file-proof-${{ github.run_id }}
+          path: ${{ runner.temp }}/cinderbox-m24-file-proof.json
+
+      - name: M24 PICS depot manifest identity regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m24_pics_gate.py' -v
+
+      - name: M24 PICS identity source gate
+        run: python3 scripts/devtool/m24_pics_gate.py --output "$RUNNER_TEMP/cinderbox-m24-pics-source.json"
+
+      - name: Upload M24 PICS source evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: m24-pics-${{ github.run_id }}
+          path: ${{ runner.temp }}/cinderbox-m24-pics-source.json
+
+      - name: M24 CI APK provenance host regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_m24_real_substrate.py' -v
+
+      - name: M24 CI artifact/device provenance source gate
+        run: python3 scripts/devtool/m24_provenance_gate.py --output "$RUNNER_TEMP/cinderbox-m24-provenance-source.json"
+
+      - name: Upload M24 provenance source evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: m24-provenance-${{ github.run_id }}
+          path: ${{ runner.temp }}/cinderbox-m24-provenance-source.json
+          if-no-files-found: error
+
+      - name: M24 source-bound authenticated transfer safety gate
+        run: python3 scripts/devtool/m24_gate.py --output "$RUNNER_TEMP/cinderbox-m24-host.json"
+
+      - name: Upload M24 source-bound evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: m24-host-${{ github.run_id }}
+          path: ${{ runner.temp }}/cinderbox-m24-host.json
+          if-no-files-found: error
 
       - name: M23 read-only installation discovery source regressions
         run: python3 -m unittest discover -s scripts/devtool -p 'test_m23_discovery.py' -v
@@ -235,6 +312,50 @@ jobs:
             app/build/outputs/apk/debug/M3_PROVENANCE.json
             app/build/outputs/apk/debug/M13_QUALIFICATION.json
           retention-days: 14
+      # A10: keep the original Devtool legacy artifact contract only when
+      # called by the manual workflow. Source/pull-request CI retains its
+      # original artifact and full M3–M24 source/instrumentation gates.
+      - name: Stage original Devtool manual fallback artifact
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apks=(app/build/outputs/apk/debug/*.apk)
+          test "${#apks[@]}" -eq 1
+          test -f "${apks[0]}" && test ! -L "${apks[0]}"
+          stage="$RUNNER_TEMP/cinderbox-devtool-debug"
+          mkdir -p "$stage"
+          cp -- "${apks[0]}" "$stage/debug.apk"
+          (cd "$stage" && sha256sum debug.apk > SHA256SUMS)
+          {
+            printf 'repository=%s\n' "$GITHUB_REPOSITORY"
+            printf 'commit=%s\n' "$GITHUB_SHA"
+            printf 'ref=%s\n' "$GITHUB_REF"
+            printf 'workflow_run=%s\n' "$GITHUB_RUN_ID"
+            printf 'variant=debug\nformat=apk\nmodule=app\n'
+          } > "$stage/BUILD_INFO.txt"
+          python3 scripts/devtool/m3_build_evidence.py generate \
+            --apk-dir "$stage" --output "$stage/M3_PROVENANCE.json"
+          python3 scripts/devtool/m13_qualification.py finalize \
+            --source-sha "$GITHUB_SHA" \
+            --provenance "$stage/M3_PROVENANCE.json" \
+            --apk "$stage/debug.apk" \
+            --output "$stage/M13_QUALIFICATION.json"
+      - name: Upload original Devtool manual fallback artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: devtool-android-debug-apk
+          path: |
+            ${{ runner.temp }}/cinderbox-devtool-debug/debug.apk
+            ${{ runner.temp }}/cinderbox-devtool-debug/SHA256SUMS
+            ${{ runner.temp }}/cinderbox-devtool-debug/BUILD_INFO.txt
+            ${{ runner.temp }}/cinderbox-devtool-debug/M3_PROVENANCE.json
+            ${{ runner.temp }}/cinderbox-devtool-debug/M13_QUALIFICATION.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: M23 synthetic Android test source contract
         run: |
           python3 -m unittest discover -s scripts/devtool -p 'test_m23_device_test_gate.py' -v

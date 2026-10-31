@@ -1,5 +1,6 @@
 """M21 source-bound fail-closed acceptance and release candidate regression contracts."""
 from __future__ import annotations
+from ci_workflow_contract import effective_ci_source
 import hashlib
 import json
 from pathlib import Path
@@ -58,7 +59,7 @@ class M21HostTests(unittest.TestCase):
 
     def test_ci_and_devtool_one_build(self):
         for workflow in ['build.yml','devtool-android-build.yml']:
-            w=(ROOT/'.github/workflows'/workflow).read_text()
+            w=effective_ci_source(ROOT,'.github/workflows/'+workflow)
             self.assertIn(m21.CI_STEP,w)
             self.assertIn("-p 'test_m21_*.py'",w)
             self.assertEqual(w.count('M14 compile isolated Android instrumentation APK'),1)

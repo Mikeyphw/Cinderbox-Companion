@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 
+from ci_workflow_contract import effective_ci_source
 HERE=Path(__file__).resolve().parent
 ROOT=HERE.parents[1]
 sys.path.insert(0,str(HERE))
@@ -67,7 +68,7 @@ class M18HostTests(unittest.TestCase):
 
     def test_ci_and_config_are_source_bound(self):
         for flow in ('build.yml','devtool-android-build.yml'):
-            wf=(ROOT/'.github/workflows'/flow).read_text()
+            wf=effective_ci_source(ROOT,'.github/workflows/'+flow)
             self.assertIn(m18.CI_STEP,wf)
             self.assertIn("-p 'test_m18_*.py'",wf)
             self.assertEqual(wf.count('M14 compile isolated Android instrumentation APK'),1)

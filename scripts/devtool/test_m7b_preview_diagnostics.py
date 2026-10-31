@@ -1,8 +1,9 @@
 """Source safety regressions for M7B; full Android Gradle/JVM tests run in CI."""
 from pathlib import Path
 import unittest
+from ci_workflow_contract import effective_ci_source
 ROOT = Path(__file__).resolve().parents[2]
-def read(path): return (ROOT / path).read_text(encoding="utf-8")
+def read(path): return effective_ci_source(ROOT,path)
 class M7BSafety(unittest.TestCase):
     def test_preview_is_read_only_and_approval_rechecks_staleness(self):
         engine = read("app/src/main/java/com/sdvsync/sync/SyncEngine.kt")

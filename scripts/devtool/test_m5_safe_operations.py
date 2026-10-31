@@ -1,9 +1,10 @@
 """Source regressions for M5. Independent of Gradle; CI also runs JVM tests."""
 from pathlib import Path
 import unittest
+from ci_workflow_contract import effective_ci_source
 ROOT=Path(__file__).resolve().parents[2]
 
-def read(p):return (ROOT/p).read_text(encoding='utf-8')
+def read(p):return effective_ci_source(ROOT,p)
 
 class M5SafeOperationsTest(unittest.TestCase):
     def test_import_requires_preview(self):

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """M23 source/CI/roadmap qualification (not a device or Steam permission receipt)."""
 from __future__ import annotations
+from ci_workflow_contract import effective_ci_source
 import argparse
 import hashlib
 import json
@@ -125,7 +126,7 @@ def generate(root: Path = ROOT, env: dict | None = None) -> dict:
     if 'test_m23_cinderbox_first.py' not in delta_job.get('command',[]) or not delta_job.get('metadata',{}).get('read_only'):
         raise GateError('M23_CINDERBOX_JOB_MISSING')
     for workflow in ('.github/workflows/build.yml','.github/workflows/devtool-android-build.yml'):
-        content=safe(root,workflow).decode()
+        content=effective_ci_source(root,workflow)
         if ('scripts/devtool/m23_discovery_gate.py' not in content or
             'test_m23_discovery.py' not in content or
             'test_m23_cinderbox_first.py' not in content):

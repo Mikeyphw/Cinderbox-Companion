@@ -1,8 +1,9 @@
 """M8 source contracts. Kotlin unit tests cover process-death filesystem recovery."""
 import unittest
 from pathlib import Path
+from ci_workflow_contract import effective_ci_source
 ROOT=Path(__file__).resolve().parents[2]
-def read(name):return (ROOT/name).read_text(encoding="utf-8")
+def read(name):return effective_ci_source(ROOT,name)
 
 class M8ProfileSafety(unittest.TestCase):
  def test_journal_precedes_renames_and_recovery_is_reverse(self):

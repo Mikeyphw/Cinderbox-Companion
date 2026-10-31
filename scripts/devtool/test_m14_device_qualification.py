@@ -10,6 +10,7 @@ MODULE = Path(__file__).with_name('m14_device_qualification.py')
 spec = importlib.util.spec_from_file_location('m14_device_qualification',MODULE)
 m14 = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m14)
+from ci_workflow_contract import effective_ci_source
 ROOT=Path(__file__).resolve().parents[2]
 
 class M14HostQualification(unittest.TestCase):
@@ -208,7 +209,7 @@ class M14HostQualification(unittest.TestCase):
 
     def test_workflow_builds_and_uploads_tests_separate_from_debug_apk(self):
         for path in ('.github/workflows/build.yml','.github/workflows/devtool-android-build.yml'):
-            workflow=(ROOT/path).read_text()
+            workflow=effective_ci_source(ROOT,path)
             self.assertIn("test_m14_*.py",workflow)
             self.assertIn('assembleDebugAndroidTest',workflow)
             self.assertIn('m14-androidtest-apk',workflow)

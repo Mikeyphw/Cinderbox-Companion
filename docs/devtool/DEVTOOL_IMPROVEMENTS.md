@@ -146,3 +146,80 @@ This ledger is cumulative; append future Devtool gaps and campaign findings rath
 | DEV-M23-CB-COPY-002 | `GameDownloadManager.copyToCinderbox` previously wrote source DLLs into existing `desktop/GameFiles` via `outputStream()` without first refusing imported Cinderbox files. | Refuse any nonempty/inaccessible primary game destination, reject overlapping sources and symlink paths; a future separately reviewed/backed-up repair may update the main installation. Preserve actual Cinderbox ZIP imports as data, not verified Steam depots. | Source guard added; Android compilation/device confirmation pending |
 | DEV-M23-CB-READ-003 | `GameDownloadViewModel` called `StoragePreflight.check` during initial screen display and every read-only refresh; that helper creates a temporary file. | Keep passive UI inspection read-only; perform writable storage probe only upon explicit Start Download. No implicit use of SAF/Root/Shizuku as direct File permission. | Source adjusted; CI/device confirmation pending |
 | DEV-M23-CB-EVID-004 | Ten M23 synthetic Android cases `PASS_10_SYNTHETIC_DEVICE_TESTS_UNBOUND` on earlier source, but their tests exercised path recognition not primary-vs-destination scoping. | Add a separate 3-case app-private Android test lane and exact-method-name runner. Never carry over earlier 10/10 as new-source qualification, and never infer real imported-game integrity from a synthetic test. | New lane authored; execution outstanding |
+
+
+### M24 — Steam download and recovery identity / Devtool integration (2026-10-18)
+
+| ID | Evidence / affected projects | Recommended implementation | Status |
+|---|---|---|---|
+| DEV-M24-STEAM-001 | GameDownloadService previously only checked nonempty Steam license list; that does not prove app 413150 entitlement. Reconnect and PICS build drift were not rechecked before marking success. | Require logged-in session and fresh positive PICS branch build before/after transfer, refuse mismatched build, avoid claiming license or signed manifest proof without backend receipts. | M24 source implemented; real licensed download + depot attestation NOT_RUN |
+| DEV-M24-RECOVERY-002 | M6 download journal was bound to directory/branch/OS/verify and marker but not Steam branch build, allowing stale-resume ambiguity. | Bind build ID atomically to owned journal; reject unbound/stale live recovery while keeping historical fixture compatibility and all partial bytes. | M24 source plus synthetic checks; Android device pending |
+| DEV-M24-INTEGRITY-003 | Local SHA-256 checksum ledger could be read as proof of Steam-depot authenticity; downloader wrote in place and did not atomically publish a game directory. | Make local verification mandatory; report local-only state and track signed manifest verification and atomic directory commit as distinct unmet obligations. | M24 reporting corrected; manifest/atomic install remains OPEN |
+| DEV-M24-WRAPPER-004 | M23 Cinderbox-first overlay added workflow without wrapper alias (`Unknown wrapper command`), requiring direct invoke. | Register both `m24-check` and `m24-full` wrapper aliases alongside target workflows; extend CI source-bound gate and private Android synthetic cases. | M24 source added, run qualification pending |
+
+### M24-STAGE-01 — Download stage/atomic receipt and recovery registration (2026-10-18)
+- **Evidence:** M24 initial service directed DepotDownloader to the final selected path while the app-private recovery journal recorded ownership; per-file verification used only a local SHA-256 ledger. This left no atomic whole-game visibility boundary.
+- **Affected:** Cinderbox Companion M24; Devtool wrapper and Android Actions.
+- **Implemented:** source-bound owned sibling stage, atomic same-filesystem rename without copy fallback, post-rename reconciliation, new `m24-stage-check` wrapper, independent Android source fixture lane and GitHub gate. No changes to imported Cinderbox files.
+- **Remaining:** live Steam manifest-to-file proof, authenticated entitled depot receipt, atomic rename behavior on target device and process-death verification. Do not call these qualified from fixtures.
+- **Status:** SOURCE_IMPLEMENTED / LIVE_UNQUALIFIED.
+
+
+### M24-PROV-01 — Installed APK pair provenance vs synthetic execution (2026-10-18)
+- **Evidence:** M24 device receipts from CI #39129035270 and #39132432005 each report four PASS synthetic cases while `installed_source_verified=false`; duplicate ADB transports may reflect one physical device. The recorded `ci_run_id_label` alone does not bind APK bytes to the GitHub commit.
+- **Affected:** Cinderbox Companion M24, Devtool Android Actions, reusable real-substrate qualification workflows.
+- **Implementation:** add `m24-provenance-check` native wrapper/DAG and CI source receipt; opt-in read-only tool compares two downloaded GitHub Actions APK artifact SHA-256s with installed Android base APK SHA-256s using explicitly selected ADB transport; reject missing/split/mismatching packages and stale/failed/wrong-branch CI. Observe only main Cinderbox package and public directory existence.
+- **Open improvement:** Devtool-native first-class installed APK pair attestation, transport deduplication through actual physical-device identity, and provider-backed Steam depot manifest provenance rather than app-local hash ledgers. Never treat this as authenticated Steam entitlement, live download, or release qualification.
+- **Status:** SOURCE_IMPLEMENTED; real-device execution outstanding.
+
+
+## M24-PICS01 — Authenticated PICS depot manifest identity is not signed file integrity (2026-10-18)
+- **Evidence:** `SteamContentService` previously consumed only PICS branch build IDs while `GameDownloadService` generated a local SHA-256 ledger; the depot manifest identity could drift independently without invalidating a build-bound checkpoint.
+- **Affected:** Cinderbox Companion M24 SteamContentService, GameDownloadRecovery, GameDownloadService; Devtool M24 source/device gates.
+- **Fix implemented:** deterministic numeric depot manifest ID snapshot, bound to an owned staged checkpoint; preserve partial bytes on drift. New `m24-pics-check` 3-node DAG and four private Android fixtures, no live Steam or user data required.
+- **Outstanding:** verify independent Steam depot file manifests and entitlement in the JavaSteam API, obtain authorized manifest bytes / authenticated request codes, validate exact file/chunk contents, consented real download and interruption. PICS GIDs alone are not signatures or file hashes. **Status: PARTIAL / external trust provider open.**
+
+
+### M24-FIN — Steam manifest source/content attestation gap (2026-10-18)
+- **Evidence:** JavaSteam 1.8.0 downloader reads `.DepotDownloader/<depot>_<manifest>.manifest`
+  and local `.sha`; PICS supplies depot manifest GIDs; existing service previously hashed only
+  its own transferred files and lacked file-by-file comparison to depot manifest content.
+- **Projects:** Cinderbox Companion, reusable Devtool Android qualification workflows.
+- **Action:** Source-bound cached depot SHA-1 cross-check added before and after atomic stage
+  promotion, with negative tests and distinct unsigned-manifest scope.
+- **Status:** HOST_IMPLEMENTED_PENDING_CI_DEVICE; signed manifest/protocol attestation and
+  separately authorized live-transfer evidence remain OPEN. Never silently treat synthetic
+  or self-hashed results as live verification.
+
+### M24-LIVE-STALL — Silent JavaSteam depot handoff and blocking wait (2026-10-18)
+
+- **Evidence:** On real user-authorized Steam download, Companion displayed “Waiting for depot progress…” indefinitely. Source shows `onDownloadStarted` sets DOWNLOADING before any bytes; `onStatusUpdate` only logs SDK status; `DepotDownloader.awaitCompletion()` blocks on `CompletableFuture.join()` without bounded progress policy. JavaSteam 1.8.0 `getCompletion()` and per-depot callbacks were verified against the tagged SDK sources. No live Steam completion claimed.
+- **Affected projects:** Cinderbox Companion / Steam depot downloader adapter / Devtool Android qualification.
+- **Remediation:** Add constant-label status mapping (no raw paths), monotonic first-content and transfer-stall limits, prompt SDK failure detection, cancellable completion-future wait, source-bound negative tests and CI. Preserve owned partial bytes and do not touch imported Cinderbox game.
+- **Status:** IMPLEMENTED_PENDING_CI_AND_REAL_DEVICE; 16 historical synthetic M24 cases remain accepted. New live acceptance remains blocked until a successful licensed transfer is observed.
+
+### M24 live depot/PICS evidence diagnostic (2026-10-18, open)
+
+- **Evidence:** Real Windows depot transfer reached 54.6 MB, 1,124 completed
+  files and 784 KB/s while the UI reported depot 413151 at 0%, then failed
+  `Completed depots are not PICS-bound` at verifier time.
+- **Affected:** Cinderbox-Companion SteamContentService / JavaSteam bridge,
+  GameDownloadService, user-facing download progress and CI acceptance workflow.
+- **Action:** Source-pinned strict mismatch diagnostics and transparent byte/file
+  progress now implemented. Actual missing PICS IDs must be inspected on-device
+  before implementing any authenticated manifest resolution (do not silently
+  accept unbound depots).
+- **Status:** UI/observability implemented; PICS root-cause and release closure OPEN.
+
+### M24 shared Steam depot provenance and auxiliary download feedback (2026-10-19)
+- Evidence: Real live Steam transfer reached 256.7 MB, 3,609 completed files; final verification failed on shared depots `229002,229012`, which are inherited Windows redistributables from app `228980`, not directly published GIDs under app `413150`. Android Companion SMAPI and Cinderbox download buttons could appear inert: StoragePreflight outside exception-handling; Cinderbox update UI used stored release version rather than actual installed package.
+- Affected: Cinderbox-Companion; `SteamContentService`, `GameDownloadService`, `GameDownloadManager`, download UI, CI APK qualification.
+- Mitigation: dynamically resolve only PICS-advertised shared depot/parent pairs against fresh parent PICS appinfo; fail closed on denied/unavailable parent, no local manifest trust substitution; preserve staged content. Move prereq checks within progress error handling; inspect Android installed app read-only, avoid redundant Cinderbox download, avoid implicit SMAPI reinstall.
+- Status: IMPLEMENTED_SOURCE_PENDING_CI_AND_LIVE_ACCEPTANCE. No Steam signature or release qualification claims.
+
+## M24 verification completion and folder choice (2026-10-19)
+
+- **Evidence:** Real 100%-of-hashing UI apparently frozen before additional manifest/PICS and post-promotion rechecks; source used unlabelled `overallPercent` for a single pass. Android destination previously required typing a filesystem path; manual size guess made download fail despite unknown reliable depot sizes.
+- **Affected:** Cinderbox Companion `GameDownloadService`, `GameFileIntegrity`, cross-check, Compose screen, VM/manager; Devtool M11/M24 source regressions.
+- **Change:** Named verification stages and per-stage progress during double-hash, cached manifest comparison, network identity recheck, atomic publication, and post-promotion verification. Android `OpenDocumentTree` maps supported primary internal-storage subfolders only; other providers reject safely. Removed the Steam download storage budget UI and mandatory guessed payload but retained protected Cinderbox tree, writable-path and fail-closed integrity gates. No restart or deletion.
+- **Status:** IMPLEMENTED_SOURCE_ONLY. Android Gradle CI, picker on-device and actual final Steam transfer still need testing.
