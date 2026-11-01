@@ -19,7 +19,9 @@ class ContractTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         for name in ('.devtool.toml', 'gradle/wrapper/gradle-wrapper.properties',
                      '.github/workflows/devtool-android-build.yml',
-                     '.github/workflows/devtool-source-contract.yml'):
+                     '.github/workflows/build.yml',
+                     '.github/workflows/devtool-source-contract.yml',
+                     'scripts/devtool/hosted_debug.py'):
             dst = self.root / name
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, dst)
@@ -40,11 +42,11 @@ class ContractTests(unittest.TestCase):
         p.write_text(p.read_text().replace('distributionSha256Sum=', 'notPinned='))
         self.assertIn('UNPINNED_GRADLE_DISTRIBUTION', audit_module.audit(self.root)['issues'])
 
-    def test_rejects_unreviewed_remote_inputs(self):
+    def test_rejects_new_actions_wrapper_not_supported_by_pinned_engines(self):
         p=self.root/'.devtool.toml'
-        p.write_text(p.read_text().replace('a05_mode = "native-only"',
-                                          'a05_mode = "both"',1))
-        self.assertIn('UNSAFE_HOSTED_WRAPPER:ci-debug-plan',audit_module.audit(self.root)['issues'])
+        p.write_text(p.read_text()+"\n[wrapper.commands.ci-debug-plan]\ndevtool = \"actions\"\n[wrapper.commands.ci-debug-plan.actions]\noperation = \"plan\"\n")
+        self.assertIn('PINNED_DEVTOOL_INCOMPATIBLE_WRAPPER:ci-debug-plan',
+                      audit_module.audit(self.root)['issues'])
 
     def test_rejects_security_job_without_bytecode_protection(self):
         p=self.root/'.devtool.toml'

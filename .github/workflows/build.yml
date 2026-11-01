@@ -16,21 +16,21 @@ jobs:
     timeout-minutes: 50
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 Node24
         with:
           persist-credentials: false
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5 Node24
         with:
           java-version: '17'
           distribution: 'temurin'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2 Node24
 
       - name: Set up pinned Android build tools
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4 Node24
 
       - name: Install Android SDK 35 and signing tools
         run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
@@ -114,7 +114,7 @@ jobs:
         run: python3 scripts/devtool/m24_depot_handoff_gate.py --output "$RUNNER_TEMP/cinderbox-m24-handoff-source.json"
 
       - name: Upload M24 depot handoff source evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5 Node24
         with:
           name: m24-handoff-${{ github.run_id }}
           path: ${{ runner.temp }}/cinderbox-m24-handoff-source.json
@@ -126,7 +126,7 @@ jobs:
         run: python3 scripts/devtool/m24_file_manifest_gate.py --output "$RUNNER_TEMP/cinderbox-m24-file-proof.json"
 
       - name: Upload M24 file proof source evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5 Node24
         with:
           name: m24-file-proof-${{ github.run_id }}
           path: ${{ runner.temp }}/cinderbox-m24-file-proof.json
@@ -138,7 +138,7 @@ jobs:
         run: python3 scripts/devtool/m24_pics_gate.py --output "$RUNNER_TEMP/cinderbox-m24-pics-source.json"
 
       - name: Upload M24 PICS source evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5 Node24
         with:
           name: m24-pics-${{ github.run_id }}
           path: ${{ runner.temp }}/cinderbox-m24-pics-source.json
@@ -150,7 +150,7 @@ jobs:
         run: python3 scripts/devtool/m24_provenance_gate.py --output "$RUNNER_TEMP/cinderbox-m24-provenance-source.json"
 
       - name: Upload M24 provenance source evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5 Node24
         with:
           name: m24-provenance-${{ github.run_id }}
           path: ${{ runner.temp }}/cinderbox-m24-provenance-source.json
@@ -160,7 +160,7 @@ jobs:
         run: python3 scripts/devtool/m24_gate.py --output "$RUNNER_TEMP/cinderbox-m24-host.json"
 
       - name: Upload M24 source-bound evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5 Node24
         with:
           name: m24-host-${{ github.run_id }}
           path: ${{ runner.temp }}/cinderbox-m24-host.json
@@ -176,7 +176,7 @@ jobs:
         run: python3 scripts/devtool/m23_discovery_gate.py --output "$RUNNER_TEMP/cinderbox-m23-host.json"
 
       - name: Upload M23 source-bound evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5 Node24
         with:
           name: m23-host-${{ github.run_id }}
           path: ${{ runner.temp }}/cinderbox-m23-host.json
@@ -191,7 +191,7 @@ jobs:
           python3 scripts/devtool/m22_baseline.py --verify "$RUNNER_TEMP/cinderbox-m22-host.json" > /dev/null
 
       - name: Upload M22 source-bound baseline evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5 Node24
         with:
           name: m22-host-${{ github.run_id }}
           path: ${{ runner.temp }}/cinderbox-m22-host.json
@@ -202,7 +202,7 @@ jobs:
         run: python3 scripts/devtool/ui_d03_gate.py --output "$RUNNER_TEMP/cinderbox-ui-d03-host.json"
 
       - name: Upload UI-D03 source evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5 Node24
         with:
           name: ui-d03-host-${{ github.run_id }}
           path: ${{ runner.temp }}/cinderbox-ui-d03-host.json
@@ -213,7 +213,7 @@ jobs:
         run: python3 scripts/devtool/ui_d02_gate.py --output "$RUNNER_TEMP/cinderbox-ui-d02-host.json"
 
       - name: Upload UI-D02 source evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5 Node24
         with:
           name: ui-d02-host-${{ github.run_id }}
           path: ${{ runner.temp }}/cinderbox-ui-d02-host.json
@@ -224,7 +224,7 @@ jobs:
         run: python3 scripts/devtool/ui_d01_gate.py --output "$RUNNER_TEMP/cinderbox-ui-d01-host.json"
 
       - name: Upload UI-D01 source evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5 Node24
         with:
           name: ui-d01-host-${{ github.run_id }}
           path: ${{ runner.temp }}/cinderbox-ui-d01-host.json
@@ -303,7 +303,7 @@ jobs:
             --output app/build/outputs/apk/debug/M13_QUALIFICATION.json
 
       - name: Upload debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5 Node24
         with:
           name: debug-apk
           if-no-files-found: error
@@ -344,7 +344,7 @@ jobs:
             --output "$stage/M13_QUALIFICATION.json"
       - name: Upload original Devtool manual fallback artifact
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5 Node24
         with:
           name: devtool-android-debug-apk
           path: |
@@ -362,7 +362,7 @@ jobs:
           python3 scripts/devtool/m23_device_test_gate.py --output "$RUNNER_TEMP/cinderbox-m23-android-source.json"
 
       - name: Upload M23 Android test source evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5 Node24
         with:
           name: m23-android-source-${{ github.run_id }}
           path: ${{ runner.temp }}/cinderbox-m23-android-source.json
@@ -380,7 +380,7 @@ jobs:
         run: python3 scripts/devtool/m16_debug_signing.py verify --apk-dir app/build/outputs/apk/androidTest/debug
 
       - name: M14 upload isolated instrumentation APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5 Node24
         with:
           name: m14-androidtest-apk
           if-no-files-found: error

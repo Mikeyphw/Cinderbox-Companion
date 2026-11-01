@@ -18,7 +18,7 @@ ROOT=Path(__file__).resolve().parents[2]
 DISPATCH='.github/workflows/devtool-android-build.yml'
 LEGACY='.github/workflows/build.yml'
 M3='scripts/devtool/m3_build_evidence.py'
-LEGACY_SHA256='74f76490dea605b0ac07ae60ca2ccc053dd9f4e461ed1ecff5298351352b9a26'
+LEGACY_SHA256='ddd3c35fb54fbb12b5de9d17b2a83d09a1059562de40030334bee5dc51cb4742'
 A10_START='      # A10: keep the original Devtool legacy artifact contract only when'
 A10_END='      - name: M23 synthetic Android test source contract\n'
 

@@ -18,48 +18,9 @@ description = "Safe parallel host source-contract and CI integration checks (no 
 workflow = "host-check"
 target = "cinderbox"
 
-[wrapper.commands.ci-debug-plan]
-description = "Preview the existing GitHub-hosted A07 debug build without dispatching"
-devtool = "actions"
-[wrapper.commands.ci-debug-plan.actions]
-operation = "plan"
-workflow_id = "devtool-android-build.yml"
-ref = "master"
-inputs = { project_dir = ".", module = "app", variant = "debug", format = "apk", a07_native_build = "true", a05_mode = "native-only" }
-
-[wrapper.commands.ci-debug-run]
-description = "Dispatch exact-local-HEAD GitHub A07 debug build; requires --yes"
-devtool = "actions"
-[wrapper.commands.ci-debug-run.actions]
-operation = "dispatch"
-workflow_id = "devtool-android-build.yml"
-ref = "master"
-inputs = { project_dir = ".", module = "app", variant = "debug", format = "apk", a07_native_build = "true", a05_mode = "native-only" }
-[wrapper.commands.ci-debug-run.options.yes]
-type = "boolean"
-description = "Explicitly authorize remote workflow dispatch"
-default = false
-command_argv = ["--yes"]
-
-[wrapper.commands.ci-debug-watch]
-description = "Inspect/watch an exact Devtool dispatch request (32 hex characters)"
-devtool = "actions"
-[wrapper.commands.ci-debug-watch.actions]
-operation = "watch"
-[wrapper.commands.ci-debug-watch.options.request_id]
-type = "string"
-required = true
-command_argv = ["--request-id", "{value}"]
-
-[wrapper.commands.ci-debug-artifacts]
-description = "Inspect artifacts for an exact Devtool dispatch request"
-devtool = "actions"
-[wrapper.commands.ci-debug-artifacts.actions]
-operation = "artifacts"
-[wrapper.commands.ci-debug-artifacts.options.request_id]
-type = "string"
-required = true
-command_argv = ["--request-id", "{value}"]
+# Remote debug builds use scripts/devtool/hosted_debug.py: the pinned A05/A07
+# Devtool versions do not support typed [wrapper.commands.*.actions] tables.
+# Do not add those tables until BOTH pinned versions have been migrated/qualified.
 
 [wrapper.commands.quick]
 description = "Verify the security contract and run local JVM tests"

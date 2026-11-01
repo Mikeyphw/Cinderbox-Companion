@@ -67,7 +67,7 @@ jobs:
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - name: Checkout exact Cinderbox commit
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 Node24
         with:
           persist-credentials: false
       - name: Validate exact source and debug-only native DAG
@@ -81,12 +81,12 @@ jobs:
           python3 scripts/devtool/m13_qualification.py source
           python3 scripts/devtool/m16_debug_signing.py source
       - name: Set up JDK 17
-        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v4.7.1
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5 Node24
         with:
           distribution: temurin
           java-version: '17'
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4 Node24
         with:
           packages: platform-tools
       - name: Install fixed Android build tools
@@ -95,7 +95,7 @@ jobs:
           set -euo pipefail
           sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
       - name: Configure Gradle cache
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2 Node24
       - name: Install A06 wheel from immutable Devtool commit
         shell: bash
         run: |
@@ -185,7 +185,7 @@ jobs:
           python3 scripts/devtool/a07_native_debug.py record --incomplete --input-dir "$RUNNER_TEMP" --evidence-dir "$RUNNER_TEMP/cinderbox-a07-evidence"
       - name: Upload exact A07 machine evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5 Node24
         with:
           name: cinderbox-a07-machine-evidence
           path: ${{ runner.temp }}/cinderbox-a07-evidence/
@@ -193,7 +193,7 @@ jobs:
           retention-days: 14
       - name: Upload host-qualified debug APK (no device/release qualification)
         if: success()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5 Node24
         with:
           name: cinderbox-a07-debug-apk
           path: ${{ runner.temp }}/cinderbox-a07-apk/
@@ -214,7 +214,7 @@ jobs:
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - name: Checkout exact consumer source
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 Node24
         with:
           persist-credentials: false
       - name: Verify immutable consumer checkout and source gate
@@ -282,7 +282,7 @@ jobs:
             --attempt "$GITHUB_RUN_ATTEMPT"
       - name: Upload read-only A05 machine evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5 Node24
         with:
           name: cinderbox-a05-native-dag
           path: ${{ runner.temp }}/cinderbox-a05-evidence/

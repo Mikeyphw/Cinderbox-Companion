@@ -19,8 +19,18 @@ CHECKSUM = 'f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6'
 WORKFLOW = 'devtool-android-build.yml'
 HOST = {'storage-alias-source','devtool-contract','security-contract','a05-source-regression',
         'a07-source-regression','a10-source-regression'}
-REQUIRED = {'project_dir': '.', 'module': 'app', 'variant': 'debug',
-            'format': 'apk', 'a07_native_build': 'true', 'a05_mode': 'native-only'}
+PINS = {
+    'A05_DEVTOOL_SHA': '08eb13991b5d1c623b64fdd8f9524418ee27207e',
+    'A07_DEVTOOL_SHA': '409c5527532eaa1ee62b8111e030732d3f9e2791',
+}
+NODE24_ACTIONS = (
+    'actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09',
+    'actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961',
+    'android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd',
+    'gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c',
+    'actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4',
+)
+
 
 
 def audit(root: Path) -> dict:
@@ -118,23 +128,43 @@ def audit(root: Path) -> dict:
     require(all((v.get('workflow') in flows if 'workflow' in v else True)
                 for v in cmds.values()), 'BROKEN_WRAPPER_WORKFLOW')
     require(cmds.get('host-check',{}).get('workflow') == 'host-check', 'HOST_WRAPPER_MISMATCH')
-    for name,operation in [('ci-debug-plan','plan'),('ci-debug-run','dispatch')]:
-        command = cmds.get(name, {})
-        action = command.get('actions', {})
-        require(command.get('devtool') == 'actions' and action.get('operation') == operation and
-                action.get('workflow_id') == WORKFLOW and action.get('ref') == 'master' and
-                action.get('inputs') == REQUIRED and command.get('allow_passthrough') is not True,
-                'UNSAFE_HOSTED_WRAPPER:' + name)
-    confirm = cmds.get('ci-debug-run',{}).get('options',{}).get('yes',{})
-    require(confirm.get('type') == 'boolean' and confirm.get('default') is False and
-            confirm.get('command_argv') == ['--yes'], 'REMOTE_DISPATCH_CONFIRMATION_MISSING')
-    for name,operation in [('ci-debug-watch','watch'),('ci-debug-artifacts','artifacts')]:
-        cmd = cmds.get(name,{}); action = cmd.get('actions',{})
-        val = cmd.get('options',{}).get('request_id',{})
-        require(cmd.get('devtool')=='actions' and action.get('operation')==operation and
-                val.get('required') is True and val.get('type') == 'string' and
-                val.get('command_argv') == ['--request-id','{value}'],
-                'UNSAFE_REQUEST_ID_WRAPPER:' + name)
+    # Native A05/A07 wheels predate typed `actions` wrappers. The whole
+    # config must load on *both* releases, not just the local latest Devtool.
+    for name, command in cmds.items():
+        require(not command.get('actions') and command.get('devtool') != 'actions',
+                'PINNED_DEVTOOL_INCOMPATIBLE_WRAPPER:' + name)
+    require(not any(name.startswith('ci-debug-') for name in cmds),
+            'REMOTE_WRAPPER_MUST_BE_EXTERNAL')
+    hosted = root / 'scripts/devtool/hosted_debug.py'
+    require(hosted.is_file(), 'MISSING_BRANCH_AWARE_DISPATCH_HELPER')
+    try:
+        flow_text = (root / '.github/workflows' / WORKFLOW).read_text()
+        for k,v in PINS.items():
+            require(f'{k}: {v}' in flow_text, 'PINNED_ENGINE_DRIFT:' + k)
+        for spec in NODE24_ACTIONS:
+            require(spec in flow_text, 'NODE24_ACTION_MISSING:' + spec.split('@')[0])
+        legacy = (root / '.github/workflows/build.yml').read_text()
+        for spec in NODE24_ACTIONS:
+            require(spec in legacy, 'LEGACY_NODE24_ACTION_MISSING:' + spec.split('@')[0])
+        require(not any(x in legacy for x in (
+            'actions/checkout@v4', 'actions/setup-java@v4',
+            'gradle/actions/setup-gradle@v4', 'actions/upload-artifact@v4',
+            'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02')),
+            'LEGACY_NODE20_ACTION_NOT_MIGRATED')
+        require(not any(x in flow_text for x in (
+            'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683',
+            'android-actions/setup-android@v3',
+            'gradle/actions/setup-gradle@v4',
+            'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02')),
+            'NODE20_MANUAL_WORKFLOW_NOT_MIGRATED')
+    except OSError:
+        issues.append('MANUAL_WORKFLOW_MISSING')
+    try:
+        ci = (root / '.github/workflows/devtool-source-contract.yml').read_text()
+        require('Pinned A05/A07 config parser regression' in ci,
+                'MISSING_EXACT_PINNED_DEVTOOL_PARSER_CI')
+    except OSError:
+        issues.append('SOURCE_CI_MISSING')
     try:
         props=(root/'gradle/wrapper/gradle-wrapper.properties').read_text()
         require(re.search(r'(?m)^distributionSha256Sum='+CHECKSUM+r'$',props) is not None,
