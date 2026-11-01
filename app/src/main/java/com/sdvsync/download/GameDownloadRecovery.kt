@@ -1,6 +1,7 @@
 package com.sdvsync.download
 
 import java.io.File
+import com.sdvsync.local.PlatformStoragePaths
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.Properties
@@ -44,16 +45,8 @@ class GameDownloadRecovery(private val privateRoot: File) {
         private const val VERSION = "1"
         private const val APP_ID = "413150"
 
-        /** Reject a symlink at any existing component, including ancestor folders. */
-        fun safeDestination(directory: File): File {
-            require(directory.isAbsolute) { "Game destination must be absolute" }
-            var part: File? = directory.absoluteFile
-            while (part != null) {
-                require(!Files.isSymbolicLink(part.toPath())) { "Game directory contains a symbolic link" }
-                part = part.parentFile
-            }
-            return directory.canonicalFile
-        }
+        /** Accept only OS-managed storage aliases; never game-controlled symlinks. */
+        fun safeDestination(directory: File): File = PlatformStoragePaths.requireSafe(directory)
     }
 
     @Synchronized fun pending(): GameDownloadCheckpoint? {

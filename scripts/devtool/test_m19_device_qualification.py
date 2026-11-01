@@ -97,8 +97,8 @@ class M19HostTests(unittest.TestCase):
         self.assertIn('!java.nio.file.Files.isSymbolicLink(privateFiles.toPath())',src)
         self.assertIn('!java.nio.file.Files.isSymbolicLink(root.toPath())',src)
         prod=(ROOT/'app/src/main/java/com/sdvsync/download/GameDownloadRecovery.kt').read_text()
-        self.assertIn('Game directory contains a symbolic link',prod)
-        self.assertIn('Files.isSymbolicLink(part.toPath())',prod)
+        self.assertIn('PlatformStoragePaths.requireSafe(directory)',prod)
+        self.assertIn('fun safeDestination(directory: File)',prod)
 
     def test_sanitized_m19_failure_diagnostics_never_copy_paths_or_secrets(self):
         test=m19.PREPARE

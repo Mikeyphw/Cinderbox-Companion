@@ -1,0 +1,104 @@
+# Source-only Devtool config safety CI; deliberately no JDK, SDK, Gradle or signing.
+name: Devtool source contract (no Gradle)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - '.devtool.toml'
+      - 'devtoolw'
+      - 'gradle/wrapper/gradle-wrapper.properties'
+      - '.github/workflows/devtool-*.yml'
+      - 'scripts/devtool/a05_*.py'
+      - 'scripts/devtool/a07_*.py'
+      - 'scripts/devtool/test_a05_*.py'
+      - 'scripts/devtool/test_a07_*.py'
+      - 'scripts/devtool/test_a10_*.py'
+      - 'scripts/devtool/cinderbox_devtool_audit.py'
+      - 'scripts/devtool/test_cinderbox_devtool_audit.py'
+      - 'scripts/devtool/test_storage_alias_source.py'
+      - 'scripts/devtool/check_security_contract.py'
+      - 'scripts/devtool/test_m19_device_qualification.py'
+      - 'scripts/devtool/test_m24_staged_gate.py'
+      - 'scripts/devtool/test_m3h_reliability.py'
+      - 'app/src/main/java/com/sdvsync/local/**'
+      - 'app/src/main/java/com/sdvsync/download/**'
+      - 'app/src/main/java/com/sdvsync/mods/**'
+      - 'app/src/test/java/com/sdvsync/local/PlatformStoragePathsTest.kt'
+      - 'app/src/androidTest/java/com/sdvsync/qualification/PlatformStorageAliasDeviceTest.kt'
+  pull_request:
+    branches: [master]
+    paths:
+      - '.devtool.toml'
+      - 'devtoolw'
+      - 'gradle/wrapper/gradle-wrapper.properties'
+      - '.github/workflows/devtool-*.yml'
+      - 'scripts/devtool/a05_*.py'
+      - 'scripts/devtool/a07_*.py'
+      - 'scripts/devtool/test_a05_*.py'
+      - 'scripts/devtool/test_a07_*.py'
+      - 'scripts/devtool/test_a10_*.py'
+      - 'scripts/devtool/cinderbox_devtool_audit.py'
+      - 'scripts/devtool/test_cinderbox_devtool_audit.py'
+      - 'scripts/devtool/test_storage_alias_source.py'
+      - 'scripts/devtool/check_security_contract.py'
+      - 'scripts/devtool/test_m19_device_qualification.py'
+      - 'scripts/devtool/test_m24_staged_gate.py'
+      - 'scripts/devtool/test_m3h_reliability.py'
+      - 'app/src/main/java/com/sdvsync/local/**'
+      - 'app/src/main/java/com/sdvsync/download/**'
+      - 'app/src/main/java/com/sdvsync/mods/**'
+      - 'app/src/test/java/com/sdvsync/local/PlatformStoragePathsTest.kt'
+      - 'app/src/androidTest/java/com/sdvsync/qualification/PlatformStorageAliasDeviceTest.kt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cinderbox-devtool-source-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  devtool-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Checkout exact candidate source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 Node24
+        with:
+          persist-credentials: false
+      - name: Produce offline contract receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 scripts/devtool/cinderbox_devtool_audit.py --json | tee "$RUNNER_TEMP/cinderbox-devtool-contract.json"
+      - name: Validate base source security guarantees
+        run: python3 -B scripts/devtool/check_security_contract.py
+      - name: Source contract negative regressions
+        run: python3 -B -m unittest discover -s scripts/devtool -p 'test_cinderbox_devtool_audit.py' -v
+      - name: Storage alias source regressions
+        run: python3 -B -m unittest discover -s scripts/devtool -p 'test_storage_alias_source.py' -v
+      - name: A05 source regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_a05_*.py' -q
+      - name: A07 source regressions
+        run: python3 -m unittest discover -s scripts/devtool -p 'test_a07_*.py' -q
+      - name: A10 legacy/native lane source regressions
+        run: python3 -B -m unittest discover -s scripts/devtool -p 'test_a10_*.py' -q
+      - name: M19 device-gate source regressions (no device)
+        run: python3 -B -m unittest discover -s scripts/devtool -p 'test_m19_device_qualification.py' -q
+      - name: M24 staged-download source regressions (no Gradle)
+        run: python3 -B -m unittest discover -s scripts/devtool -p 'test_m24_staged_gate.py' -q
+      - name: M3H progress/regression source contract
+        run: python3 -B -m unittest discover -s scripts/devtool -p 'test_m3h_reliability.py' -q
+      - name: Upload source-only receipt
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5 Node24
+        with:
+          name: cinderbox-devtool-source-contract
+          path: ${{ runner.temp }}/cinderbox-devtool-contract.json
+          if-no-files-found: warn
+          retention-days: 14

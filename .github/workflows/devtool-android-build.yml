@@ -42,7 +42,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: cinderbox-devtool-android-${{ github.ref }}-${{ github.run_id }}
+  group: cinderbox-devtool-android-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:

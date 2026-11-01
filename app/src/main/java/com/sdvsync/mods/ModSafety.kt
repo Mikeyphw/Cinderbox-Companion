@@ -1,6 +1,7 @@
 package com.sdvsync.mods
 
 import java.io.File
+import com.sdvsync.local.PlatformStoragePaths
 import java.nio.file.Files
 import java.security.MessageDigest
 import java.util.Properties
@@ -37,11 +38,7 @@ internal class ModSafety(private val privateRoot: File, private val modsDir: Fil
     }
 
     private fun ensureNoLinks(root: File) {
-        var parent: File? = root.absoluteFile
-        while (parent != null) {
-            require(!Files.isSymbolicLink(parent.toPath())) { "Mod path includes a symlink" }
-            parent = parent.parentFile
-        }
+        require(PlatformStoragePaths.inspect(root).safe) { "Mod path includes an unsafe symlink" }
         if (root.exists()) {
             root.walkTopDown().forEach { file ->
                 require(!Files.isSymbolicLink(file.toPath())) { "Snapshot contains a symlink" }

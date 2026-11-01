@@ -9,11 +9,8 @@ data class StorageCheck(val writable: Boolean, val details: String)
 object StoragePreflight {
     fun check(destination: File): StorageCheck {
         if (!destination.isAbsolute) return StorageCheck(false, "An absolute destination path is required")
-        var node: File? = destination.absoluteFile
-        while (node != null) {
-            if (Files.isSymbolicLink(node.toPath())) return StorageCheck(false, "Symlink in destination path")
-            node = node.parentFile
-        }
+        val safety = PlatformStoragePaths.inspect(destination)
+        if (!safety.safe) return StorageCheck(false, safety.reason)
         if (destination.exists() && !destination.isDirectory)
             return StorageCheck(false, "Destination is not a directory")
         // Do not create folders just for checking; use the nearest existing parent.

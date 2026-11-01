@@ -82,7 +82,7 @@ fun main(args:Array<String>) {
 }
 ''')
             jar=root/'smoke.jar'
-            build=subprocess.run(['kotlinc',str(REC),str(harness),'-d',str(jar)],capture_output=True,text=True,timeout=60)
+            build=subprocess.run(['kotlinc', str(ROOT/'app/src/main/java/com/sdvsync/local/PlatformStoragePaths.kt'), str(REC), str(harness), '-d', str(jar)],capture_output=True,text=True,timeout=60)
             self.assertEqual(0,build.returncode,build.stderr)
             run=subprocess.run(['kotlin','-classpath',str(jar),'HarnessKt',str(root)],capture_output=True,text=True,timeout=30)
             self.assertEqual(0,run.returncode,run.stderr)

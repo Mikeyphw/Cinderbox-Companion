@@ -23,14 +23,7 @@ object M23CinderboxFirstPolicy {
         val authorizesDownload: Boolean = false
     }
 
-    private fun hasSymlinkAncestor(file: File): Boolean {
-        var item: File? = file.absoluteFile
-        while (item != null) {
-            if (Files.isSymbolicLink(item.toPath())) return true
-            item = item.parentFile
-        }
-        return false
-    }
+    private fun hasSymlinkAncestor(file: File): Boolean = !PlatformStoragePaths.inspect(file).safe
 
     /** No filesystem mutations, including no temporary permission probe. */
     fun assess(destination: File, cinderboxRoot: File): Decision {

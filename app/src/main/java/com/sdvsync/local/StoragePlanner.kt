@@ -39,12 +39,9 @@ object StoragePlanner {
         var existing = destination.absoluteFile
         while (!existing.exists()) existing = existing.parentFile
             ?: return StorageBudget(null, payloadBytes, reserveBytes, null, false, "Storage parent unavailable")
-        var node: File? = existing
-        while (node != null) {
-            if (Files.isSymbolicLink(node.toPath())) return StorageBudget(null, payloadBytes,
-                reserveBytes, null, false, "Storage path contains a symlink")
-            node = node.parentFile
-        }
+        val safety = PlatformStoragePaths.inspect(existing)
+        if (!safety.safe) return StorageBudget(null, payloadBytes, reserveBytes,
+            null, false, safety.reason)
         val usable = existing.usableSpace.takeIf { it > 0L }
             ?: return StorageBudget(null, payloadBytes, reserveBytes, null, null,
                 "Available capacity is unknown; do not assume this storage is sufficient")
@@ -73,11 +70,7 @@ object StoragePlanner {
         var total = 0L
         for (source in sources) {
             require(source.isFile && !Files.isSymbolicLink(source.toPath())) { "Unsafe game copy source" }
-            var ancestor: File? = source.absoluteFile.parentFile
-            while (ancestor != null) {
-                require(!Files.isSymbolicLink(ancestor.toPath())) { "Game copy source contains symlink" }
-                ancestor = ancestor.parentFile
-            }
+            require(PlatformStoragePaths.inspect(source).safe) { "Game copy source contains unsafe link" }
             total = Math.addExact(total, source.length())
         }
         return plan(destination, total)
