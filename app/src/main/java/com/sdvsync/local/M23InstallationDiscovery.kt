@@ -44,14 +44,7 @@ object M23InstallationDiscovery {
         "xTile.dll", "Lidgren.Network.dll"
     )
 
-    private fun linked(file: File): Boolean {
-        var cursor: File? = file.absoluteFile
-        while (cursor != null) {
-            if (Files.isSymbolicLink(cursor.toPath())) return true
-            cursor = cursor.parentFile
-        }
-        return false
-    }
+    private fun linked(file: File): Boolean = !PlatformStoragePaths.inspect(file).safe
 
     private fun children(folder: File): List<File>? = try {
         // DirectoryStream stops after 257 entries; never materialize an unbounded listing.

@@ -10,7 +10,17 @@ default_target = "cinderbox"
 
 [wrapper]
 schema = 2
-default_command = "validate"
+default_command = "host-check"
+
+# Fast default uses host-only Python checks. No JDK/SDK/Gradle required.
+[wrapper.commands.host-check]
+description = "Safe parallel host source-contract and CI integration checks (no Gradle)"
+workflow = "host-check"
+target = "cinderbox"
+
+# Remote debug builds use scripts/devtool/hosted_debug.py: the pinned A05/A07
+# Devtool versions do not support typed [wrapper.commands.*.actions] tables.
+# Do not add those tables until BOTH pinned versions have been migrated/qualified.
 
 [wrapper.commands.quick]
 description = "Verify the security contract and run local JVM tests"
@@ -195,6 +205,14 @@ description = "Explicit on-device instrumentation lane; requires a connected tes
 workflow = "device"
 target = "cinderbox"
 
+# Scheduler only overlaps proven read-only jobs; Gradle workflows retain their
+# explicit dependencies and are limited to one expensive node at a time.
+[workspace.scheduler]
+parallel = true
+max_parallel_nodes = 4
+max_gradle_nodes = 1
+max_dotnet_nodes = 1
+
 [execution]
 environment = "auto"
 chroot_name = "androidos"
@@ -274,9 +292,47 @@ lint = [":app:lintDebug"]
 # This job is cheap and works even before JDK, Gradle, or the Android SDK exists.
 [targets.cinderbox.jobs.security-contract]
 runner = "command"
+execution_environment = "host"
 command = ["python3", "scripts/devtool/check_security_contract.py"]
-inputs = ["app/src/main/AndroidManifest.xml", "app/src/main/java/com/sdvsync/fileaccess/**", "scripts/devtool/check_security_contract.py"]
+env = { PYTHONDONTWRITEBYTECODE = "1" }
+inputs = ["app/src/main/AndroidManifest.xml", "app/src/main/java/com/sdvsync/fileaccess/**", "app/src/main/java/com/sdvsync/download/**", "scripts/devtool/check_security_contract.py"]
 metadata = { read_only = true, area = "security", root_required = false }
+
+# Source-only CI/Devtool contract checks: host/Termux Python, never Gradle.
+[targets.cinderbox.jobs.storage-alias-source]
+runner = "command"
+execution_environment = "host"
+command = ["python3", "-B", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_storage_alias_source.py", "-v"]
+inputs = ["app/src/main/java/com/sdvsync/local/PlatformStoragePaths.kt", "app/src/main/java/com/sdvsync/local/StoragePreflight.kt", "app/src/main/java/com/sdvsync/download/GameDownloadRecovery.kt", "scripts/devtool/test_storage_alias_source.py"]
+metadata = { read_only = true, area = "storage-alias", root_required = false }
+
+[targets.cinderbox.jobs.devtool-contract]
+runner = "command"
+execution_environment = "host"
+command = ["python3", "-B", "scripts/devtool/cinderbox_devtool_audit.py", "--json"]
+inputs = [".devtool.toml", "devtoolw", "gradle/wrapper/gradle-wrapper.properties", ".github/workflows/**", "scripts/devtool/cinderbox_devtool_audit.py"]
+metadata = { read_only = true, area = "devtool-contract", device_required = false, root_required = false }
+
+[targets.cinderbox.jobs.a05-source-regression]
+runner = "command"
+execution_environment = "host"
+command = ["python3", "-B", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_a05_*.py", "-q"]
+inputs = ["scripts/devtool/a05_*.py", "scripts/devtool/test_a05_*.py", ".github/workflows/devtool-android-build.yml"]
+metadata = { read_only = true, area = "a05-source", device_required = false, root_required = false }
+
+[targets.cinderbox.jobs.a07-source-regression]
+runner = "command"
+execution_environment = "host"
+command = ["python3", "-B", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_a07_*.py", "-q"]
+inputs = ["scripts/devtool/a07_*.py", "scripts/devtool/test_a07_*.py", ".github/workflows/devtool-android-build.yml"]
+metadata = { read_only = true, area = "a07-source", device_required = false, root_required = false }
+
+[targets.cinderbox.jobs.a10-source-regression]
+runner = "command"
+execution_environment = "host"
+command = ["python3", "-B", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_a10_*.py", "-q"]
+inputs = ["scripts/devtool/test_a10_*.py", ".github/workflows/devtool-android-build.yml", ".github/workflows/build.yml"]
+metadata = { read_only = true, area = "a10-consolidation", device_required = false, root_required = false }
 
 [targets.cinderbox.jobs.unit-tests]
 runner = "android"
@@ -488,6 +544,16 @@ inputs = ["scripts/devtool/m24_shared_depot_gate.py", "app/src/main/java/com/sdv
 metadata = { read_only = true, area = "m24-parent-pics-and-setup", root_required = false, device_required = false }
 
 [targets.cinderbox.workflows]
+# All root nodes are genuinely source-only. Git/CI regression jobs do not write
+# to the repository; scheduler may overlap them after per-job admission.
+host-check = [
+  { id = "storage", ref = "job:storage-alias-source", depends_on = [] },
+  { id = "contract", ref = "job:devtool-contract", depends_on = [] },
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "a05", ref = "job:a05-source-regression", depends_on = [] },
+  { id = "a07", ref = "job:a07-source-regression", depends_on = [] },
+  { id = "a10", ref = "job:a10-source-regression", depends_on = [] },
+]
 security = ["job:security-contract"]
 quick = [
   { id = "security", ref = "job:security-contract", depends_on = [] },

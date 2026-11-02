@@ -33,8 +33,8 @@ class A05QualificationTests(unittest.TestCase):
         self.assertIn(a05.DEVTOOL_SHA,flow)
         self.assertIn('test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',flow)
         self.assertIn('git -C "$RUNNER_TEMP/devtool-a05" rev-parse HEAD',flow)
-        self.assertIn('actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683',flow)
-        self.assertIn('actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02',flow)
+        self.assertIn('actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09',flow)
+        self.assertIn('actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4',flow)
     def test_unittest_yaml_parses_its_exact_job(self):
         flow=(ROOT/a05.WORKFLOW).read_text()
         # Works with stdlib only (Termux does not require optional PyYAML).

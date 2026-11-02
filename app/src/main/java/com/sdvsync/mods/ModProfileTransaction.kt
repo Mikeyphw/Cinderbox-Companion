@@ -1,6 +1,7 @@
 package com.sdvsync.mods
 
 import java.io.File
+import com.sdvsync.local.PlatformStoragePaths
 import java.io.FileOutputStream
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -23,11 +24,7 @@ internal class ModProfileTransaction(private val privateRoot: File, private val 
         require(name.isNotBlank() && name != "." && name != ".." &&
             '/' !in name && '\\' !in name && '\u0000' !in name) { "Invalid profile folder name" }
         // Reject symlink components, including a replacement of the Mods root.
-        var part: File? = modsDir.absoluteFile
-        while (part != null) {
-            require(!Files.isSymbolicLink(part.toPath())) { "Mods path is a symlink" }
-            part = part.parentFile
-        }
+        require(PlatformStoragePaths.inspect(modsDir).safe) { "Mods path contains an unsafe symlink" }
         val child = File(modsDir, name)
         require(!Files.isSymbolicLink(child.toPath())) { "Mod folder is a symlink" }
         require(child.canonicalFile.parentFile == modsDir.canonicalFile) { "Mod path escaped Mods" }

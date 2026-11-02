@@ -120,14 +120,14 @@ def guard_a07_runner_environment(job: str) -> None:
 def guard_a07_sdk_setup(job: str) -> None:
     """Reject retired Android SDK `tools` package before dispatch.
 
-    android-actions/setup-android@v3 defaults to the removed 'tools platform-tools'
+    Android setup actions may default to unsupported SDK packages
     when `with.packages` is missing. Require the reviewed supported package.
     """
     step_name = '      - name: Set up Android SDK\n'
     parts = job.split(step_name)
     insist(len(parts) == 2, 'A07 Android SDK setup step missing/ambiguous')
     block = parts[1].split('      - name:', 1)[0]
-    insist(block == ('        uses: android-actions/setup-android@v3\n'
+    insist(block == ('        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4 Node24\n'
                      '        with:\n'
                      '          packages: platform-tools\n'),
            'A07 SDK setup must explicitly request supported platform-tools only')

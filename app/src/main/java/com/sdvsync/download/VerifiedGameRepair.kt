@@ -1,6 +1,7 @@
 package com.sdvsync.download
 
 import java.io.File
+import com.sdvsync.local.PlatformStoragePaths
 import java.io.FileOutputStream
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -50,11 +51,7 @@ class VerifiedGameRepair(
             rel.split('/').none { it.isBlank() || it == "." || it == ".." }) { "Unsafe relative file path" }
         val f = File(root, rel)
         check(f.canonicalPath.startsWith(root.canonicalPath + File.separator)) { "File escaped game root" }
-        var part: File? = f.absoluteFile
-        while (part != null) {
-            check(!Files.isSymbolicLink(part.toPath())) { "Symlink in game file path" }
-            part = part.parentFile
-        }
+        check(PlatformStoragePaths.inspect(f).safe) { "Symlink in game file path" }
         return f
     }
     private fun gameFiles(root: File): Map<String, File> {

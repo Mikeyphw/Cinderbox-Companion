@@ -71,10 +71,10 @@ class A07ContractTests(unittest.TestCase):
             '  a07-native-debug-build:', 1)[1].split('  # A05: source-only', 1)[0]
         a.guard_a07_sdk_setup(job)
         wrong = job.replace(
-            '        uses: android-actions/setup-android@v3\n'
+            '        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4 Node24\n'
             '        with:\n'
             '          packages: platform-tools\n',
-            '        uses: android-actions/setup-android@v3\n', 1)
+            '        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4 Node24\n', 1)
         with self.assertRaises(a.Refused):
             a.guard_a07_sdk_setup(wrong)
 

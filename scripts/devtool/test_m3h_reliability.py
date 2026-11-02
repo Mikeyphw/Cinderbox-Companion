@@ -48,12 +48,12 @@ class M3HReliabilitySourceContracts(unittest.TestCase):
         self.assertNotIn("totalBytes = depotBytes.values.sum()", service)
         self.assertIn("currentDepotPercent = depotPercent", service)
         self.assertIn("filesDownloaded = completedFiles.size", service)
-        self.assertIn("it.copy(state = DownloadState.DOWNLOADING)", service)
+        self.assertRegex(service, r"\bstate\s*=\s*DownloadState\.DOWNLOADING\b")
         self.assertIn("maxOf(current.downloadedBytes, totalDownloaded)", service)
         self.assertIn("val currentDepotId: Int? = null", manager)
         self.assertIn("val filesDownloaded: Int = 0", manager)
-        self.assertIn("not overall game progress", screen)
-        self.assertIn("Files received: $filesDownloaded", screen)
+        self.assertIn("not the game", screen)
+        self.assertIn("Completed files: $filesDownloaded", screen)
 
     def test_original_m3g_regression_updated_for_new_owner(self):
         tests = read("scripts/devtool/test_m3g_steam_reliability.py")

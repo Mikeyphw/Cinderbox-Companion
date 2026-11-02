@@ -1,6 +1,7 @@
 package com.sdvsync.mods
 
 import java.io.File
+import com.sdvsync.local.PlatformStoragePaths
 import java.io.FileOutputStream
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -27,11 +28,7 @@ internal class ModBatchTransaction(private val privateRoot: File, private val mo
 
     private fun exists(file: File) = Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)
     private fun safeRoot() {
-        var current: File? = modsDir.absoluteFile
-        while (current != null) {
-            require(!Files.isSymbolicLink(current.toPath())) { "Mods path has a symbolic link" }
-            current = current.parentFile
-        }
+        require(PlatformStoragePaths.inspect(modsDir).safe) { "Mods path contains an unsafe symbolic link" }
         require(!exists(modsDir) || modsDir.isDirectory) { "Mods folder unavailable" }
     }
     private fun safeName(name: String): File {
