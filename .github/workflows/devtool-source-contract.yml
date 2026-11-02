@@ -110,6 +110,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # This source-only job intentionally has no Android SDK/JDK. It
+          # validates both exact pinned parsers and executable workflow plans;
+          # native hosted jobs separately own real toolchain preflight.
           for entry in \
             'a05:08eb13991b5d1c623b64fdd8f9524418ee27207e:m24-verify-ux-check' \
             'a07:409c5527532eaa1ee62b8111e030732d3f9e2791:build'; do
@@ -126,17 +129,30 @@ jobs:
             else
               unset PYTHONPATH || true
             fi
-            "$venv/bin/python" -m devtool --repo "$GITHUB_WORKSPACE" \
-              plan --target cinderbox "$workflow" --json > "$RUNNER_TEMP/$lane-pin-plan.json"
-            "$venv/bin/python" -m devtool --repo "$GITHUB_WORKSPACE" \
-              preflight --target cinderbox --workflow "$workflow" --json > "$RUNNER_TEMP/$lane-pin-preflight.json"
-            "$venv/bin/python" - "$RUNNER_TEMP/$lane-pin-plan.json" "$RUNNER_TEMP/$lane-pin-preflight.json" <<'PY'
+            plan="$RUNNER_TEMP/$lane-pin-plan.json"
+            if ! "$venv/bin/python" -m devtool --repo "$GITHUB_WORKSPACE" \
+              plan --target cinderbox "$workflow" --json > "$plan" 2>&1; then
+              echo "ERROR: pinned $lane Devtool plan failed at $commit" >&2
+              cat "$plan" >&2
+              exit 1
+            fi
+            "$venv/bin/python" - "$plan" "$workflow" "$lane" <<'PYCODE'
           import json, sys
-          for path in sys.argv[1:]:
-              d=json.load(open(path))
-              if not d.get('ok') or d.get('machine',{}).get('operation',{}).get('status') != 'ok':
-                  raise SystemExit(f'PINNED_DEVTOOL_PLAN_OR_PREFLIGHT_FAILED: {path}')
-          PY
+          path, action, lane = sys.argv[1:]
+          try:
+              with open(path, encoding='utf-8') as source:
+                  doc = json.load(source)
+          except (OSError, ValueError) as exc:
+              raise SystemExit(f'INVALID_PINNED_PLAN_JSON_{lane}: {exc}')
+          if (doc.get('schema_version') != 2 or doc.get('action') != action
+                  or 'cinderbox' not in doc.get('targets', [])
+                  or not isinstance(doc.get('summary'), dict)
+                  or doc['summary'].get('node_count', 0) < 1
+                  or not doc.get('commands')):
+              print(json.dumps(doc, indent=2), file=sys.stderr)
+              raise SystemExit(f'INVALID_PINNED_DEVTOOL_PLAN_{lane}')
+          print(f'PASS_PINNED_DEVTOOL_PLAN_{lane}: nodes={doc["summary"]["node_count"]}')
+          PYCODE
             echo "PASS_EXACT_PINNED_DEVTOOL_$lane $commit"
           done
       - name: Upload source-only receipt
