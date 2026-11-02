@@ -292,7 +292,7 @@ lint = [":app:lintDebug"]
 # This job is cheap and works even before JDK, Gradle, or the Android SDK exists.
 [targets.cinderbox.jobs.security-contract]
 runner = "command"
-execution_environment = "native"
+execution_environment = "host"
 command = ["python3", "scripts/devtool/check_security_contract.py"]
 env = { PYTHONDONTWRITEBYTECODE = "1" }
 inputs = ["app/src/main/AndroidManifest.xml", "app/src/main/java/com/sdvsync/fileaccess/**", "app/src/main/java/com/sdvsync/download/**", "scripts/devtool/check_security_contract.py"]
@@ -301,35 +301,35 @@ metadata = { read_only = true, area = "security", root_required = false }
 # Source-only CI/Devtool contract checks: host/Termux Python, never Gradle.
 [targets.cinderbox.jobs.storage-alias-source]
 runner = "command"
-execution_environment = "native"
+execution_environment = "host"
 command = ["python3", "-B", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_storage_alias_source.py", "-v"]
 inputs = ["app/src/main/java/com/sdvsync/local/PlatformStoragePaths.kt", "app/src/main/java/com/sdvsync/local/StoragePreflight.kt", "app/src/main/java/com/sdvsync/download/GameDownloadRecovery.kt", "scripts/devtool/test_storage_alias_source.py"]
 metadata = { read_only = true, area = "storage-alias", root_required = false }
 
 [targets.cinderbox.jobs.devtool-contract]
 runner = "command"
-execution_environment = "native"
+execution_environment = "host"
 command = ["python3", "-B", "scripts/devtool/cinderbox_devtool_audit.py", "--json"]
 inputs = [".devtool.toml", "devtoolw", "gradle/wrapper/gradle-wrapper.properties", ".github/workflows/**", "scripts/devtool/cinderbox_devtool_audit.py"]
 metadata = { read_only = true, area = "devtool-contract", device_required = false, root_required = false }
 
 [targets.cinderbox.jobs.a05-source-regression]
 runner = "command"
-execution_environment = "native"
+execution_environment = "host"
 command = ["python3", "-B", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_a05_*.py", "-q"]
 inputs = ["scripts/devtool/a05_*.py", "scripts/devtool/test_a05_*.py", ".github/workflows/devtool-android-build.yml"]
 metadata = { read_only = true, area = "a05-source", device_required = false, root_required = false }
 
 [targets.cinderbox.jobs.a07-source-regression]
 runner = "command"
-execution_environment = "native"
+execution_environment = "host"
 command = ["python3", "-B", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_a07_*.py", "-q"]
 inputs = ["scripts/devtool/a07_*.py", "scripts/devtool/test_a07_*.py", ".github/workflows/devtool-android-build.yml"]
 metadata = { read_only = true, area = "a07-source", device_required = false, root_required = false }
 
 [targets.cinderbox.jobs.a10-source-regression]
 runner = "command"
-execution_environment = "native"
+execution_environment = "host"
 command = ["python3", "-B", "-m", "unittest", "discover", "-s", "scripts/devtool", "-p", "test_a10_*.py", "-q"]
 inputs = ["scripts/devtool/test_a10_*.py", ".github/workflows/devtool-android-build.yml", ".github/workflows/build.yml"]
 metadata = { read_only = true, area = "a10-consolidation", device_required = false, root_required = false }

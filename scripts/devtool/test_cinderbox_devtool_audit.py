@@ -61,6 +61,39 @@ class ContractTests(unittest.TestCase):
             'command = "python3 -B scripts/devtool/cinderbox_devtool_audit.py"', 1))
         self.assertIn('HOST_JOB_NOT_PYTHON_ONLY:devtool-contract',audit_module.audit(self.root)['issues'])
 
+    def test_host_jobs_run_on_current_host_without_forcing_termux(self):
+        """A05/A07 GitHub runner and local Termux must use identical jobs."""
+        import tomllib
+        with (self.root / '.devtool.toml').open('rb') as source:
+            jobs = tomllib.load(source)['targets']['cinderbox']['jobs']
+        for name in (
+            'security-contract', 'storage-alias-source', 'devtool-contract',
+            'a05-source-regression', 'a07-source-regression',
+            'a10-source-regression'
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(jobs[name]['execution_environment'], 'host')
+
+    def test_rejects_termux_only_security_job(self):
+        p = self.root / '.devtool.toml'
+        p.write_text(p.read_text().replace(
+            '[targets.cinderbox.jobs.security-contract]\nrunner = "command"\nexecution_environment = "host"',
+            '[targets.cinderbox.jobs.security-contract]\nrunner = "command"\nexecution_environment = "native"',
+            1
+        ))
+        self.assertIn('UNSAFE_HOST_JOB:security-contract', audit_module.audit(self.root)['issues'])
+
+    def test_rejects_linux_only_storage_job(self):
+        p = self.root / '.devtool.toml'
+        p.write_text(p.read_text().replace(
+            '[targets.cinderbox.jobs.storage-alias-source]\nrunner = "command"\nexecution_environment = "host"',
+            '[targets.cinderbox.jobs.storage-alias-source]\nrunner = "command"\nexecution_environment = "desktop-linux"',
+            1
+        ))
+        issues = audit_module.audit(self.root)['issues']
+        self.assertIn('UNSAFE_HOST_JOB:storage-alias-source', issues)
+        self.assertIn('STORAGE_GATE_MUST_BE_CROSS_PLATFORM_HOST', issues)
+
     def test_rejects_unsafe_host_gradle(self):
         p=self.root/'.devtool.toml'
         p.write_text(p.read_text().replace('command = ["python3", "-B", "scripts/devtool/cinderbox_devtool_audit.py", "--json"]',

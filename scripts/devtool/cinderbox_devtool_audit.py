@@ -93,7 +93,7 @@ def audit(root: Path) -> dict:
                 host_refs.add(local)
                 if (local not in HOST or jobs.get(local,{}).get('runner') != 'command' or
                     jobs.get(local,{}).get('metadata',{}).get('read_only') is not True or
-                    jobs.get(local,{}).get('execution_environment') != 'native'):
+                    jobs.get(local,{}).get('execution_environment') != 'host'):
                     issues.append('UNSAFE_HOST_JOB:' + local)
                 job = jobs.get(local, {})
                 argv = job.get('command', [])
@@ -179,8 +179,8 @@ def audit(root: Path) -> dict:
     require('storage-alias-source' in host_refs, 'MISSING_STORAGE_ALIAS_GATE')
     # Signing/source identity remains delegated to the established A07 workflow;
     # no source-only job is allowed to claim authenticated Android artifacts.
-    require(jobs.get('storage-alias-source',{}).get('execution_environment') == 'native',
-            'STORAGE_GATE_MUST_BE_HOST_NATIVE')
+    require(jobs.get('storage-alias-source',{}).get('execution_environment') == 'host',
+            'STORAGE_GATE_MUST_BE_CROSS_PLATFORM_HOST')
     # Do not imply R36 can be activated: Cinderbox produces a versioned APK
     # and the provider currently requires single-segment [A-Za-z0-9_-]+.apk.
     return {
