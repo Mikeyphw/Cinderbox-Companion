@@ -55,27 +55,27 @@ class R43CUpdateSafetyTest {
 
     @Test fun absentSteamSizeAndUnknownCapacityFailClosed() {
         val s = R43CUpdateSafety
-        assertEquals(s.CapacityCode.UNKNOWN_STAGE_BYTES,
+        assertEquals(R43CUpdateSafety.CapacityCode.UNKNOWN_STAGE_BYTES,
             s.assessCapacity(4096L*MiB, 1024L*MiB, null, false, true).code)
-        assertEquals(s.CapacityCode.UNKNOWN_CAPACITY,
+        assertEquals(R43CUpdateSafety.CapacityCode.UNKNOWN_CAPACITY,
             s.assessCapacity(null, 1024L*MiB, 20L*MiB, false, true).code)
-        assertEquals(s.CapacityCode.UNKNOWN_CAPACITY,
+        assertEquals(R43CUpdateSafety.CapacityCode.UNKNOWN_CAPACITY,
             s.assessCapacity(4096L*MiB, 0, 20L*MiB, false, true).code)
     }
 
     @Test fun budgetHandlesZeroBorderlineShrinkAndOverflow() {
         val s = R43CUpdateSafety
         val total = (256L + 16L + 32L)*MiB
-        assertEquals(s.CapacityCode.READY,
+        assertEquals(R43CUpdateSafety.CapacityCode.READY,
             s.assessCapacity(total, 17L*MiB, 32L*MiB, false, true).code)
-        assertEquals(s.CapacityCode.INSUFFICIENT_SPACE,
+        assertEquals(R43CUpdateSafety.CapacityCode.INSUFFICIENT_SPACE,
             s.assessCapacity(total-1, 17L*MiB, 32L*MiB, false, true).code)
-        assertEquals(s.CapacityCode.INSUFFICIENT_SPACE,
+        assertEquals(R43CUpdateSafety.CapacityCode.INSUFFICIENT_SPACE,
             s.assessCapacity(0, 17L*MiB, 32L*MiB, false, true).code)
-        assertEquals(s.CapacityCode.INVALID_BYTE_COUNT,
+        assertEquals(R43CUpdateSafety.CapacityCode.INVALID_BYTE_COUNT,
             s.assessCapacity(Long.MAX_VALUE, 17L*MiB, 32L*MiB,
                 false, true, Long.MAX_VALUE, Long.MAX_VALUE).code)
-        assertEquals(s.CapacityCode.UNSAFE_FILESTORE,
+        assertEquals(R43CUpdateSafety.CapacityCode.UNSAFE_FILESTORE,
             s.assessCapacity(Long.MAX_VALUE, 17L*MiB, 32L*MiB, true, false).code)
         // Publication does not require a second stage-size copy.
         assertEquals((256L+16L)*MiB,

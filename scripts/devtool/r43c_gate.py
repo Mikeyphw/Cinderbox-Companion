@@ -46,6 +46,8 @@ def check():
     assert 'R43BLedgerArchive(privateRoot).verifyOriginal(' in cold
     assert 'siblingPrefixes' in cold
     assert unit.count('@Test fun ') >= 6 and recovery_unit.count('@Test fun ') >= 2
+    assert 's.CapacityCode.' not in unit, 'R43C_INVALID_NESTED_TYPE_REFERENCE'
+    assert 'R43CUpdateSafety.CapacityCode.' in unit
     assert device.count('@Test fun r43cd_') == 3
     assert '.targetContext' in device and 'ctx.cacheDir' in device
     assert 'CinderboxPaths.GAME_FILES_DIR' not in device
