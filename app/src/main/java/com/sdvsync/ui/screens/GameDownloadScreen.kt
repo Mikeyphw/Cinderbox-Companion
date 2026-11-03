@@ -454,7 +454,7 @@ fun GameDownloadScreen(onBack: () -> Unit, onOpenInstallationHealth: () -> Unit,
                                 }
                             }
                         } else {
-                            Text("Existing-game updates are not available yet. " +
+                            Text("Existing installations are protected. " +
                                 "Live replacement remains disabled until device acceptance.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
