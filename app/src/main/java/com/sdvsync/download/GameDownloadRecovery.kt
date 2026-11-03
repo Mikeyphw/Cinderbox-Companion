@@ -357,6 +357,50 @@ class GameDownloadRecovery(private val privateRoot: File) {
         check(journal.delete() || !journal.exists()) { "Could not finalize download checkpoint" }
     }
 
+    /** R43: the verified replacement keeps its ownership marker while an
+     * independent R43 rollback journal and original backup still exist.
+     * Never allow the old M24 completed() path to remove that marker.
+     */
+    @Synchronized fun completeUpdateJournal(token: String) {
+        val current = pending() ?: error("M24 update checkpoint missing")
+        check(current.updateMode && current.verify && current.token == token &&
+            current.stagingDirectory != null && current.steamBuildId > 0L &&
+            current.depotManifestFingerprint != null) {
+            "Unbound update checkpoint cannot be finalized"
+        }
+        val original = safeDestination(File(current.directory))
+        val stage = safeDestination(File(current.stagingDirectory))
+        check(!stage.exists() && original.isDirectory) {
+            "Update was not atomically published"
+        }
+        val marker = File(original, ".cinderbox-download.session")
+        check(marker.isFile && !Files.isSymbolicLink(marker.toPath()) &&
+            marker.readText() == token) { "Published update owner changed" }
+        val transaction = File(privateRoot, "r43b-update-swap.properties")
+        check(transaction.isFile && !Files.isSymbolicLink(transaction.toPath())) {
+            "R43 rollback journal required before closing M24"
+        }
+        check(journal.delete()) { "Could not finalize M24 update checkpoint" }
+    }
+
+    /** Rollback preserves the new bytes in the owned displaced sibling and
+     * closes M24 only after the original is back in its exact GameFiles path.
+     */
+    @Synchronized fun completeRolledBackUpdate(token: String) {
+        val current = pending() ?: return
+        check(current.updateMode && current.token == token &&
+            current.stagingDirectory != null) { "Rollback journal owner changed" }
+        val original = safeDestination(File(current.directory))
+        val stage = safeDestination(File(current.stagingDirectory))
+        val displaced = safeDestination(File(original.parentFile,
+            ".GameFiles.cinderbox-r43-rolledback-$token"))
+        val marker = File(displaced, ".cinderbox-download.session")
+        check(original.isDirectory && !stage.exists() && displaced.isDirectory &&
+            marker.isFile && !Files.isSymbolicLink(marker.toPath()) &&
+            marker.readText() == token) { "Rollback has not preserved both game versions" }
+        check(journal.delete()) { "Could not close the rolled-back M24 journal" }
+    }
+
     /** Explicit user discard; forgets the checkpoint but keeps game bytes. */
     @Synchronized fun discard() {
         val current = pending()
