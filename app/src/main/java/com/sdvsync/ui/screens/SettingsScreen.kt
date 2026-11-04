@@ -38,7 +38,7 @@ import com.sdvsync.ui.components.StardewOutlinedButton
 import com.sdvsync.ui.components.StardewTopAppBar
 import com.sdvsync.ui.components.R45SectionIntro
 import com.sdvsync.ui.components.R45AreaGuide
-import com.sdvsync.ui.components.R45GuideArea
+import com.sdvsync.ui.policy.R45GuideArea
 import com.sdvsync.ui.components.StoragePermissionDialog
 import com.sdvsync.ui.theme.AppearanceMode
 import com.sdvsync.ui.theme.AppearancePreferences

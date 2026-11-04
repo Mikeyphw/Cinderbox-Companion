@@ -34,7 +34,7 @@ import com.sdvsync.ui.components.R46ErrorPanel
 import com.sdvsync.ui.components.R45AreaGuide
 import com.sdvsync.ui.components.R44BStatePanel
 import com.sdvsync.ui.policy.R44BStateKind
-import com.sdvsync.ui.components.R45GuideArea
+import com.sdvsync.ui.policy.R45GuideArea
 import com.sdvsync.ui.theme.SdvSyncThemeExtras
 import com.sdvsync.ui.policy.R46UiErrorArea
 import com.sdvsync.ui.viewmodels.DashboardViewModel

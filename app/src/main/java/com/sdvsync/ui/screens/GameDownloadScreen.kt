@@ -44,7 +44,7 @@ import com.sdvsync.ui.policy.R44StatusTone
 import com.sdvsync.ui.components.R44StatusSummary
 import com.sdvsync.ui.components.R45SectionIntro
 import com.sdvsync.ui.components.R45AreaGuide
-import com.sdvsync.ui.components.R45GuideArea
+import com.sdvsync.ui.policy.R45GuideArea
 import com.sdvsync.ui.components.R46ErrorPanel
 import com.sdvsync.ui.policy.R46UiErrorArea
 import com.sdvsync.ui.theme.SdvSyncThemeExtras

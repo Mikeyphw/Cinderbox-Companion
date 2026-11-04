@@ -34,6 +34,9 @@ def check()->dict:
     assert 'const val DEVICE_ACCEPTED: Boolean = false' in code
     for area in ('GAME','SAVES','MODS','MORE'):
         assert area in policy and ('R45AreaGuide(R45GuideArea.'+area+')') in (games if area=='GAME' else save if area=='SAVES' else mods if area=='MODS' else read('app/src/main/java/com/sdvsync/ui/screens/SettingsScreen.kt'))
+    for screen in (games, save, mods, read('app/src/main/java/com/sdvsync/ui/screens/SettingsScreen.kt')):
+        assert 'import com.sdvsync.ui.policy.R45GuideArea' in screen, 'R45R3_MISSING_POLICY_IMPORT'
+        assert 'import com.sdvsync.ui.components.R45GuideArea' not in screen, 'R45R3_WRONG_COMPONENT_IMPORT'
     assert 'R45GuidePolicy.forArea(area)' in panel
     for area in ('SAVES','MODS','GAME','GAME_DOWNLOAD','SMAPI','CINDERBOX','STEAM_LOGIN'):
         assert 'R46UiErrorArea.'+area in errors,'R45R2_ERROR_AREA:'+area
