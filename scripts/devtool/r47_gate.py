@@ -7,6 +7,7 @@ import re
 import sys
 import tomllib
 import r47_patch
+import r47_mmrl_emulator_fix
 ROOT=Path(__file__).resolve().parents[2]
 
 TEST='app/src/androidTest/java/com/sdvsync/qualification/R47SyntheticExperienceDeviceTest.kt'
@@ -59,6 +60,7 @@ def check()->dict:
                      'len(decoded)!=expected', 'for name in NAMES:',
                      'hashlib.sha256(data).hexdigest()', 'os.replace(tmp,args.output_dir/name)'):
         assert required in cap, 'R47_SCREENSHOT_VALIDATION_MISSING:'+required
+    r47_mmrl_emulator_fix.validate_workflow(workflow)
     assert 'scripts/devtool/r47_verify.py' in workflow
     assert '--source-sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID"' in workflow
     assert "'app/src/main/java/com/sdvsync/ui/**'" in workflow

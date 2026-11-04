@@ -46,12 +46,13 @@ jobs:
           python3 -B scripts/devtool/r47_gate.py
           python3 -B -m unittest discover -s scripts/devtool -p 'test_r47_gate.py' -v
           python3 -B -m unittest discover -s scripts/devtool -p 'test_r47_diag.py' -v
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_r47_mmrl_emulator.py' -v
           python3 -B scripts/devtool/r45r2_gate.py
           python3 -B scripts/devtool/r44b_gate.py
 
   emulator-ui:
     needs: [host-source]
-    runs-on: macos-15-intel
+    runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -62,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$RUNNER_OS" = macOS
+          test "$RUNNER_OS" = Linux
           test "$(uname -m)" = x86_64
           mkdir -p "$RUNNER_TEMP/r47-synthetic"
           printf '%s\n' '{"overall":"NOT_RUN","synthetic_only":true,"physical_device_qualified":false,"release_qualified":false,"publication_allowed":false}' > "$RUNNER_TEMP/r47-synthetic/R47_SYNTHETIC_EVIDENCE.json"
@@ -74,7 +75,7 @@ jobs:
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
       - name: Install pinned SDK
         shell: bash
-        run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+        run: sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0'
       - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
       - name: Compile disposable app and instrumentation APKs on GitHub
         shell: bash
@@ -82,14 +83,28 @@ jobs:
           set -euo pipefail
           chmod +x gradlew
           ./gradlew --no-daemon --max-workers=2 :app:assembleDebug :app:assembleDebugAndroidTest
+      # Same AVD configuration as MMRL-LSPosed S09 (successful run 41759587780).
+      # This permits only the disposable GitHub-hosted Linux emulator to use KVM.
+      - name: Enable KVM on Linux hosted runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -c /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
       - name: Run 11 offline synthetic UI cases and collect seven private previews
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
-          api-level: 35
-          arch: x86_64
+          api-level: 36
           target: google_apis
-          profile: pixel_4
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
           disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: bash scripts/devtool/r47_emulator_ci.sh
       - name: Independently verify the exact PNG inventory, receipt, and source provenance
         shell: bash
