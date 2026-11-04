@@ -21,6 +21,35 @@ TESTS = (
 )
 NAMES = tuple(f'r48-real-{name}-320dp-fs160.png' for name in ('home', 'game', 'saves', 'mods', 'more'))
 
+# Only fixed synthetic step identifiers are exported; no screenshot dumps,
+# account data, device exceptions or raw instrumentation output are retained.
+CHECKPOINTS = {
+    'realOfflineFiveTabNavigationAndPrivatePreviews': (
+        'enter_offline', 'home',
+        'select_game', 'content_game', 'capture_game',
+        'select_saves', 'content_saves', 'capture_saves',
+        'select_mods', 'content_mods', 'capture_mods',
+        'select_more', 'content_more', 'capture_more',
+        'return_home', 'done',
+    ),
+    'realOperationCenterReadOnlyReturn': (
+        'enter_offline', 'open_center', 'expect_title',
+        'expect_no_auto_retry', 'press_back', 'expect_home',
+        'expect_home_tab', 'done',
+    ),
+}
+
+
+def validated_checkpoint(test: str, raw: bytes) -> str:
+    if test not in CHECKPOINTS or not isinstance(raw, bytes) or len(raw) > 48:
+        return 'not_recorded'
+    try:
+        phase = raw.decode('ascii').strip()
+    except UnicodeDecodeError:
+        return 'not_recorded'
+    return phase if phase in CHECKPOINTS[test] else 'not_recorded'
+
+
 
 def summarize(output: str) -> dict:
     """Read only allowlisted test method identifiers, never raw device traces."""
@@ -112,6 +141,18 @@ def main() -> int:
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=600)
         summary = summarize(ret.stdout.decode('utf-8', 'replace'))
         evidence['instrumentation_summary'] = summary
+        if summary['failed_tests']:
+            checkpoints = {}
+            for test_name in summary['failed_tests']:
+                if test_name in CHECKPOINTS:
+                    suffix = 'tabs' if test_name == TESTS[0] else 'operations'
+                    try:
+                        raw = _run(adb, 'exec-out', 'run-as', 'com.sdvsync',
+                                   'cat', f'files/r48-checkpoint-{suffix}.txt')
+                        checkpoints[test_name] = validated_checkpoint(test_name, raw)
+                    except (OSError, RuntimeError, subprocess.TimeoutExpired):
+                        checkpoints[test_name] = 'not_recorded'
+            evidence['failure_checkpoints'] = checkpoints
         if (ret.returncode != 0 or not summary['reported_ok'] or not summary['terminal_success']
                 or summary['error_categories'] or summary['failed_tests']
                 or len(summary['started_tests']) != len(TESTS)

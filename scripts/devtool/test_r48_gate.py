@@ -46,6 +46,27 @@ class EvidenceTests(unittest.TestCase):
         out.extend(['OK (4 tests)', 'INSTRUMENTATION_CODE: -1'])
         return '\n'.join(out)
 
+    def test_phase_allowlist_accepts_only_expected_case_steps(self):
+        self.assertEqual(
+            r48_capture.validated_checkpoint(r48_capture.TESTS[0], b'content_saves'),
+            'content_saves')
+        self.assertEqual(
+            r48_capture.validated_checkpoint(r48_capture.TESTS[3], b'expect_home'),
+            'expect_home')
+
+    def test_phase_diagnostics_never_leak_raw_paths_or_credentials(self):
+        for secret in (b'/storage/emulated/0/private', b'access_token_123456',
+                       b'content_saves' + b'Z' * 100, b'\xff\xfe', b'UNKNOWN'):
+            self.assertEqual(
+                r48_capture.validated_checkpoint(r48_capture.TESTS[0], secret),
+                'not_recorded')
+        self.assertEqual(
+            r48_capture.validated_checkpoint(r48_capture.TESTS[1], b'content_saves'),
+            'not_recorded')
+        self.assertEqual(
+            r48_capture.validated_checkpoint(r48_capture.TESTS[3], b'content_saves'),
+            'not_recorded')
+
     def test_exact_four_test_roster(self):
         s = r48_capture.summarize(self.good_output())
         self.assertEqual(s['started_tests'], list(r48_capture.TESTS))
