@@ -66,6 +66,12 @@ def check()->dict:
         assert 'R45GuideArea.'+area in test
     assert 'R46ErrorPanel(' in test and 'R45AreaGuide(area)' in test
     assert 'EXPECTED_TESTS=11' in cap
+    assert 'from r47_diag import summarize_instrumentation' in cap
+    assert "result['instrumentation_summary']=summary" in cap
+    assert "or summary['failed_tests']" in cap
+    diagnostics=read('scripts/devtool/r47_diag.py')
+    assert 'ALLOWED_TESTS' in diagnostics and 'raw_output_retained' in diagnostics
+    assert "test_r47_diag.py' -v" in workflow
     assert "if args.serial!='emulator-5554'" in cap
     assert "'getprop','ro.kernel.qemu'" in cap
     assert "'run-as','com.sdvsync'" in cap

@@ -45,6 +45,7 @@ jobs:
           python3 -B scripts/devtool/r47_patch.py --check
           python3 -B scripts/devtool/r47_gate.py
           python3 -B -m unittest discover -s scripts/devtool -p 'test_r47_gate.py' -v
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_r47_diag.py' -v
           python3 -B scripts/devtool/r45r2_gate.py
           python3 -B scripts/devtool/r44b_gate.py
 

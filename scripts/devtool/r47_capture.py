@@ -14,6 +14,7 @@ import re
 import struct
 import subprocess
 import zlib
+from r47_diag import summarize_instrumentation
 
 CLASS='com.sdvsync.qualification.R47SyntheticExperienceDeviceTest'
 RUNNER='com.sdvsync.test/androidx.test.runner.AndroidJUnitRunner'
@@ -127,8 +128,15 @@ def main()->int:
             raise RuntimeError('physical device refused')
         run('shell','pm','path','com.sdvsync.test')
         run('shell','run-as','com.sdvsync','id')
-        instrument=run('shell','am','instrument','-w','-r','-e','class',CLASS,RUNNER,timeout=420)
-        if not parse_result(instrument.decode('utf-8','replace')):
+        # Preserve allowlisted test results even if adb exits nonzero after a test crash.
+        # No raw stacktrace, exception message, path or log is persisted or uploaded.
+        completed=subprocess.run(adb+['shell','am','instrument','-w','-r','-e',
+                                   'class',CLASS,RUNNER],capture_output=True,timeout=420)
+        output=completed.stdout.decode('utf-8','replace')
+        summary=summarize_instrumentation(output)
+        result['instrumentation_summary']=summary
+        result['instrumentation_exit_success']=(completed.returncode==0)
+        if completed.returncode!=0 or not parse_result(output) or summary['failed_tests']:
             raise RuntimeError('all eleven synthetic instrumentation cases did not pass')
         verified=[]
         hashes=set()
