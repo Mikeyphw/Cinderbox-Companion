@@ -165,7 +165,7 @@ class R48RealActivityDeviceTest {
         checkpoint("operations", "enter_offline")
         enterOffline()
         checkpoint("operations", "open_center")
-        rule.onNodeWithText("View operation center").performScrollTo().performClick()
+        rule.onNodeWithText("Open operation center").performScrollTo().performClick()
         checkpoint("operations", "expect_title")
         assertAnyScreenState("Live, read-only status and recovery guidance")
         checkpoint("operations", "expect_no_auto_retry")

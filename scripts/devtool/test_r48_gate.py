@@ -46,6 +46,15 @@ class EvidenceTests(unittest.TestCase):
         out.extend(['OK (4 tests)', 'INSTRUMENTATION_CODE: -1'])
         return '\n'.join(out)
 
+    def test_operation_center_shortcut_matches_real_home_action(self):
+        # Regression for hosted run 41902096586: the old test searched for
+        # "View operation center", whereas the real Home action says "Open".
+        home = (ROOT / 'app/src/main/java/com/sdvsync/ui/screens/HomeScreen.kt').read_text()
+        activity_test = (ROOT / 'app/src/androidTest/java/com/sdvsync/qualification/R48RealActivityDeviceTest.kt').read_text()
+        self.assertIn('"Open operation center", onOpenOperationCenter', home)
+        self.assertIn('onNodeWithText("Open operation center").performScrollTo().performClick()', activity_test)
+        self.assertNotIn('onNodeWithText("View operation center")', activity_test)
+
     def test_phase_allowlist_accepts_only_expected_case_steps(self):
         self.assertEqual(
             r48_capture.validated_checkpoint(r48_capture.TESTS[0], b'content_saves'),
