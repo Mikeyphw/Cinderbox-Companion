@@ -10,8 +10,9 @@ job never ran. Do not conflate that with the successful emulator run.
 
 ## What R5 reproduces
 
-- GitHub-hosted Ubuntu 24.04 `x86_64`, KVM access enabled by udev with a
-  fail-closed device check *before* starting the emulator.
+- GitHub-hosted Ubuntu 24.04 `x86_64`, KVM on a pre-existing
+  `/dev/kvm` character device with fail-closed accessibility checks.
+  R6 initializes permissions directly if needed, without a udev daemon.
 - Pinned `ReactiveCircus/android-emulator-runner`
   `a421e43855164a8197daf9d8d40fe71c6996bb0d`.
 - Android 16 API 36, `google_apis`, `x86_64`, `pixel_6` profile,

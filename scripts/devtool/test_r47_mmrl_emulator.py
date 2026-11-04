@@ -47,10 +47,12 @@ class MMRLEmulatorParity(unittest.TestCase):
 
     def test_kvm_required_and_checked_before_boot(self):
         for key in ('Enable KVM on Linux hosted runner',
-                    'sudo udevadm control --reload-rules',
-                    'sudo udevadm trigger --name-match=kvm',
-                    'test -c /dev/kvm',
-                    'test -r /dev/kvm && test -w /dev/kvm'):
+                    'if [[ ! -c /dev/kvm ]]; then',
+                    'R47_KVM_DEVICE_UNAVAILABLE',
+                    'sudo chmod a+rw /dev/kvm',
+                    'R47_KVM_PERMISSION_CHANGE_FAILED',
+                    'R47_KVM_NOT_ACCESSIBLE',
+                    'R47_KVM_READY'):
             with self.subTest(check=key):
                 with self.assertRaises(AssertionError):
                     fix.validate_workflow(self.source.replace(key,'NOT_CONFIGURED',1))
@@ -74,6 +76,13 @@ class MMRLEmulatorParity(unittest.TestCase):
         self.assertIn('publication_allowed',self.source)
         self.assertIn('test "$RUNNER_OS" = Linux',self.source)
         self.assertIn('test "$(uname -m)" = x86_64',self.source)
+
+    def test_kvm_preflight_does_not_depend_on_udev_or_fallback(self):
+        for forbidden in ('sudo udevadm', '/etc/udev/rules.d/', '-accel off', '-no-accel'):
+            self.assertNotIn(forbidden,self.source)
+        for marker in ('R47_KVM_DEVICE_UNAVAILABLE', 'R47_KVM_PERMISSION_CHANGE_FAILED',
+                       'R47_KVM_NOT_ACCESSIBLE', 'R47_KVM_READY'):
+            self.assertIn(marker,self.source)
 
     def test_checkout_and_dependency_chain_retain_fail_closed_qualification(self):
         self.assertIn('needs: [host-source]',self.source)

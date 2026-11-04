@@ -23,7 +23,7 @@ SOURCE = {
 }
 # Populated during the source-pinned overlay build; do not modify at runtime.
 POST = {
-    WF: 'cd9dfb5054912603cc39ff933ece3408edaceffd',
+    WF: '449a663351e016a93cb3960166158c39a42dbd30',
     GATE: '17220e442b35f65d941baba06eabb3a8dce75768',
 }
 
@@ -63,11 +63,23 @@ def transform(rel: str, source: str) -> str:
         shell: bash
         run: |
           set -euo pipefail
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          test -c /dev/kvm
-          test -r /dev/kvm && test -w /dev/kvm
+          # Avoid relying on the presence of a running udev daemon.
+          # Never create a KVM device or silently downgrade to software emulation.
+          if [[ ! -c /dev/kvm ]]; then
+            echo R47_KVM_DEVICE_UNAVAILABLE >&2
+            exit 1
+          fi
+          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
+            sudo chmod a+rw /dev/kvm || {
+              echo R47_KVM_PERMISSION_CHANGE_FAILED >&2
+              exit 1
+            }
+          fi
+          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
+            echo R47_KVM_NOT_ACCESSIBLE >&2
+            exit 1
+          fi
+          echo R47_KVM_READY
       - name: Run 11 offline synthetic UI cases and collect seven private previews
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
@@ -127,14 +139,18 @@ def validate_workflow(text: str) -> None:
     assert job.count(action)==1, 'R47_R5_EMULATOR_ACTION_DRIFT'
     kvm = (
         '- name: Enable KVM on Linux hosted runner',
-        "KERNEL==\"kvm\", GROUP=\"kvm\", MODE=\"0666\", OPTIONS+=\"static_node=kvm\"",
-        'sudo udevadm control --reload-rules',
-        'sudo udevadm trigger --name-match=kvm',
-        'test -c /dev/kvm',
-        'test -r /dev/kvm && test -w /dev/kvm',
+        'if [[ ! -c /dev/kvm ]]; then',
+        'R47_KVM_DEVICE_UNAVAILABLE',
+        'if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then',
+        'sudo chmod a+rw /dev/kvm',
+        'R47_KVM_PERMISSION_CHANGE_FAILED',
+        'R47_KVM_NOT_ACCESSIBLE',
+        'echo R47_KVM_READY',
     )
     for required in kvm:
         assert required in job,'R47_R5_KVM_CHECK_MISSING:'+required
+    assert 'sudo udevadm' not in job and '/etc/udev/rules.d/' not in job, 'R47_R6_NO_UDEV_SERVICE_DEPENDENCY'
+    assert '-accel off' not in job and '-no-accel' not in job, 'R47_R6_KVM_REQUIRED'
     assert job.index('Enable KVM on Linux hosted runner') < job.index(action), 'R47_R5_KVM_ORDER'
     assert "sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0'" in job
     assert ':app:assembleDebug :app:assembleDebugAndroidTest' in job, 'R47_R5_HOSTED_BUILD_REQUIRED'

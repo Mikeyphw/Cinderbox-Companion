@@ -47,6 +47,7 @@ jobs:
           python3 -B -m unittest discover -s scripts/devtool -p 'test_r47_gate.py' -v
           python3 -B -m unittest discover -s scripts/devtool -p 'test_r47_diag.py' -v
           python3 -B -m unittest discover -s scripts/devtool -p 'test_r47_mmrl_emulator.py' -v
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_r47_r6_kvm.py' -v
           python3 -B scripts/devtool/r45r2_gate.py
           python3 -B scripts/devtool/r44b_gate.py
 
@@ -89,11 +90,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          test -c /dev/kvm
-          test -r /dev/kvm && test -w /dev/kvm
+          # Avoid relying on the presence of a running udev daemon.
+          # Never create a KVM device or silently downgrade to software emulation.
+          if [[ ! -c /dev/kvm ]]; then
+            echo R47_KVM_DEVICE_UNAVAILABLE >&2
+            exit 1
+          fi
+          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
+            sudo chmod a+rw /dev/kvm || {
+              echo R47_KVM_PERMISSION_CHANGE_FAILED >&2
+              exit 1
+            }
+          fi
+          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
+            echo R47_KVM_NOT_ACCESSIBLE >&2
+            exit 1
+          fi
+          echo R47_KVM_READY
       - name: Run 11 offline synthetic UI cases and collect seven private previews
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
