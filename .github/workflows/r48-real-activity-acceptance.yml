@@ -86,6 +86,31 @@ jobs:
             sudo chmod a+rw /dev/kvm || { echo R48_KVM_REFUSED >&2; exit 1; }
           fi
           [[ -r /dev/kvm && -w /dev/kvm ]] || { echo R48_KVM_REFUSED >&2; exit 1; }
+      # Download the emulator image before checking free space: the image itself
+      # takes space that would otherwise make an early check misleading.
+      - name: Install API 36 emulator system image for disk accounting
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install 'system-images;android-36;google_apis;x86_64'
+      - name: Refuse insufficient hosted AVD disk space before emulator startup
+        shell: bash
+        run: |
+          set -euo pipefail
+          avd_root="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
+          mkdir -p "$avd_root"
+          available_kib="$(df -Pk "$avd_root" | awk 'END {print $4}')"
+          if [[ ! "$available_kib" =~ ^[0-9]+$ ]]; then
+            echo R48_AVD_DISK_QUERY_REFUSED >&2
+            exit 1
+          fi
+          # 3072 MiB for userdata and at least 1024 MiB free as reserve.
+          minimum_kib=$((4 * 1024 * 1024))
+          if (( available_kib < minimum_kib )); then
+            printf 'R48_AVD_DISK_INSUFFICIENT: available=%s KiB required=%s KiB\n' "$available_kib" "$minimum_kib" >&2
+            exit 1
+          fi
+          echo R48_AVD_DISK_PREFLIGHT_PASS
       - name: Real MainActivity, offline five tabs and back navigation (320dp / 160%)
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
@@ -95,6 +120,7 @@ jobs:
           profile: pixel_6
           cores: 2
           ram-size: 2048M
+          disk-size: 3072M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: bash scripts/devtool/r48_emulator_ci.sh
