@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch
 import zlib
 import r47_gate
+import r47_patch
 import r47_capture
 import r47_verify
 
@@ -28,6 +29,17 @@ def make_png(value:int=1,width:int=320,height:int=101)->bytes:
 
 
 class R47Contracts(unittest.TestCase):
+    def test_shallow_checkout_source_check_requires_no_history(self):
+        # PR merged-ref checkout defaults to depth=1; historical BASE is absent.
+        with patch.object(r47_patch.subprocess, 'check_output',
+                          side_effect=AssertionError('historical git fetch forbidden')):
+            r47_patch.check(r47_gate.ROOT)
+
+    def test_compose_interaction_methods_not_imported_as_top_level_functions(self):
+        source = (r47_gate.ROOT / 'app/src/androidTest/java/com/sdvsync/qualification/R47SyntheticExperienceDeviceTest.kt').read_text()
+        for member in ('assertDoesNotExist', 'assertExists', 'onNode'):
+            self.assertNotIn('import androidx.compose.ui.test.' + member + '\n', source)
+
     def test_exact_source_gate(self):
         self.assertEqual(r47_gate.check()['result'],'R47_SYNTHETIC_ACCEPTANCE_SOURCE_PASS')
 

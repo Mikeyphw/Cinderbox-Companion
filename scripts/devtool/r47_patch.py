@@ -12,6 +12,7 @@ BASE='a45b120aaf824042cab3a942f7a6427ef1df818c'
 TREE='3753b85ef56af1080c2db929203708000a193e55'
 CONFIG='.devtool.toml'
 BLOB='f4e9882700edb9dcdea3c25af983a582501c9661'
+POST_BLOB='c031c11569f5e4b8aea02604035ad625c9c97064'
 ROOT=Path(__file__).resolve().parents[2]
 
 def git(*args:str)->str:
@@ -54,12 +55,13 @@ metadata = { read_only = true, device_required = false, root_required = false, l
     return s
 
 def check(root:Path=ROOT)->None:
-    original=subprocess.check_output(['git','show',BASE+':'+CONFIG],cwd=root)
-    assert sha_blob(original)==BLOB,'R47_BASE_CONFIG_BLOB_DRIFT'
+    # GitHub PR checkouts can be shallow merge commits without the original base.
+    # Bind validation to the exact committed post-image instead of git history.
     path=root/CONFIG
     assert path.is_file() and not path.is_symlink(),'R47_CONFIG_MISSING_OR_LINKED'
-    assert path.read_text(encoding='utf-8')==transform(original.decode()),'R47_CONFIG_POST_DRIFT'
-    c=tomllib.loads(path.read_text())
+    raw=path.read_bytes()
+    assert sha_blob(raw)==POST_BLOB,'R47_CONFIG_POST_BLOB_DRIFT'
+    c=tomllib.loads(raw.decode('utf-8'))
     assert c['wrapper']['commands']['r47-check']['workflow']=='r47-check'
     assert [x['id'] for x in c['targets']['cinderbox']['workflows']['r47-check']]==['security','r44b','r45','r47']
     job=c['targets']['cinderbox']['jobs']['r47-ui-source']
