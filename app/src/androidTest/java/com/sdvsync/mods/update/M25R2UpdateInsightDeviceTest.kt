@@ -44,7 +44,8 @@ class M25R2UpdateInsightDeviceTest {
     @get:Rule val rule = createComposeRule()
 
     private fun installed(id: String, version: String = "1.0.0") = InstalledMod(
-        manifest = ModManifest(name = id, author = "Fixture", version = version, uniqueID = id),
+        manifest = ModManifest(name = id, author = "Fixture", version = version, uniqueID = id,
+            description = "Synthetic R2 update fixture"),
         folderName = "fake", folderPath = "", enabled = true)
 
     @Test fun showsAllStatusesAtCompactFontScaleAndCapturesPreview() {

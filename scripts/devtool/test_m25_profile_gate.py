@@ -43,6 +43,11 @@ class M25SourceTests(unittest.TestCase):
             self.assertIs(p[f], False)
 
 class M25EmulatorWiringTests(unittest.TestCase):
+    def test_r2_android_fixture_has_manifest_description(self):
+        source = text('app/src/androidTest/java/com/sdvsync/mods/update/M25R2UpdateInsightDeviceTest.kt')
+        self.assertIn('description = "Synthetic R2 update fixture"', source)
+        self.assertIn('ModManifest(name = id, author = "Fixture"', source)
+
     def test_reuse_one_mmrllsposed_api36_avd(self):
         w = text('.github/workflows/r48-real-activity-acceptance.yml')
         self.assertEqual(w.count('ReactiveCircus/android-emulator-runner@'), 1)
@@ -75,17 +80,26 @@ class M25EmulatorWiringTests(unittest.TestCase):
             r48.write_text('#!/usr/bin/env bash\nprintf "R48\\n" >> "$RUNNER_TEMP/order"\n')
             m25 = scripts_dir / 'm25_emulator_ci.py'
             m25.write_text('import os, pathlib\npathlib.Path(os.environ["RUNNER_TEMP"], "order").open("a").write("M25\\n")\n')
+            r2 = scripts_dir / 'm25_r2_emulator_ci.py'
+            r2.write_text('import os, pathlib\npathlib.Path(os.environ["RUNNER_TEMP"], "order").open("a").write("R2\\n")\n')
             env = dict(os.environ, RUNNER_TEMP=str(root))
             execution = subprocess.run(['/bin/sh', '-c', runner], cwd=root, env=env,
                                        capture_output=True, text=True)
             self.assertEqual(execution.returncode, 0, execution.stderr)
-            self.assertEqual((root / 'order').read_text(), 'R48\nM25\n')
+            self.assertEqual((root / 'order').read_text(), 'R48\nM25\nR2\n')
             r48.write_text('#!/usr/bin/env bash\nexit 27\n')
             (root / 'order').unlink()
             refusal = subprocess.run(['/bin/sh', '-c', runner], cwd=root, env=env,
                                       capture_output=True, text=True)
             self.assertNotEqual(refusal.returncode, 0)
-            self.assertFalse((root / 'order').exists(), 'M25 ran after failed R48')
+            self.assertFalse((root / 'order').exists(), 'M25/R2 ran after failed R48')
+            # A failed M25 runner must also prevent the R2 runner from executing.
+            r48.write_text('#!/usr/bin/env bash\nprintf "R48\\n" >> "$RUNNER_TEMP/order"\n')
+            m25.write_text('import sys\nsys.exit(29)\n')
+            no_r2 = subprocess.run(['/bin/sh', '-c', runner], cwd=root, env=env,
+                                   capture_output=True, text=True)
+            self.assertNotEqual(no_r2.returncode, 0)
+            self.assertEqual((root / 'order').read_text(), 'R48\n')
 
     def test_m25_never_inflates_r48_receipt_roster(self):
         r48 = text('scripts/devtool/r48_capture.py')
