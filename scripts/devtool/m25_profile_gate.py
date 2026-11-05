@@ -56,6 +56,13 @@ for marker in (
 ):
     assert marker in workflow, 'M25 emulator missing invariant: ' + marker
 assert workflow.count('ReactiveCircus/android-emulator-runner@') == 1
+# The emulator action passes script: through /bin/sh -c. A multi-line
+# script beginning with `set -euo pipefail` is invalid under dash/sh.
+# Require an explicit Bash boundary before both tested commands.
+assert "script: bash -c 'set -euo pipefail; bash scripts/devtool/r48_emulator_ci.sh;" in workflow, \
+    'M25 emulator must explicitly invoke Bash from the sh runner'
+assert "script: |\n            set -euo pipefail" not in workflow, \
+    'M25 emulator may not run bash pipefail as a bare sh command'
 assert 'm25_emulator_ci.py' in workflow.split('script:', 1)[1]
 assert workflow.index('r48_emulator_ci.sh') < workflow.index('m25_emulator_ci.py')
 assert workflow.index('scripts/devtool/r48_verify.py') < workflow.index('scripts/devtool/m25_verify.py')

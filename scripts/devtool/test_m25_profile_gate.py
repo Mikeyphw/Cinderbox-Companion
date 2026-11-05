@@ -53,6 +53,40 @@ class M25EmulatorWiringTests(unittest.TestCase):
             self.assertIn(needle, w)
         self.assertIn('scripts/devtool/m25_profile_gate.py', w)
 
+    def test_emulator_runner_uses_explicit_bash_and_preserves_failure(self):
+        import os
+        import re
+        import subprocess
+        import sys
+        import tempfile
+        w = text('.github/workflows/r48-real-activity-acceptance.yml')
+        scripts = re.findall(r'^\s{10}script: (.+)$', w, flags=re.MULTILINE)
+        self.assertEqual(len(scripts), 1)
+        runner = scripts[0]
+        self.assertTrue(runner.startswith("bash -c 'set -euo pipefail;"))
+        self.assertIn('bash scripts/devtool/r48_emulator_ci.sh;', runner)
+        self.assertIn('python3 -B scripts/devtool/m25_emulator_ci.py', runner)
+        with tempfile.TemporaryDirectory() as folder:
+            from pathlib import Path
+            root = Path(folder)
+            scripts_dir = root / 'scripts/devtool'
+            scripts_dir.mkdir(parents=True)
+            r48 = scripts_dir / 'r48_emulator_ci.sh'
+            r48.write_text('#!/usr/bin/env bash\nprintf "R48\\n" >> "$RUNNER_TEMP/order"\n')
+            m25 = scripts_dir / 'm25_emulator_ci.py'
+            m25.write_text('import os, pathlib\npathlib.Path(os.environ["RUNNER_TEMP"], "order").open("a").write("M25\\n")\n')
+            env = dict(os.environ, RUNNER_TEMP=str(root))
+            execution = subprocess.run(['/bin/sh', '-c', runner], cwd=root, env=env,
+                                       capture_output=True, text=True)
+            self.assertEqual(execution.returncode, 0, execution.stderr)
+            self.assertEqual((root / 'order').read_text(), 'R48\nM25\n')
+            r48.write_text('#!/usr/bin/env bash\nexit 27\n')
+            (root / 'order').unlink()
+            refusal = subprocess.run(['/bin/sh', '-c', runner], cwd=root, env=env,
+                                      capture_output=True, text=True)
+            self.assertNotEqual(refusal.returncode, 0)
+            self.assertFalse((root / 'order').exists(), 'M25 ran after failed R48')
+
     def test_m25_never_inflates_r48_receipt_roster(self):
         r48 = text('scripts/devtool/r48_capture.py')
         m25 = text('scripts/devtool/m25_emulator_ci.py')

@@ -140,12 +140,7 @@ jobs:
           disk-size: 3072M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: |
-            set -euo pipefail
-            bash scripts/devtool/r48_emulator_ci.sh
-            python3 -B scripts/devtool/m25_emulator_ci.py \
-              --output-dir "$RUNNER_TEMP/m25-profile-emulator" \
-              --r48-identity "$RUNNER_TEMP/r48-real-activity/APK_IDENTITY.json"
+          script: bash -c 'set -euo pipefail; bash scripts/devtool/r48_emulator_ci.sh; python3 -B scripts/devtool/m25_emulator_ci.py --output-dir "$RUNNER_TEMP/m25-profile-emulator" --r48-identity "$RUNNER_TEMP/r48-real-activity/APK_IDENTITY.json"'
       - name: Independently verify exact tests, five screenshots, APK and installed identity
         shell: bash
         run: |
