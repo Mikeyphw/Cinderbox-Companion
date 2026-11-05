@@ -13,8 +13,14 @@ config=tomllib.loads(txt('.devtool.toml'))
 for mark in ('NEWER, CURRENT, INSTALLED_AHEAD, UNCOMPARABLE, UNKNOWN',
              'fun assess(', 'fun isIgnored(', 'fun actionable(', 'fun ignored('):
     assert mark in policy, mark
-assert 'ModUpdatePolicy.assess(installed.manifest.version, latestVersion)' in checker
-assert 'UpdateAssessment.NEWER' in checker
+# M25 R2 delegates candidate comparison to the strict response parser.
+# The original R1 guarantee remains enforced: only NEWER is promoted.
+parser=txt('app/src/main/java/com/sdvsync/mods/api/SmapiUpdateResponseParser.kt')
+assert 'checkDetailed(mods).updates' in checker
+assert 'SmapiUpdateResponseParser.parse(mods, results, System.currentTimeMillis())' in checker
+assert 'ModUpdatePolicy.assess(mod.manifest.version, version)' in parser
+assert 'status == UpdateAssessment.NEWER' in parser
+assert 'Duplicate SMAPI observation' in parser
 assert 'throw IllegalStateException("SMAPI update lookup unavailable", e)' in checker
 for mark in ('ignoredUpdateVersions()', 'setIgnoredUpdateVersion(', 'context.modDataStore.edit',
              'parseIgnoredUpdates(', 'require(output.put(id, value) == null)'):

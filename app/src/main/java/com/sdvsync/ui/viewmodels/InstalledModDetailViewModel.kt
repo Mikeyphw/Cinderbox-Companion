@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sdvsync.logging.AppLogger
 import com.sdvsync.mods.ModDataStore
+import com.sdvsync.mods.ModUpdateInsight
+import com.sdvsync.mods.ModUpdatePolicy
+import com.sdvsync.mods.ModUpdateObservation
 import com.sdvsync.mods.ModFileManager
 import com.sdvsync.mods.ModMetadata
 import com.sdvsync.mods.api.NexusModSource
@@ -24,7 +27,10 @@ data class InstalledModDetailState(
     val removed: Boolean = false,
     val updateInfo: ModUpdateInfo? = null,
     val metadata: ModMetadata? = null,
-    val isCheckingUpdate: Boolean = false
+    val isCheckingUpdate: Boolean = false,
+    val observation: ModUpdateObservation? = null,
+    val lastCheckMs: Long = 0L,
+    val updateCheckError: String? = null
 )
 
 class InstalledModDetailViewModel(
@@ -52,9 +58,18 @@ class InstalledModDetailViewModel(
             val mod = mods.find { it.manifest.uniqueID.equals(uniqueId, ignoreCase = true) }
             val metadata = dataStore.getModMetadata(uniqueId)
             val updateCache = dataStore.getUpdateCache()
-            val updateInfo = updateCache[uniqueId]
+            val updateInfo = updateCache.values.firstOrNull {
+                it.uniqueID.equals(uniqueId, ignoreCase = true) &&
+                    it.installedVersion == mod?.manifest?.version
+            }
+            val observations = dataStore.getUpdateObservations()
+            val observation = mod?.let {
+                ModUpdateInsight.observationFor(it.manifest.uniqueID, it.manifest.version, observations)
+            }
+            val lastCheck = dataStore.getLastUpdateCheck()
             _state.update {
-                it.copy(mod = mod, isLoading = false, metadata = metadata, updateInfo = updateInfo)
+                it.copy(mod = mod, isLoading = false, metadata = metadata,
+                    updateInfo = updateInfo, observation = observation, lastCheckMs = lastCheck)
             }
         }
     }
@@ -94,8 +109,10 @@ class InstalledModDetailViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isCheckingUpdate = true) }
             try {
-                val updates = updateChecker.checkForUpdates(listOf(mod))
-                var info = updates[mod.manifest.uniqueID]
+                val result = updateChecker.checkDetailed(listOf(mod))
+                var info = result.updates[mod.manifest.uniqueID]
+                val observation = ModUpdateInsight.observationFor(
+                    mod.manifest.uniqueID, mod.manifest.version, result.observations)
 
                 // Fetch changelog from Nexus if source is a Nexus update key
                 if (info != null && info.source.startsWith("Nexus:", ignoreCase = true)) {
@@ -105,7 +122,7 @@ class InstalledModDetailViewModel(
                         // Find file matching latest version, fall back to most recent primary file
                         val matchingFile = files.find {
                             it.modVersion == info!!.latestVersion || it.fileVersion == info!!.latestVersion
-                        } ?: files.filter { it.isPrimary }.maxByOrNull { it.uploadedAt }
+                        }
                         if (matchingFile?.changelogHtml != null) {
                             info = info.copy(changelogHtml = matchingFile.changelogHtml)
                         }
@@ -114,10 +131,13 @@ class InstalledModDetailViewModel(
                     }
                 }
 
-                _state.update { it.copy(updateInfo = info, isCheckingUpdate = false) }
+                _state.update { it.copy(updateInfo = info, observation = observation,
+                    lastCheckMs = result.checkedAtMs, updateCheckError = null,
+                    isCheckingUpdate = false) }
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Update check failed", e)
-                _state.update { it.copy(isCheckingUpdate = false) }
+                _state.update { it.copy(isCheckingUpdate = false,
+                    updateCheckError = "Update check unavailable; previous status retained") }
             }
         }
     }

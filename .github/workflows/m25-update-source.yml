@@ -6,6 +6,7 @@ on:
       - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt'
       - 'app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt'
       - 'app/src/test/java/com/sdvsync/mods/ModUpdatePolicyTest.kt'
+      - 'app/src/test/java/com/sdvsync/mods/ModUpdateInsightTest.kt'
       - '.github/workflows/m25-update-source.yml'
       - 'scripts/devtool/m25_update_*'
       - 'scripts/devtool/test_m25_update_*'
@@ -17,6 +18,7 @@ on:
       - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt'
       - 'app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt'
       - 'app/src/test/java/com/sdvsync/mods/ModUpdatePolicyTest.kt'
+      - 'app/src/test/java/com/sdvsync/mods/ModUpdateInsightTest.kt'
       - '.github/workflows/m25-update-source.yml'
       - 'scripts/devtool/m25_update_*'
       - 'scripts/devtool/test_m25_update_*'
@@ -36,6 +38,8 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python3 -B scripts/devtool/m25_update_gate.py
+          python3 -B scripts/devtool/m25_r2_gate.py
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_m25_r2_gate.py' -v
           python3 -B -m unittest discover -s scripts/devtool -p 'test_m25_update_gate.py' -v
           python3 -B scripts/devtool/m25_profile_gate.py
           python3 -B scripts/devtool/r47_gate.py
@@ -58,4 +62,4 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon --max-workers=2 :app:testDebugUnitTest --tests com.sdvsync.mods.ModUpdatePolicyTest
+          ./gradlew --no-daemon --max-workers=2 :app:testDebugUnitTest --tests com.sdvsync.mods.ModUpdatePolicyTest --tests com.sdvsync.mods.ModUpdateInsightTest

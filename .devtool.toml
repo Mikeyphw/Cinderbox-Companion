@@ -720,6 +720,10 @@ inputs = ["scripts/devtool/r45r2_*.py", "scripts/devtool/test_r45r2_gate.py", "a
 metadata = { read_only = true, area = "r45-r46-audited-production-ui", root_required = false, device_required = false, live_update_enabled = false }
 
 [targets.cinderbox.workflows]
+m25-update-r2-check = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "r2", ref = "job:m25-update-r2-source", depends_on = ["security"] },
+]
 m25-update-check = [
   { id = "security", ref = "job:security-contract", depends_on = [] },
   { id = "policy", ref = "job:m25-update-policy-source", depends_on = ["security"] },
@@ -1035,4 +1039,17 @@ metadata = { read_only = true, device_required = false, root_required = false, l
 [wrapper.commands.m25-update-check]
 description = "M25-02 non-mutating update version classification and ignore policy checks"
 workflow = "m25-update-check"
+target = "cinderbox"
+
+# M25-02 R2: read-only source validation. Gradle/emulator run only via GitHub.
+[targets.cinderbox.jobs.m25-update-r2-source]
+runner = "command"
+execution_environment = "host"
+command = ["python3", "-B", "scripts/devtool/m25_r2_gate.py"]
+inputs = ["app/src/main/java/com/sdvsync/mods/ModUpdateInsight.kt", "app/src/main/java/com/sdvsync/mods/ModUpdateObservationCodec.kt", "app/src/main/java/com/sdvsync/mods/api/SmapiUpdateResponseParser.kt", "app/src/main/java/com/sdvsync/ui/components/M25UpdateStatusSummary.kt", "scripts/devtool/m25_r2_*.py", "app/src/androidTest/java/com/sdvsync/mods/update/**", ".github/workflows/r48-real-activity-acceptance.yml", "docs/security/M3_RELEASE_POLICY.json"]
+metadata = { read_only = true, device_required = false, root_required = false, live_update_enabled = false, release_enabled = false }
+
+[wrapper.commands.m25-update-r2-check]
+description = "M25-02 R2 update status, freshness and safe changelog source checks"
+workflow = "m25-update-r2-check"
 target = "cinderbox"

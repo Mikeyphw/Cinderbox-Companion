@@ -79,6 +79,8 @@ jobs:
           printf '%s\n' '{"overall":"NOT_RUN","hosted_emulator_only":true,"physical_device_qualified":false,"talkback_qualified":false,"release_qualified":false,"publication_allowed":false}' > "$RUNNER_TEMP/r48-real-activity/R48_REAL_ACTIVITY_EVIDENCE.json"
           mkdir -p "$RUNNER_TEMP/m25-profile-emulator"
           printf '%s\n' '{"overall":"NOT_RUN","hosted_emulator_only":true,"physical_device_qualified":false,"release_qualified":false,"publication_allowed":false}' > "$RUNNER_TEMP/m25-profile-emulator/M25_PROFILE_EMULATOR_EVIDENCE.json"
+          mkdir -p "$RUNNER_TEMP/m25-r2-emulator"
+          printf '%s\n' '{"overall":"NOT_RUN","hosted_emulator_only":true,"physical_device_qualified":false,"release_qualified":false,"publication_allowed":false}' > "$RUNNER_TEMP/m25-r2-emulator/M25_R2_EMULATOR_EVIDENCE.json"
           python3 -B scripts/devtool/r48_gate.py
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
@@ -140,7 +142,7 @@ jobs:
           disk-size: 3072M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: bash -c 'set -euo pipefail; bash scripts/devtool/r48_emulator_ci.sh; python3 -B scripts/devtool/m25_emulator_ci.py --output-dir "$RUNNER_TEMP/m25-profile-emulator" --r48-identity "$RUNNER_TEMP/r48-real-activity/APK_IDENTITY.json"'
+          script: bash -c 'set -euo pipefail; bash scripts/devtool/r48_emulator_ci.sh; python3 -B scripts/devtool/m25_emulator_ci.py --output-dir "$RUNNER_TEMP/m25-profile-emulator" --r48-identity "$RUNNER_TEMP/r48-real-activity/APK_IDENTITY.json"; python3 -B scripts/devtool/m25_r2_emulator_ci.py --output-dir "$RUNNER_TEMP/m25-r2-emulator" --r48-identity "$RUNNER_TEMP/r48-real-activity/APK_IDENTITY.json"'
       - name: Independently verify exact tests, five screenshots, APK and installed identity
         shell: bash
         run: |
@@ -154,6 +156,14 @@ jobs:
           set -euo pipefail
           python3 -B scripts/devtool/m25_verify.py \
             --output-dir "$RUNNER_TEMP/m25-profile-emulator" \
+            --r48-identity "$RUNNER_TEMP/r48-real-activity/APK_IDENTITY.json" \
+            --source-sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID"
+      - name: Independently verify R2 four-test API36 receipt and private screenshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B scripts/devtool/m25_r2_verify.py \
+            --output-dir "$RUNNER_TEMP/m25-r2-emulator" \
             --r48-identity "$RUNNER_TEMP/r48-real-activity/APK_IDENTITY.json" \
             --source-sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID"
       - name: Upload allowlisted R48 offline emulator-only evidence even on failure
@@ -170,5 +180,13 @@ jobs:
         with:
           name: m25-profile-api36-emulator-evidence
           path: ${{ runner.temp }}/m25-profile-emulator/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload R2 synthetic update status screenshot and source-bound receipt
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: m25-r2-update-intelligence-api36
+          path: ${{ runner.temp }}/m25-r2-emulator/
           if-no-files-found: warn
           retention-days: 14
