@@ -8,7 +8,7 @@ class M25UpdateTests(unittest.TestCase):
         self.assertIn('throw IllegalStateException("SMAPI update lookup unavailable", e)',checker)
         vm=text('app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt')
         self.assertIn('previous results retained',vm)
-        self.assertIn('dataStore.setUpdateCache(updates)',vm)
+        self.assertIn('dataStore.setUpdateSnapshot(result)',vm)
     def test_no_install_mutation_from_update_policy(self):
         core=text('app/src/main/java/com/sdvsync/mods/ModUpdatePolicy.kt')
         for forbidden in ('installFromZip(', 'applyProfileSafely(', 'File(', 'deleteRecursively(',

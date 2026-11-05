@@ -28,8 +28,13 @@ class SmapiUpdateChecker(private val httpClient: OkHttpClient) {
      * Check all installed mods for updates in a single batch request.
      * Returns a map of uniqueID -> ModUpdateInfo for mods with available updates.
      */
-    suspend fun checkForUpdates(mods: List<InstalledMod>): Map<String, ModUpdateInfo> = withContext(Dispatchers.IO) {
-        if (mods.isEmpty()) return@withContext emptyMap()
+    suspend fun checkForUpdates(mods: List<InstalledMod>): Map<String, ModUpdateInfo> =
+        checkDetailed(mods).updates
+
+    /** Produces an explicit observation for every requested mod. */
+    suspend fun checkDetailed(mods: List<InstalledMod>): com.sdvsync.mods.ModUpdateCheckResult = withContext(Dispatchers.IO) {
+        if (mods.isEmpty()) return@withContext com.sdvsync.mods.ModUpdateCheckResult(
+            emptyMap(), emptyMap(), System.currentTimeMillis())
 
         try {
             val modsArray = JSONArray()
@@ -61,37 +66,10 @@ class SmapiUpdateChecker(private val httpClient: OkHttpClient) {
             }
             val results = JSONArray(responseBody)
 
-            val updates = mutableMapOf<String, ModUpdateInfo>()
-
-            for (i in 0 until results.length()) {
-                val result = results.optJSONObject(i) ?: continue
-                val id = result.optString("id", "").takeIf { it.isNotBlank() } ?: continue
-                val suggestedUpdate = result.optJSONObject("suggestedUpdate") ?: continue
-
-                val latestVersion = suggestedUpdate.optString("version", "")
-                    .takeIf { it.isNotBlank() } ?: continue
-                val updateUrl = suggestedUpdate.optString("url", "")
-                    .takeIf { it.isNotBlank() }
-
-                // Find the installed mod to get current version
-                val installed = mods.find { it.manifest.uniqueID.equals(id, ignoreCase = true) }
-                    ?: continue
-
-                // Never label older/unknown/noncomparable versions as an update.
-                if (ModUpdatePolicy.assess(installed.manifest.version, latestVersion) ==
-                    UpdateAssessment.NEWER) {
-                    updates[installed.manifest.uniqueID] = ModUpdateInfo(
-                        uniqueID = id,
-                        installedVersion = installed.manifest.version,
-                        latestVersion = latestVersion,
-                        updateUrl = updateUrl,
-                        source = buildSourceString(installed)
-                    )
-                }
-            }
-
-            AppLogger.d(TAG, "Update check: ${mods.size} mods checked, ${updates.size} updates found")
-            updates
+            val result = SmapiUpdateResponseParser.parse(mods, results, System.currentTimeMillis())
+            AppLogger.d(TAG, "Update check completed: ${mods.size} mods requested; " +
+                "${result.updates.size} newer candidates")
+            result
         } catch (e: Exception) {
             // Propagate failure. ViewModel must retain the previous cache and
             // report UNKNOWN instead of wiping actionable updates on an API outage.

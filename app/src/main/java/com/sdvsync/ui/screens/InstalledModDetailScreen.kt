@@ -20,7 +20,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.sdvsync.R
 import com.sdvsync.ui.components.ArrowLeftData
-import com.sdvsync.ui.components.HtmlText
+import com.sdvsync.mods.ModUpdateInsight
 import com.sdvsync.ui.components.PixelDivider
 import com.sdvsync.ui.components.PixelIcon
 import com.sdvsync.ui.components.PixelIconButton
@@ -30,7 +30,6 @@ import com.sdvsync.ui.components.StardewCard
 import com.sdvsync.ui.components.StardewDialog
 import com.sdvsync.ui.components.StardewOutlinedButton
 import com.sdvsync.ui.components.StardewTopAppBar
-import com.sdvsync.ui.components.toHtmlIfFormatted
 import com.sdvsync.ui.formatBytes
 import com.sdvsync.ui.viewmodels.InstalledModDetailViewModel
 import java.text.SimpleDateFormat
@@ -154,7 +153,7 @@ fun InstalledModDetailScreen(viewModel: InstalledModDetailViewModel, onBack: () 
                             ),
                             style = MaterialTheme.typography.bodyMedium
                         )
-                        updateInfo.updateUrl?.let { url ->
+                        ModUpdateInsight.safeUpdateUrl(updateInfo.updateUrl)?.let { url ->
                             Spacer(Modifier.height(8.dp))
                             StardewButton(
                                 onClick = { uriHandler.openUri(url) },
@@ -204,19 +203,26 @@ fun InstalledModDetailScreen(viewModel: InstalledModDetailViewModel, onBack: () 
                                 enter = expandVertically(),
                                 exit = shrinkVertically()
                             ) {
-                                val processed = toHtmlIfFormatted(updateInfo.changelogHtml!!)
-                                    ?: updateInfo.changelogHtml!!
-                                HtmlText(
-                                    html = processed,
-                                    textColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb(),
-                                    linkColor = MaterialTheme.colorScheme.primary.toArgb(),
-                                    textSizeSp = MaterialTheme.typography.bodySmall.fontSize.value,
-                                    modifier = Modifier.padding(top = 8.dp)
-                                )
+                                val safe = ModUpdateInsight.plainChangelog(updateInfo.changelogHtml)
+                                Text(safe ?: "No readable changelog available",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 8.dp))
                             }
                         }
                     }
                 }
+            }
+
+            state.observation?.let { observation ->
+                Spacer(Modifier.height(8.dp))
+                Text("Update status: " + ModUpdateInsight.label(observation.status),
+                    style = MaterialTheme.typography.bodySmall)
+            }
+            Text(ModUpdateInsight.freshness(state.lastCheckMs, System.currentTimeMillis()),
+                style = MaterialTheme.typography.bodySmall)
+            state.updateCheckError?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall)
             }
 
             // Nexus link

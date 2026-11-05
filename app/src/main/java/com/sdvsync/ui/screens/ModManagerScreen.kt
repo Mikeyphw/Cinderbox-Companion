@@ -45,6 +45,7 @@ import com.sdvsync.ui.policy.R45GuideArea
 import com.sdvsync.ui.theme.SdvSyncThemeExtras
 import com.sdvsync.ui.policy.R46UiErrorArea
 import com.sdvsync.ui.components.UpdateBanner
+import com.sdvsync.ui.components.M25UpdateStatusSummary
 import com.sdvsync.ui.components.pixelBorder
 import com.sdvsync.ui.viewmodels.ModFilter
 import com.sdvsync.ui.viewmodels.ModManagerViewModel
@@ -392,6 +393,18 @@ fun ModManagerScreen(
                                         )
                                     }
                                 }
+                            }
+                        }
+
+                        // Source-bound, read-only per-mod update status and freshness.
+                        if (state.installedMods.isNotEmpty()) {
+                            item {
+                                M25UpdateStatusSummary(
+                                    installed = state.installedMods,
+                                    observations = state.updateObservations,
+                                    checkedAtMs = state.lastUpdateCheckMs,
+                                    refreshFailed = state.updateError != null
+                                )
                             }
                         }
 

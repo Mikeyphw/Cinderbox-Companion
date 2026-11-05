@@ -8,6 +8,7 @@ import com.sdvsync.cinderbox.CinderboxLayoutEvents
 import com.sdvsync.logging.AppLogger
 import com.sdvsync.mods.ModDataStore
 import com.sdvsync.mods.ModUpdatePolicy
+import com.sdvsync.mods.ModUpdateObservation
 import com.sdvsync.mods.ModFileManager
 import com.sdvsync.mods.ModCompatibility
 import com.sdvsync.mods.ModCompatibilityIssue
@@ -40,6 +41,8 @@ data class ModManagerState(
     val ignoredUpdates: Map<String, ModUpdateInfo> = emptyMap(),
     val showIgnoredUpdates: Boolean = false,
     val updateError: String? = null,
+    val updateObservations: Map<String, ModUpdateObservation> = emptyMap(),
+    val lastUpdateCheckMs: Long = 0L,
     val isLoading: Boolean = true,
     val isCheckingUpdates: Boolean = false,
     val error: String? = null,
@@ -100,12 +103,19 @@ class ModManagerViewModel(
             _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val mods = fileManager.listInstalledMods()
-                val rawUpdates = dataStore.getUpdateCache()
+                val rawUpdates = dataStore.getUpdateCache().filterValues { update ->
+                    mods.any { installed -> installed.manifest.uniqueID.equals(
+                        update.uniqueID, ignoreCase = true) &&
+                        installed.manifest.version == update.installedVersion }
+                }
+                val observations = dataStore.getUpdateObservations()
+                val lastSuccess = dataStore.getLastUpdateCheck()
                 val ignored = dataStore.ignoredUpdateVersions()
                 val actionable = ModUpdatePolicy.actionable(rawUpdates, ignored)
                 _state.update {
                     it.copy(installedMods = mods, updates = actionable,
-                        rawUpdates = rawUpdates,
+                        rawUpdates = rawUpdates, updateObservations = observations,
+                        lastUpdateCheckMs = lastSuccess,
                         ignoredUpdates = ModUpdatePolicy.ignored(rawUpdates, ignored),
                         isLoading = false, compatibilityIssues = ModCompatibility.audit(mods))
                 }
@@ -138,13 +148,16 @@ class ModManagerViewModel(
             try {
                 // Only check enabled mods
                 val enabledMods = mods.filter { it.enabled }
-                val updates = updateChecker.checkForUpdates(enabledMods)
+                val result = updateChecker.checkDetailed(enabledMods)
+                val updates = result.updates
 
                 // A successful check is the only path permitted to replace cache.
-                dataStore.setUpdateCache(updates)
+                dataStore.setUpdateSnapshot(result)
                 val ignored = dataStore.ignoredUpdateVersions()
                 _state.update { it.copy(
                     rawUpdates = updates,
+                    updateObservations = result.observations,
+                    lastUpdateCheckMs = result.checkedAtMs,
                     updates = ModUpdatePolicy.actionable(updates, ignored),
                     ignoredUpdates = ModUpdatePolicy.ignored(updates, ignored),
                     updateError = null, isCheckingUpdates = false) }

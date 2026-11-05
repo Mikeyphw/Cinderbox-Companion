@@ -31,6 +31,7 @@ class ModDataStore(private val context: Context) {
         private const val TAG = "ModDataStore"
         private val UPDATE_CACHE_KEY = stringPreferencesKey("update_cache")
         private val LAST_UPDATE_CHECK_KEY = longPreferencesKey("last_update_check")
+        private val UPDATE_OBSERVATION_KEY = stringPreferencesKey("m25_update_observations_v1")
         private val IGNORED_UPDATE_VERSIONS_KEY = stringPreferencesKey("ignored_update_versions")
         private val MOD_METADATA_KEY = stringPreferencesKey("mod_metadata")
         private val PROFILES_KEY = stringPreferencesKey("mod_profiles")
@@ -85,6 +86,25 @@ class ModDataStore(private val context: Context) {
         context.modDataStore.edit { prefs ->
             prefs[UPDATE_CACHE_KEY] = serializeUpdateCache(updates)
             prefs[LAST_UPDATE_CHECK_KEY] = System.currentTimeMillis()
+        }
+    }
+
+    /** Fails closed on invalid stored observations; a failure never erases cached state. */
+    suspend fun getUpdateObservations(): Map<String, ModUpdateObservation> =
+        context.modDataStore.data.map { prefs ->
+            prefs[UPDATE_OBSERVATION_KEY]?.let { ModUpdateObservationCodec.decode(it) }
+                ?: emptyMap()
+        }.first()
+
+    /** Cache, observations and successful timestamp advance in one DataStore edit. */
+    suspend fun setUpdateSnapshot(snapshot: ModUpdateCheckResult) {
+        require(snapshot.checkedAtMs > 0L) { "Invalid update check timestamp" }
+        val encoded = ModUpdateObservationCodec.encode(snapshot.observations)
+        val cache = serializeUpdateCache(snapshot.updates)
+        context.modDataStore.edit { prefs ->
+            prefs[UPDATE_CACHE_KEY] = cache
+            prefs[UPDATE_OBSERVATION_KEY] = encoded
+            prefs[LAST_UPDATE_CHECK_KEY] = snapshot.checkedAtMs
         }
     }
 
