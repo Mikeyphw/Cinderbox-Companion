@@ -1,6 +1,8 @@
 package com.sdvsync.mods.api
 
 import com.sdvsync.logging.AppLogger
+import com.sdvsync.mods.ModUpdatePolicy
+import com.sdvsync.mods.UpdateAssessment
 import com.sdvsync.mods.models.InstalledMod
 import com.sdvsync.mods.models.ModUpdateInfo
 import kotlinx.coroutines.Dispatchers
@@ -53,7 +55,10 @@ class SmapiUpdateChecker(private val httpClient: OkHttpClient) {
                 .build()
 
             val response = httpClient.newCall(request).execute()
-            val responseBody = response.use { it.body?.string() } ?: return@withContext emptyMap()
+            val responseBody = response.use {
+                check(it.isSuccessful) { "SMAPI HTTP response unsuccessful" }
+                it.body?.string() ?: error("SMAPI response body absent")
+            }
             val results = JSONArray(responseBody)
 
             val updates = mutableMapOf<String, ModUpdateInfo>()
@@ -72,9 +77,10 @@ class SmapiUpdateChecker(private val httpClient: OkHttpClient) {
                 val installed = mods.find { it.manifest.uniqueID.equals(id, ignoreCase = true) }
                     ?: continue
 
-                // Only add if the version actually differs
-                if (latestVersion != installed.manifest.version) {
-                    updates[id] = ModUpdateInfo(
+                // Never label older/unknown/noncomparable versions as an update.
+                if (ModUpdatePolicy.assess(installed.manifest.version, latestVersion) ==
+                    UpdateAssessment.NEWER) {
+                    updates[installed.manifest.uniqueID] = ModUpdateInfo(
                         uniqueID = id,
                         installedVersion = installed.manifest.version,
                         latestVersion = latestVersion,
@@ -87,8 +93,11 @@ class SmapiUpdateChecker(private val httpClient: OkHttpClient) {
             AppLogger.d(TAG, "Update check: ${mods.size} mods checked, ${updates.size} updates found")
             updates
         } catch (e: Exception) {
-            AppLogger.e(TAG, "Update check failed", e)
-            emptyMap()
+            // Propagate failure. ViewModel must retain the previous cache and
+            // report UNKNOWN instead of wiping actionable updates on an API outage.
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            AppLogger.w(TAG, "SMAPI update lookup unavailable")
+            throw IllegalStateException("SMAPI update lookup unavailable", e)
         }
     }
 
