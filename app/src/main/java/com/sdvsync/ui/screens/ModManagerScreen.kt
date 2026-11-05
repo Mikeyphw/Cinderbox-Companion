@@ -5,6 +5,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -82,6 +84,22 @@ fun ModManagerScreen(
             viewModel.clearProfileMessage()
         }
     }
+
+    // M25: SAF metadata exchange; no automatic installation or profile application.
+    var profileForExport by remember { mutableStateOf<ModProfile?>(null) }
+    val exportProfile = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        val selected = profileForExport
+        if (uri != null && selected != null) viewModel.exportPortableProfile(selected, uri)
+        profileForExport = null
+    }
+    val importProfile = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) viewModel.previewPortableImport(uri)
+    }
+    var profileForNotes by remember { mutableStateOf<ModProfile?>(null) }
 
     // Profile dialogs state
     var showSaveProfileDialog by remember { mutableStateOf(false) }
@@ -220,6 +238,28 @@ fun ModManagerScreen(
                             ) {
                                 Text(stringResource(R.string.mods_import_button))
                             }
+                            Spacer(Modifier.height(12.dp))
+                            StardewOutlinedButton(onClick = {
+                                importProfile.launch(arrayOf("application/json", "text/plain"))
+                            }) { Text("Import profile JSON") }
+                            if (state.profiles.isNotEmpty()) {
+                                Spacer(Modifier.height(12.dp))
+                                ProfileSection(
+                                    profiles = state.profiles,
+                                    activeProfileName = state.activeProfileName,
+                                    isApplying = state.isApplyingProfile,
+                                    onSaveCurrent = { showSaveProfileDialog = true },
+                                    onApply = { showApplyProfileConfirm = it },
+                                    onDelete = { showDeleteProfileConfirm = it },
+                                    onImport = { importProfile.launch(arrayOf("application/json", "text/plain")) },
+                                    onExport = { profile ->
+                                        profileForExport = profile
+                                        val safe = profile.name.replace(Regex("[^A-Za-z0-9_-]"), "_")
+                                        exportProfile.launch("cinderbox-" + safe + ".json")
+                                    },
+                                    onNote = { profileForNotes = it }
+                                )
+                            }
                         }
                     }
                 }
@@ -266,7 +306,14 @@ fun ModManagerScreen(
                                     isApplying = state.isApplyingProfile,
                                     onSaveCurrent = { showSaveProfileDialog = true },
                                     onApply = { showApplyProfileConfirm = it },
-                                    onDelete = { showDeleteProfileConfirm = it }
+                                    onDelete = { showDeleteProfileConfirm = it },
+                                    onImport = { importProfile.launch(arrayOf("application/json", "text/plain")) },
+                                    onExport = { profile ->
+                                        profileForExport = profile
+                                        val safe = profile.name.replace(Regex("[^A-Za-z0-9_-]"), "_")
+                                        exportProfile.launch("cinderbox-" + safe + ".json")
+                                    },
+                                    onNote = { profileForNotes = it }
                                 )
                             }
                         }
@@ -453,6 +500,67 @@ fun ModManagerScreen(
         )
     }
 
+    state.pendingPortableProfile?.let { preview ->
+        var importedName by remember(preview.profile.id) { mutableStateOf(preview.profile.name) }
+        AlertDialog(
+            onDismissRequest = viewModel::dismissPortableImport,
+            title = { Text("Import profile metadata") },
+            text = {
+                Column(modifier = Modifier.heightIn(max = 360.dp)
+                    .verticalScroll(rememberScrollState())) {
+                    Text("This will save a profile only. No mods will be installed or changed.")
+                    Spacer(Modifier.height(8.dp))
+                    Text("Enabled mod IDs: " + preview.profile.enabledModIds.size)
+                    Text("Missing mods: " + preview.missingMods.size)
+                    Text("Potential toggles if later applied: " + preview.proposedChanges)
+                    preview.missingMods.take(6).forEach { Text("Missing: " + it) }
+                    preview.blockers.take(5).forEach { Text("Review: " + it) }
+                    if (preview.nameTaken) Text("This name already exists. Choose a new name.")
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(value = importedName, onValueChange = { importedName = it },
+                        label = { Text("Profile name") }, singleLine = true)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.savePortableImport(importedName) },
+                    enabled = importedName.isNotBlank()) { Text("Save profile only") }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissPortableImport) { Text("Cancel") }
+            }
+        )
+    }
+
+    profileForNotes?.let { profile ->
+        var modId by remember(profile.id) { mutableStateOf("") }
+        var note by remember(profile.id) { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { profileForNotes = null },
+            title = { Text("Profile mod note") },
+            text = {
+                Column(modifier = Modifier.heightIn(max = 360.dp)
+                    .verticalScroll(rememberScrollState())) {
+                    Text("Notes are saved only in this profile. Empty text removes a note.")
+                    OutlinedTextField(value = modId, onValueChange = { input ->
+                        modId = input
+                        note = profile.notes[input.trim().lowercase(java.util.Locale.ROOT)].orEmpty()
+                    }, label = { Text("SMAPI UniqueID") }, singleLine = true)
+                    OutlinedTextField(value = note, onValueChange = { note = it },
+                        label = { Text("Note") }, maxLines = 5)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.saveProfileNote(profile, modId, note)
+                    profileForNotes = null
+                }, enabled = modId.isNotBlank() && note.length <= 1200) { Text("Save note") }
+            },
+            dismissButton = {
+                TextButton(onClick = { profileForNotes = null }) { Text("Cancel") }
+            }
+        )
+    }
+
     // Delete profile confirmation
     showDeleteProfileConfirm?.let { name ->
         StardewDialog(
@@ -487,7 +595,10 @@ private fun ProfileSection(
     isApplying: Boolean,
     onSaveCurrent: () -> Unit,
     onApply: (ModProfile) -> Unit,
-    onDelete: (String) -> Unit
+    onDelete: (String) -> Unit,
+    onImport: () -> Unit,
+    onExport: (ModProfile) -> Unit,
+    onNote: (ModProfile) -> Unit
 ) {
     StardewCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -505,10 +616,12 @@ private fun ProfileSection(
                 }
             }
 
+            Spacer(Modifier.height(8.dp))
+            StardewOutlinedButton(onClick = onImport) { Text("Import profile JSON") }
             if (activeProfileName != null) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    stringResource(R.string.profiles_active, activeProfileName),
+                    "Matches current enabled mods: " + activeProfileName,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -543,6 +656,10 @@ private fun ProfileSection(
                                 selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                         )
+                        TextButton(onClick = { onExport(profile) }) { Text("Export") }
+                        TextButton(onClick = { onNote(profile) }, enabled = !profile.isProtected) {
+                            Text("Notes")
+                        }
                     }
                 }
             }

@@ -10,6 +10,7 @@ import androidx.security.crypto.MasterKey
 import com.sdvsync.logging.AppLogger
 import com.sdvsync.mods.models.AssociatedMod
 import com.sdvsync.mods.models.ModProfile
+import com.sdvsync.mods.profile.PortableProfileCodec
 import com.sdvsync.mods.models.ModUpdateInfo
 import com.sdvsync.mods.models.SaveModAssociation
 import kotlinx.coroutines.flow.first
@@ -118,63 +119,47 @@ class ModDataStore(private val context: Context) {
         }
         .first()
 
-    // ── Mod Profiles ──────────────────────────────────────────────────
-
+    // ── M25-01 versioned, fail-closed mod profiles ──────────────────
     suspend fun getProfiles(): List<ModProfile> = context.modDataStore.data
         .map { prefs ->
-            prefs[PROFILES_KEY]?.let { parseProfiles(it) } ?: emptyList()
-        }
-        .first()
+            prefs[PROFILES_KEY]?.let { PortableProfileCodec.decodeStored(it) } ?: emptyList()
+        }.first()
 
+    /** Entire read/modify/write is one DataStore edit. Invalid old data is never erased. */
     suspend fun saveProfile(profile: ModProfile) {
-        val profiles = getProfiles().toMutableList()
-        val existingIndex = profiles.indexOfFirst { it.name == profile.name }
-        if (existingIndex >= 0) {
-            profiles[existingIndex] = profile
-        } else {
-            profiles.add(profile)
-        }
         context.modDataStore.edit { prefs ->
-            prefs[PROFILES_KEY] = serializeProfiles(profiles)
+            val profiles = prefs[PROFILES_KEY]?.let {
+                PortableProfileCodec.decodeStored(it)
+            }?.toMutableList() ?: mutableListOf()
+            val name = PortableProfileCodec.checkedName(profile.name)
+            require(profiles.none { it.id != profile.id && it.name.equals(name, ignoreCase = true) }) {
+                "Another profile already has this name"
+            }
+            val index = profiles.indexOfFirst { it.id == profile.id }
+            if (index >= 0) {
+                require(!profiles[index].isProtected || profiles[index] == profile) {
+                    "Protected profile cannot be edited"
+                }
+                profiles[index] = profile.copy(name = name)
+            } else {
+                profiles.add(profile.copy(name = name))
+            }
+            prefs[PROFILES_KEY] = PortableProfileCodec.encodeStored(profiles)
         }
     }
 
     suspend fun deleteProfile(name: String) {
-        val profiles = getProfiles().filter { it.name != name }
         context.modDataStore.edit { prefs ->
-            prefs[PROFILES_KEY] = serializeProfiles(profiles)
-        }
-    }
-
-    private fun serializeProfiles(profiles: List<ModProfile>): String {
-        val array = JSONArray()
-        profiles.forEach { profile ->
-            array.put(
-                JSONObject().apply {
-                    put("name", profile.name)
-                    put("enabledModIds", JSONArray(profile.enabledModIds.toList()))
-                    put("createdAt", profile.createdAt)
-                }
+            val profiles = prefs[PROFILES_KEY]?.let {
+                PortableProfileCodec.decodeStored(it)
+            } ?: emptyList()
+            val selected = profiles.firstOrNull { it.name.equals(name, ignoreCase = true) }
+                ?: return@edit
+            require(!selected.isProtected) { "Protected profile cannot be deleted" }
+            prefs[PROFILES_KEY] = PortableProfileCodec.encodeStored(
+                profiles.filter { it.id != selected.id }
             )
         }
-        return array.toString()
-    }
-
-    private fun parseProfiles(json: String): List<ModProfile> = try {
-        val array = JSONArray(json)
-        (0 until array.length()).map { i ->
-            val obj = array.getJSONObject(i)
-            val idsArray = obj.getJSONArray("enabledModIds")
-            val ids = (0 until idsArray.length()).map { j -> idsArray.getString(j) }.toSet()
-            ModProfile(
-                name = obj.getString("name"),
-                enabledModIds = ids,
-                createdAt = obj.optLong("createdAt", 0)
-            )
-        }
-    } catch (e: Exception) {
-        AppLogger.e(TAG, "Failed to parse profiles", e)
-        emptyList()
     }
 
     // ── Save Mod Associations ──────────────────────────────────────────

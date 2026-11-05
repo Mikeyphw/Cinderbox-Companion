@@ -172,4 +172,38 @@ class R47Contracts(unittest.TestCase):
                          'if: always()',':app:assembleDebug :app:assembleDebugAndroidTest'):
             self.assertIn(required,text)
 
+    def test_devtool_future_extension_cannot_break_r47_source_check(self):
+        # M25 is an independent Devtool entry; R47 must validate only its own
+        # exact protected slice, not freeze the entire registry at R47's commit.
+        original = (r47_gate.ROOT / '.devtool.toml').read_text(encoding='utf-8')
+        self.assertIn('m25-profile-check', original)
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / '.devtool.toml'
+            config.write_text(original + '\n[targets.cinderbox.jobs.future-read-only]\n'
+                              'runner = "command"\nexecution_environment = "host"\n'
+                              'command = ["python3", "-B", "scripts/devtool/m25_profile_gate.py"]\n',
+                              encoding='utf-8')
+            r47_patch.check(Path(temp))
+
+    def test_r47_source_check_rejects_dag_or_privilege_mutation(self):
+        source = (r47_gate.ROOT / '.devtool.toml').read_text(encoding='utf-8')
+        marker = '[targets.cinderbox.jobs.r47-ui-source]'
+        self.assertEqual(source.count(marker), 1)
+        head, section = source.split(marker, 1)
+        self.assertIn('release_enabled = false', section)
+        cases = [
+            head + marker + section.replace('release_enabled = false',
+                                            'release_enabled = true', 1),
+            source.replace('r47-check = [\n',
+                           'r47-check = [\n  { id = "unsafe", ref = "job:unsafe", depends_on = [] },\n', 1),
+            head + marker + section.replace('command = ["python3", "-B", "scripts/devtool/r47_gate.py"]',
+                                            'command = ["python3", "-B", "scripts/devtool/unsafe.py"]', 1),
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / '.devtool.toml'
+            for item in cases:
+                path.write_text(item, encoding='utf-8')
+                with self.assertRaises(AssertionError):
+                    r47_patch.check(Path(temp))
+
 if __name__=='__main__':unittest.main()

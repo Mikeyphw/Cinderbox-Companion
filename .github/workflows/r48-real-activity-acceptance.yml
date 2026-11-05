@@ -8,6 +8,12 @@ on:
       - 'app/src/androidTest/java/com/sdvsync/qualification/R48RealActivityDeviceTest.kt'
       - 'app/src/main/java/com/sdvsync/MainActivity.kt'
       - 'app/src/main/java/com/sdvsync/ui/**'
+      - 'app/src/main/java/com/sdvsync/mods/**'
+      - 'app/src/androidTest/java/com/sdvsync/mods/profile/**'
+      - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt'
+      - 'scripts/devtool/m25_*.py'
+      - 'scripts/devtool/test_m25_*.py'
       - 'app/build.gradle.kts'
       - 'docs/security/M3_RELEASE_POLICY.json'
   push:
@@ -19,6 +25,12 @@ on:
       - 'app/src/androidTest/java/com/sdvsync/qualification/R48RealActivityDeviceTest.kt'
       - 'app/src/main/java/com/sdvsync/MainActivity.kt'
       - 'app/src/main/java/com/sdvsync/ui/**'
+      - 'app/src/main/java/com/sdvsync/mods/**'
+      - 'app/src/androidTest/java/com/sdvsync/mods/profile/**'
+      - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt'
+      - 'scripts/devtool/m25_*.py'
+      - 'scripts/devtool/test_m25_*.py'
       - 'app/build.gradle.kts'
       - 'docs/security/M3_RELEASE_POLICY.json'
   workflow_dispatch:
@@ -42,6 +54,9 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python3 -B scripts/devtool/r48_gate.py
           python3 -B -m unittest discover -s scripts/devtool -p 'test_r48_gate.py' -v
+          python3 -B scripts/devtool/m25_profile_gate.py
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_m25_profile_gate.py' -v
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_m25_emulator.py' -v
           python3 -B scripts/devtool/r47_gate.py
           python3 -B scripts/devtool/r45r2_gate.py
           python3 -B scripts/devtool/r43c_gate.py
@@ -62,6 +77,8 @@ jobs:
           test "$(uname -m)" = x86_64
           mkdir -p "$RUNNER_TEMP/r48-real-activity"
           printf '%s\n' '{"overall":"NOT_RUN","hosted_emulator_only":true,"physical_device_qualified":false,"talkback_qualified":false,"release_qualified":false,"publication_allowed":false}' > "$RUNNER_TEMP/r48-real-activity/R48_REAL_ACTIVITY_EVIDENCE.json"
+          mkdir -p "$RUNNER_TEMP/m25-profile-emulator"
+          printf '%s\n' '{"overall":"NOT_RUN","hosted_emulator_only":true,"physical_device_qualified":false,"release_qualified":false,"publication_allowed":false}' > "$RUNNER_TEMP/m25-profile-emulator/M25_PROFILE_EMULATOR_EVIDENCE.json"
           python3 -B scripts/devtool/r48_gate.py
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
@@ -123,13 +140,21 @@ jobs:
           disk-size: 3072M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: bash scripts/devtool/r48_emulator_ci.sh
+          script: bash -c 'set -euo pipefail; bash scripts/devtool/r48_emulator_ci.sh; python3 -B scripts/devtool/m25_emulator_ci.py --output-dir "$RUNNER_TEMP/m25-profile-emulator" --r48-identity "$RUNNER_TEMP/r48-real-activity/APK_IDENTITY.json"'
       - name: Independently verify exact tests, five screenshots, APK and installed identity
         shell: bash
         run: |
           set -euo pipefail
           python3 -B scripts/devtool/r48_verify.py \
             --output-dir "$RUNNER_TEMP/r48-real-activity" \
+            --source-sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID"
+      - name: Independently verify M25 four-test source-bound emulator receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B scripts/devtool/m25_verify.py \
+            --output-dir "$RUNNER_TEMP/m25-profile-emulator" \
+            --r48-identity "$RUNNER_TEMP/r48-real-activity/APK_IDENTITY.json" \
             --source-sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID"
       - name: Upload allowlisted R48 offline emulator-only evidence even on failure
         if: always()
@@ -138,4 +163,12 @@ jobs:
           name: r48-real-activity-emulator-evidence
           path: ${{ runner.temp }}/r48-real-activity/
           if-no-files-found: error
+          retention-days: 14
+      - name: Upload M25 profile receipt even if Android compilation fails
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: m25-profile-api36-emulator-evidence
+          path: ${{ runner.temp }}/m25-profile-emulator/
+          if-no-files-found: warn
           retention-days: 14

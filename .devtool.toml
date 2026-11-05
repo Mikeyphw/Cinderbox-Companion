@@ -720,6 +720,10 @@ inputs = ["scripts/devtool/r45r2_*.py", "scripts/devtool/test_r45r2_gate.py", "a
 metadata = { read_only = true, area = "r45-r46-audited-production-ui", root_required = false, device_required = false, live_update_enabled = false }
 
 [targets.cinderbox.workflows]
+m25-profile-check = [
+  { id = "security", ref = "job:security-contract", depends_on = [] },
+  { id = "profile", ref = "job:m25-profile-source", depends_on = ["security"] },
+]
 r47-check = [
   { id = "security", ref = "job:security-contract", depends_on = [] },
   { id = "r44b", ref = "job:r44b-experience-source", depends_on = ["security"] },
@@ -1003,3 +1007,16 @@ execution_environment = "host"
 command = ["python3", "-B", "scripts/devtool/r47_gate.py"]
 inputs = ["scripts/devtool/r47_*.py", "scripts/devtool/r47_emulator_ci.sh", "scripts/devtool/test_r47_gate.py", "app/src/androidTest/java/com/sdvsync/qualification/R47SyntheticExperienceDeviceTest.kt", ".github/workflows/r47-ui-acceptance.yml", "docs/security/M3_RELEASE_POLICY.json", ".devtool.toml"]
 metadata = { read_only = true, device_required = false, root_required = false, live_update_enabled = false, release_enabled = false }
+
+# M25-00/M25-01 source-only metadata and privacy checks; hosted Android builds unchanged.
+[targets.cinderbox.jobs.m25-profile-source]
+runner = "command"
+execution_environment = "host"
+command = ["python3", "-B", "scripts/devtool/m25_profile_gate.py"]
+inputs = ["app/src/main/java/com/sdvsync/mods/models/ModProfile.kt", "app/src/main/java/com/sdvsync/mods/profile/**", "app/src/main/java/com/sdvsync/mods/ModDataStore.kt", "app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt", "app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt", "scripts/devtool/m25_profile_gate.py", "docs/security/M3_RELEASE_POLICY.json"]
+metadata = { read_only = true, device_required = false, root_required = false, live_update_enabled = false, release_enabled = false }
+
+[wrapper.commands.m25-profile-check]
+description = "M25-01 metadata-only portable profile source checks, no Gradle or device"
+workflow = "m25-profile-check"
+target = "cinderbox"
