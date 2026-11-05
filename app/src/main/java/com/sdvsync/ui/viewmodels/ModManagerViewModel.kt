@@ -18,6 +18,8 @@ import com.sdvsync.mods.api.SmapiUpdateChecker
 import com.sdvsync.mods.models.InstallResult
 import com.sdvsync.mods.models.InstalledMod
 import com.sdvsync.mods.models.ModProfile
+import com.sdvsync.mods.profile.PortableProfileCodec
+import java.util.UUID
 import com.sdvsync.mods.models.ModUpdateInfo
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -50,7 +52,18 @@ data class ModManagerState(
     val activeProfileName: String? = null,
     val isApplyingProfile: Boolean = false,
     val compatibilityIssues: List<ModCompatibilityIssue> = emptyList(),
-    val profileMessage: String? = null
+    val profileMessage: String? = null,
+    val pendingPortableProfile: PortableProfileReview? = null
+)
+
+/** The import candidate is metadata only and never implies any mod action. */
+data class PortableProfileReview(
+    val profile: ModProfile,
+    val missingMods: List<String>,
+    val blockers: List<String>,
+    val proposedChanges: Int,
+    val inventoryFingerprint: String,
+    val nameTaken: Boolean
 )
 
 class ModManagerViewModel(
@@ -259,31 +272,122 @@ class ModManagerViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val profiles = dataStore.getProfiles()
-                val activeName = detectActiveProfile(profiles)
-                _state.update { it.copy(profiles = profiles, activeProfileName = activeName) }
+                _state.update {
+                    it.copy(profiles = profiles, activeProfileName = detectActiveProfile(profiles))
+                }
             } catch (e: Exception) {
-                AppLogger.e(TAG, "Failed to load profiles", e)
+                AppLogger.e(TAG, "M25 profile decode refused", e)
+                _state.update { it.copy(profileMessage = "Profiles unreadable; original stored data was kept") }
             }
         }
     }
 
     fun saveCurrentAsProfile(name: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val enabledIds = _state.value.installedMods
-                .filter { it.enabled }
-                .map { it.manifest.uniqueID }
-                .toSet()
+            try {
+                val ids = _state.value.installedMods.filter { it.enabled }
+                    .map { it.manifest.uniqueID }.toSet()
+                val label = PortableProfileCodec.checkedName(name)
+                val prior = dataStore.getProfiles().firstOrNull {
+                    it.name.equals(label, ignoreCase = true)
+                }
+                // Keep the existing UUID, notes and other metadata when resaving
+                // the current loadout under an existing name (the pre-M25 behavior).
+                // A protected profile is never silently replaced.
+                require(prior?.isProtected != true) { "Protected profile" }
+                val profile = prior?.copy(enabledModIds = ids,
+                    modifiedAt = System.currentTimeMillis()) ?: ModProfile(label, ids)
+                dataStore.saveProfile(profile)
+                _state.update { it.copy(profileMessage = "Profile saved") }
+                loadProfiles()
+            } catch (e: Exception) {
+                _state.update { it.copy(profileMessage = "Profile not saved; check name or stored data") }
+            }
+        }
+    }
 
-            val profile = ModProfile(name = name, enabledModIds = enabledIds)
-            dataStore.saveProfile(profile)
+    fun exportPortableProfile(profile: ModProfile, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val successful = runCatching {
+                val item = dataStore.getProfiles().single { it.id == profile.id }
+                val payload = PortableProfileCodec.export(item)
+                val output = requireNotNull(context.contentResolver.openOutputStream(uri, "w"))
+                output.use { it.write(payload) }
+            }.isSuccess
+            _state.update { it.copy(profileMessage = if (successful)
+                "Profile exported (metadata only)" else "Profile export failed") }
+        }
+    }
 
-            val profiles = dataStore.getProfiles()
-            _state.update {
-                it.copy(
-                    profiles = profiles,
-                    activeProfileName = name,
-                    profileMessage = "Profile \"$name\" saved"
+    fun previewPortableImport(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val input = requireNotNull(context.contentResolver.openInputStream(uri))
+                val imported = PortableProfileCodec.import(input)
+                val installed = _state.value.installedMods
+                val installedIds = installed.map {
+                    PortableProfileCodec.canonicalId(it.manifest.uniqueID)
+                }.toSet()
+                val missing = imported.enabledModIds.filter { it !in installedIds }.sorted()
+                val preview = ModCompatibility.preview(installed, imported)
+                val existing = dataStore.getProfiles().any {
+                    it.name.equals(imported.name, ignoreCase = true)
+                }
+                _state.update { it.copy(
+                    pendingPortableProfile = PortableProfileReview(
+                        imported, missing, preview.blockers.map { issue -> issue.message }.take(12),
+                        preview.steps.size, preview.fingerprint, existing
+                    ), profileMessage = null
+                ) }
+            } catch (e: Exception) {
+                _state.update { it.copy(pendingPortableProfile = null,
+                    profileMessage = "Profile import refused: invalid or unreadable JSON") }
+            }
+        }
+    }
+
+    fun dismissPortableImport() {
+        _state.update { it.copy(pendingPortableProfile = null) }
+    }
+
+    /** Saving a portable file never invokes applyProfileSafely, downloads or file renames. */
+    fun savePortableImport(name: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val preview = _state.value.pendingPortableProfile ?: return@launch
+            try {
+                require(ModCompatibility.fingerprint(_state.value.installedMods) ==
+                    preview.inventoryFingerprint) { "Stale import preview" }
+                val safeName = PortableProfileCodec.checkedName(name)
+                val profile = preview.profile.copy(
+                    id = UUID.randomUUID().toString(), name = safeName,
+                    modifiedAt = System.currentTimeMillis(), isProtected = false
                 )
+                dataStore.saveProfile(profile)
+                _state.update { it.copy(pendingPortableProfile = null,
+                    profileMessage = "Profile metadata imported; no mods were changed") }
+                loadProfiles()
+            } catch (e: Exception) {
+                _state.update { it.copy(profileMessage =
+                    "Profile not imported: duplicate name, invalid data or changed inventory") }
+            }
+        }
+    }
+
+    fun saveProfileNote(profile: ModProfile, uniqueId: String, note: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val id = PortableProfileCodec.canonicalId(uniqueId.trim())
+                require(note.length <= 1200 && '\u0000' !in note)
+                val current = dataStore.getProfiles().single { it.id == profile.id }
+                require(!current.isProtected) { "Protected" }
+                val updatedNotes = current.notes.toMutableMap()
+                if (note.isBlank()) updatedNotes.remove(id) else updatedNotes[id] = note
+                dataStore.saveProfile(current.copy(notes = updatedNotes,
+                    modifiedAt = System.currentTimeMillis()))
+                _state.update { it.copy(profileMessage = "Profile note saved") }
+                loadProfiles()
+            } catch (e: Exception) {
+                _state.update { it.copy(profileMessage = "Profile note not saved") }
             }
         }
     }
@@ -310,8 +414,12 @@ class ModManagerViewModel(
 
     fun deleteProfile(name: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            dataStore.deleteProfile(name)
-            loadProfiles()
+            try {
+                dataStore.deleteProfile(name)
+                loadProfiles()
+            } catch (e: Exception) {
+                _state.update { it.copy(profileMessage = "Profile deletion refused") }
+            }
         }
     }
 
@@ -325,7 +433,12 @@ class ModManagerViewModel(
             .map { it.manifest.uniqueID }
             .toSet()
 
-        return profiles.find { it.enabledModIds == currentEnabled }?.name
+        val enabledCanonical = currentEnabled.map { it.lowercase(java.util.Locale.ROOT) }.toSet()
+        // Matching a loadout is informational, not proof that the user selected a profile.
+        return profiles.singleOrNull {
+            it.enabledModIds.map { id -> id.lowercase(java.util.Locale.ROOT) }.toSet() ==
+                enabledCanonical
+        }?.name
     }
 
     private fun updateDisplayedMods() {
