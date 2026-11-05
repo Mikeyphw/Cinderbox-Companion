@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.sdvsync.cinderbox.CinderboxLayoutEvents
 import com.sdvsync.logging.AppLogger
 import com.sdvsync.mods.ModDataStore
+import com.sdvsync.mods.ModUpdatePolicy
 import com.sdvsync.mods.ModFileManager
 import com.sdvsync.mods.ModCompatibility
 import com.sdvsync.mods.ModCompatibilityIssue
@@ -35,6 +36,10 @@ enum class ModFilter { ALL, ENABLED, DISABLED, HAS_UPDATE }
 data class ModManagerState(
     val installedMods: List<InstalledMod> = emptyList(),
     val updates: Map<String, ModUpdateInfo> = emptyMap(),
+    val rawUpdates: Map<String, ModUpdateInfo> = emptyMap(),
+    val ignoredUpdates: Map<String, ModUpdateInfo> = emptyMap(),
+    val showIgnoredUpdates: Boolean = false,
+    val updateError: String? = null,
     val isLoading: Boolean = true,
     val isCheckingUpdates: Boolean = false,
     val error: String? = null,
@@ -95,10 +100,14 @@ class ModManagerViewModel(
             _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val mods = fileManager.listInstalledMods()
-                val updates = dataStore.getUpdateCache()
+                val rawUpdates = dataStore.getUpdateCache()
+                val ignored = dataStore.ignoredUpdateVersions()
+                val actionable = ModUpdatePolicy.actionable(rawUpdates, ignored)
                 _state.update {
-                    it.copy(installedMods = mods, updates = updates, isLoading = false,
-                        compatibilityIssues = ModCompatibility.audit(mods))
+                    it.copy(installedMods = mods, updates = actionable,
+                        rawUpdates = rawUpdates,
+                        ignoredUpdates = ModUpdatePolicy.ignored(rawUpdates, ignored),
+                        isLoading = false, compatibilityIssues = ModCompatibility.audit(mods))
                 }
                 updateDisplayedMods()
                 loadProfiles()
@@ -106,7 +115,9 @@ class ModManagerViewModel(
 
                 // Auto-check for updates if stale
                 val lastCheck = dataStore.getLastUpdateCheck()
-                if (mods.isNotEmpty() && System.currentTimeMillis() - lastCheck > UPDATE_CHECK_INTERVAL_MS) {
+                val now = System.currentTimeMillis()
+                if (mods.isNotEmpty() && (lastCheck <= 0L || lastCheck > now ||
+                        now - lastCheck > UPDATE_CHECK_INTERVAL_MS)) {
                     checkForUpdates()
                 }
             } catch (e: Exception) {
@@ -129,14 +140,45 @@ class ModManagerViewModel(
                 val enabledMods = mods.filter { it.enabled }
                 val updates = updateChecker.checkForUpdates(enabledMods)
 
-                // Cache the results
+                // A successful check is the only path permitted to replace cache.
                 dataStore.setUpdateCache(updates)
-
-                _state.update { it.copy(updates = updates, isCheckingUpdates = false) }
+                val ignored = dataStore.ignoredUpdateVersions()
+                _state.update { it.copy(
+                    rawUpdates = updates,
+                    updates = ModUpdatePolicy.actionable(updates, ignored),
+                    ignoredUpdates = ModUpdatePolicy.ignored(updates, ignored),
+                    updateError = null, isCheckingUpdates = false) }
                 updateDisplayedMods()
             } catch (e: Exception) {
-                AppLogger.e(TAG, "Update check failed", e)
-                _state.update { it.copy(isCheckingUpdates = false) }
+                AppLogger.w(TAG, "Update check unavailable; previous cache retained")
+                _state.update { it.copy(isCheckingUpdates = false,
+                    updateError = "Update status unavailable; previous results retained") }
+            }
+        }
+    }
+
+    fun toggleIgnoredUpdates() {
+        _state.update { it.copy(showIgnoredUpdates = !it.showIgnoredUpdates) }
+    }
+
+    fun ignoreUpdate(uniqueID: String) = changeIgnoredVersion(uniqueID, ignore = true)
+    fun unignoreUpdate(uniqueID: String) = changeIgnoredVersion(uniqueID, ignore = false)
+
+    private fun changeIgnoredVersion(uniqueID: String, ignore: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val id = ModUpdatePolicy.normalizedId(uniqueID)
+                val raw = _state.value.rawUpdates.values.firstOrNull {
+                    ModUpdatePolicy.normalizedId(it.uniqueID) == id
+                } ?: return@launch
+                dataStore.setIgnoredUpdateVersion(id, if (ignore) raw.latestVersion else null)
+                val ignored = dataStore.ignoredUpdateVersions()
+                _state.update { it.copy(
+                    updates = ModUpdatePolicy.actionable(it.rawUpdates, ignored),
+                    ignoredUpdates = ModUpdatePolicy.ignored(it.rawUpdates, ignored)) }
+                updateDisplayedMods()
+            } catch (e: Exception) {
+                _state.update { it.copy(updateError = "Update preference not changed") }
             }
         }
     }

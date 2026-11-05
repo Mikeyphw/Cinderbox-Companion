@@ -12,6 +12,7 @@ import com.sdvsync.mods.models.AssociatedMod
 import com.sdvsync.mods.models.ModProfile
 import com.sdvsync.mods.profile.PortableProfileCodec
 import com.sdvsync.mods.models.ModUpdateInfo
+import com.sdvsync.mods.ModUpdatePolicy
 import com.sdvsync.mods.models.SaveModAssociation
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -30,6 +31,7 @@ class ModDataStore(private val context: Context) {
         private const val TAG = "ModDataStore"
         private val UPDATE_CACHE_KEY = stringPreferencesKey("update_cache")
         private val LAST_UPDATE_CHECK_KEY = longPreferencesKey("last_update_check")
+        private val IGNORED_UPDATE_VERSIONS_KEY = stringPreferencesKey("ignored_update_versions")
         private val MOD_METADATA_KEY = stringPreferencesKey("mod_metadata")
         private val PROFILES_KEY = stringPreferencesKey("mod_profiles")
         private val SAVE_MOD_ASSOCIATIONS_KEY = stringPreferencesKey("save_mod_associations")
@@ -89,6 +91,44 @@ class ModDataStore(private val context: Context) {
     suspend fun getLastUpdateCheck(): Long = context.modDataStore.data
         .map { prefs -> prefs[LAST_UPDATE_CHECK_KEY] ?: 0L }
         .first()
+
+    /** Atomic version-specific ignore preference. Never changes installed files. */
+    suspend fun ignoredUpdateVersions(): Map<String, String> = context.modDataStore.data
+        .map { prefs -> parseIgnoredUpdates(prefs[IGNORED_UPDATE_VERSIONS_KEY]) }
+        .first()
+
+    suspend fun setIgnoredUpdateVersion(uniqueID: String, version: String?) {
+        val key = ModUpdatePolicy.normalizedId(uniqueID)
+        require(key.length <= 128 && key.isNotBlank())
+        if (version != null) ModUpdatePolicy.checkedCandidateVersion(version)
+        context.modDataStore.edit { prefs ->
+            val existing = parseIgnoredUpdates(prefs[IGNORED_UPDATE_VERSIONS_KEY]).toMutableMap()
+            if (version == null) existing.remove(key) else existing[key] = version
+            require(existing.size <= 512) { "Too many ignored update preferences" }
+            val json = JSONObject()
+            existing.toSortedMap().forEach { (id, candidate) -> json.put(id, candidate) }
+            prefs[IGNORED_UPDATE_VERSIONS_KEY] = json.toString()
+        }
+    }
+
+    /** Invalid ignore metadata must not be silently replaced with an empty list. */
+    private fun parseIgnoredUpdates(raw: String?): Map<String, String> {
+        if (raw == null) return emptyMap()
+        require(raw.length <= 65536) { "Ignored update metadata is too large" }
+        val objectValue = JSONObject(raw)
+        require(objectValue.length() <= 512) { "Too many ignored updates" }
+        val output = linkedMapOf<String, String>()
+        val keys = objectValue.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = objectValue.get(key)
+            require(value is String) { "Invalid candidate version type" }
+            val id = ModUpdatePolicy.normalizedId(key)
+            ModUpdatePolicy.checkedCandidateVersion(value)
+            require(output.put(id, value) == null) { "Duplicate ignored update ID" }
+        }
+        return output
+    }
 
     // ── Mod Metadata (install source, timestamps) ───────────────────────
 

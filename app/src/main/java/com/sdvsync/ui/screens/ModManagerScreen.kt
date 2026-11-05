@@ -406,6 +406,49 @@ fun ModManagerScreen(
                             }
                         }
 
+                        // M25-02 R1: actionable updates and reversible exact-version ignores.
+                        // This is metadata UI; no download or mod installation occurs here.
+                        if (state.ignoredUpdates.isNotEmpty()) {
+                            item {
+                                TextButton(onClick = { viewModel.toggleIgnoredUpdates() }) {
+                                    Text(if (state.showIgnoredUpdates)
+                                        "Hide ignored updates" else
+                                        "Show ignored updates (${state.ignoredUpdates.size})")
+                                }
+                            }
+                        }
+                        if (state.updateError != null) {
+                            item {
+                                Text(state.updateError!!,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        val visibleUpdates = (state.updates.values +
+                            if (state.showIgnoredUpdates) state.ignoredUpdates.values else emptyList())
+                            .sortedBy { it.uniqueID.lowercase(java.util.Locale.ROOT) }
+                        itemsIndexed(visibleUpdates, key = { _, update ->
+                            "update:" + update.uniqueID.lowercase(java.util.Locale.ROOT)
+                        }) { _, update ->
+                            val ignored = state.ignoredUpdates.values.any {
+                                it.uniqueID.equals(update.uniqueID, ignoreCase = true)
+                            }
+                            StardewCard(modifier = Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text(update.uniqueID, style = MaterialTheme.typography.titleSmall)
+                                    Text("${update.installedVersion} → ${update.latestVersion}",
+                                        style = MaterialTheme.typography.bodySmall)
+                                    TextButton(onClick = {
+                                        if (ignored) viewModel.unignoreUpdate(update.uniqueID)
+                                        else viewModel.ignoreUpdate(update.uniqueID)
+                                    }) {
+                                        Text(if (ignored) "Stop ignoring this version" else
+                                            "Ignore this version")
+                                    }
+                                }
+                            }
+                        }
+
                         if (state.displayedMods.isEmpty()) {
                             item {
                                 Box(

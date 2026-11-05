@@ -1,0 +1,61 @@
+name: M25-02 Update Metadata Safety and Hosted JVM Tests
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/sdvsync/mods/**'
+      - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt'
+      - 'app/src/test/java/com/sdvsync/mods/ModUpdatePolicyTest.kt'
+      - '.github/workflows/m25-update-source.yml'
+      - 'scripts/devtool/m25_update_*'
+      - 'scripts/devtool/test_m25_update_*'
+      - '.devtool.toml'
+  push:
+    branches: [master]
+    paths:
+      - 'app/src/main/java/com/sdvsync/mods/**'
+      - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt'
+      - 'app/src/test/java/com/sdvsync/mods/ModUpdatePolicyTest.kt'
+      - '.github/workflows/m25-update-source.yml'
+      - 'scripts/devtool/m25_update_*'
+      - 'scripts/devtool/test_m25_update_*'
+      - '.devtool.toml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-policy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 -B scripts/devtool/m25_update_gate.py
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_m25_update_gate.py' -v
+          python3 -B scripts/devtool/m25_profile_gate.py
+          python3 -B scripts/devtool/r47_gate.py
+  jvm-update-policy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Targeted Kotlin policy tests on GitHub, never Termux
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:testDebugUnitTest --tests com.sdvsync.mods.ModUpdatePolicyTest
