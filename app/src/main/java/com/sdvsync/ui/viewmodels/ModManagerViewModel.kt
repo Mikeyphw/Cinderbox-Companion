@@ -11,6 +11,9 @@ import com.sdvsync.mods.ModUpdatePolicy
 import com.sdvsync.mods.ModUpdateObservation
 import com.sdvsync.mods.ModFileManager
 import com.sdvsync.mods.ModCompatibility
+import com.sdvsync.mods.ModSelectionPolicy
+import com.sdvsync.mods.ModGroupMode
+import com.sdvsync.mods.ModBulkPreview
 import com.sdvsync.mods.ModCompatibilityIssue
 import com.sdvsync.mods.ModProfilePreview
 import com.sdvsync.mods.ModArchivePreview
@@ -56,6 +59,10 @@ data class ModManagerState(
     val filter: ModFilter = ModFilter.ALL,
     val searchQuery: String = "",
     val displayedMods: List<InstalledMod> = emptyList(),
+    val groupMode: ModGroupMode = ModGroupMode.ALL,
+    val selectionMode: Boolean = false,
+    val selectedModIds: Set<String> = emptySet(),
+    val bulkPreview: ModBulkPreview? = null,
     val profiles: List<ModProfile> = emptyList(),
     val activeProfileName: String? = null,
     val isApplyingProfile: Boolean = false,
@@ -114,6 +121,7 @@ class ModManagerViewModel(
                 val actionable = ModUpdatePolicy.actionable(rawUpdates, ignored)
                 _state.update {
                     it.copy(installedMods = mods, updates = actionable,
+                        selectedModIds = emptySet(), bulkPreview = null, selectionMode = false,
                         rawUpdates = rawUpdates, updateObservations = observations,
                         lastUpdateCheckMs = lastSuccess,
                         ignoredUpdates = ModUpdatePolicy.ignored(rawUpdates, ignored),
@@ -307,18 +315,64 @@ class ModManagerViewModel(
     }
 
     fun setFilter(filter: ModFilter) {
-        _state.update { it.copy(filter = filter) }
+        _state.update { it.copy(filter = filter, selectedModIds = emptySet(), bulkPreview = null) }
         updateDisplayedMods()
     }
 
     fun setSortOrder(order: ModSortOrder) {
-        _state.update { it.copy(sortOrder = order) }
+        _state.update { it.copy(sortOrder = order, selectedModIds = emptySet(), bulkPreview = null) }
         updateDisplayedMods()
     }
 
     fun setSearchQuery(query: String) {
-        _state.update { it.copy(searchQuery = query) }
+        _state.update { it.copy(searchQuery = query, selectedModIds = emptySet(), bulkPreview = null) }
         updateDisplayedMods()
+    }
+
+    // M25-03 R1: explicit, visible metadata-only selection. No file changes.
+    fun setGroupMode(mode: ModGroupMode) {
+        _state.update { it.copy(groupMode = mode, selectedModIds = emptySet(), bulkPreview = null) }
+        updateDisplayedMods()
+    }
+
+    fun setSelectionMode(enabled: Boolean) {
+        _state.update { it.copy(selectionMode = enabled, selectedModIds = emptySet(), bulkPreview = null) }
+    }
+
+    fun clearModSelection() {
+        _state.update { it.copy(selectedModIds = emptySet(), bulkPreview = null) }
+    }
+
+    fun selectVisibleMods() {
+        _state.update { old ->
+            if (!old.selectionMode || old.displayedMods.size > ModSelectionPolicy.MAX_SELECTION) old
+            else old.copy(selectedModIds = old.displayedMods.map {
+                ModSelectionPolicy.normalized(it.manifest.uniqueID) }.toSet(), bulkPreview = null)
+        }
+    }
+
+    fun toggleSelectedMod(uniqueId: String) {
+        _state.update { old ->
+            val id = ModSelectionPolicy.normalized(uniqueId)
+            if (!old.selectionMode || old.displayedMods.none {
+                    ModSelectionPolicy.normalized(it.manifest.uniqueID) == id }) return@update old
+            val next = old.selectedModIds.toMutableSet()
+            if (!next.remove(id)) next.add(id)
+            if (next.size > ModSelectionPolicy.MAX_SELECTION) old
+            else old.copy(selectedModIds = next, bulkPreview = null)
+        }
+    }
+
+    fun previewSelectedMods(enable: Boolean) {
+        _state.update { old ->
+            if (!old.selectionMode) old
+            else old.copy(bulkPreview = ModSelectionPolicy.preview(
+                old.installedMods, old.selectedModIds, enable))
+        }
+    }
+
+    fun dismissBulkPreview() {
+        _state.update { it.copy(bulkPreview = null) }
     }
 
     // ── Profiles ─────────────────────────────────────────────────────────
@@ -518,17 +572,40 @@ class ModManagerViewModel(
                 }
             }
 
+            // M25-03 R1 group/filter remains read-only and deterministic.
+            val attention = state.updates.keys.map(ModSelectionPolicy::normalized).toSet()
+            val issues = state.compatibilityIssues.map {
+                ModSelectionPolicy.normalized(it.mod) }.toSet()
+            mods = mods.filter { ModSelectionPolicy.matches(it, state.groupMode, attention, issues) }
+
             // Sort
             mods = when (state.sortOrder) {
-                ModSortOrder.NAME -> mods.sortedBy { it.manifest.name.lowercase() }
-                ModSortOrder.AUTHOR -> mods.sortedBy { it.manifest.author.lowercase() }
+                ModSortOrder.NAME -> mods.sortedWith(compareBy<InstalledMod> {
+                    it.manifest.name.lowercase(java.util.Locale.ROOT)
+                }.thenBy { it.manifest.uniqueID.lowercase(java.util.Locale.ROOT) }
+                    .thenBy { it.folderName })
+                ModSortOrder.AUTHOR -> mods.sortedWith(compareBy<InstalledMod> {
+                    it.manifest.author.lowercase(java.util.Locale.ROOT)
+                }.thenBy { it.manifest.name.lowercase(java.util.Locale.ROOT) }
+                    .thenBy { it.manifest.uniqueID.lowercase(java.util.Locale.ROOT) }
+                    .thenBy { it.folderName })
                 ModSortOrder.STATUS -> mods.sortedWith(
                     compareByDescending<InstalledMod> { it.enabled }
                         .thenBy { it.manifest.name.lowercase() }
                 )
             }
 
-            state.copy(displayedMods = mods)
+            if (state.groupMode == ModGroupMode.BY_AUTHOR) {
+                mods = mods.sortedWith(compareBy<InstalledMod> {
+                    it.manifest.author.lowercase(java.util.Locale.ROOT)
+                }.thenBy { it.manifest.name.lowercase(java.util.Locale.ROOT) }
+                    .thenBy { it.manifest.uniqueID.lowercase(java.util.Locale.ROOT) }
+                    .thenBy { it.folderName })
+            }
+            val visibleIds = mods.map { ModSelectionPolicy.normalized(it.manifest.uniqueID) }.toSet()
+            val remainingSelected = state.selectedModIds.intersect(visibleIds)
+            state.copy(displayedMods = mods, selectedModIds = remainingSelected,
+                bulkPreview = if (remainingSelected != state.selectedModIds) null else state.bulkPreview)
         }
     }
 }

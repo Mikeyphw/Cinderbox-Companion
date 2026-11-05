@@ -21,6 +21,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.sdvsync.R
 import com.sdvsync.mods.models.ModProfile
+import com.sdvsync.mods.ModGroupMode
 import com.sdvsync.mods.ModSnapshot
 import com.sdvsync.ui.animation.StaggeredAnimatedItem
 import com.sdvsync.ui.components.EmptyState
@@ -108,6 +109,7 @@ fun ModManagerScreen(
     var showDeleteProfileConfirm by remember { mutableStateOf<String?>(null) }
     var restoreConfirm by remember { mutableStateOf<ModSnapshot?>(null) }
     var showSnapshots by remember { mutableStateOf(false) }
+    var groupMenuExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.importMessage) { viewModel.refreshSafetyState() }
     if (state.hasPendingReview) {
@@ -151,6 +153,33 @@ fun ModManagerScreen(
                 viewModel.restoreRetainedSnapshot(snapshot.id); restoreConfirm = null
             }) { Text("Restore") } },
             dismissButton = { TextButton(onClick = { restoreConfirm = null }) { Text("Cancel") } })
+    }
+
+    // M25-03 R1 preview only: deliberately has no Apply/Confirm action.
+    state.bulkPreview?.let { preview ->
+        AlertDialog(onDismissRequest = { viewModel.dismissBulkPreview() },
+            title = { Text("Bulk preview only") },
+            text = {
+                Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                    Text("Selected ${preview.selectedIds.size} mods · ${preview.steps.size} proposed changes")
+                    Text("Inventory fingerprint: ${preview.inventoryFingerprint.take(12)}…",
+                        style = MaterialTheme.typography.bodySmall)
+                    preview.steps.take(50).forEach { step ->
+                        Text("${step.name}: ${step.fromFolder} → ${step.toFolder}",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    preview.blockers.take(30).forEach { issue ->
+                        Text("Blocked: ${issue.mod} — ${issue.message}",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text("No folders were changed. Batch transactions require separate R2 acceptance.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = { TextButton(onClick = { viewModel.dismissBulkPreview() }) {
+                Text("Close preview")
+            } })
     }
 
     Scaffold(
@@ -331,6 +360,51 @@ fun ModManagerScreen(
                             )
                         }
 
+                        // M25-03: compact grouping and explicit visible-only selection.
+                        item {
+                            Row(Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Box {
+                                    TextButton(onClick = { groupMenuExpanded = true }) {
+                                        Text("Group mods: ${state.groupMode.label}")
+                                    }
+                                    DropdownMenu(expanded = groupMenuExpanded,
+                                        onDismissRequest = { groupMenuExpanded = false }) {
+                                        ModGroupMode.entries.forEach { mode ->
+                                            DropdownMenuItem(text = { Text(mode.label) },
+                                                onClick = {
+                                                    viewModel.setGroupMode(mode)
+                                                    groupMenuExpanded = false
+                                                })
+                                        }
+                                    }
+                                }
+                                TextButton(onClick = { viewModel.setSelectionMode(!state.selectionMode) }) {
+                                    Text(if (state.selectionMode) "Exit selection" else "Select mods")
+                                }
+                            }
+                            if (state.selectionMode) {
+                                Text("${state.selectedModIds.size} selected · ${state.displayedMods.size} visible",
+                                    style = MaterialTheme.typography.bodySmall)
+                                @OptIn(ExperimentalLayoutApi::class)
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    TextButton(onClick = { viewModel.selectVisibleMods() },
+                                        enabled = state.displayedMods.size <= 512) { Text("Select visible") }
+                                    TextButton(onClick = { viewModel.clearModSelection() }) {
+                                        Text("Clear selection")
+                                    }
+                                    TextButton(onClick = { viewModel.previewSelectedMods(true) },
+                                        enabled = state.selectedModIds.isNotEmpty()) {
+                                        Text("Enable selected")
+                                    }
+                                    TextButton(onClick = { viewModel.previewSelectedMods(false) },
+                                        enabled = state.selectedModIds.isNotEmpty()) {
+                                        Text("Disable selected")
+                                    }
+                                }
+                            }
+                        }
+
                         // Filter chips
                         item {
                             @OptIn(ExperimentalLayoutApi::class)
@@ -479,19 +553,36 @@ fun ModManagerScreen(
                             }
                         }
 
-                        itemsIndexed(state.displayedMods, key = { _, mod -> mod.manifest.uniqueID }) { index, mod ->
+                        itemsIndexed(state.displayedMods, key = { _, mod -> mod.folderName }) { index, mod ->
                             StaggeredAnimatedItem(index = index) {
-                                ModCard(
-                                    mod = mod,
-                                    hasUpdate = state.updates.containsKey(mod.manifest.uniqueID),
-                                    onToggle = { enabled ->
-                                        viewModel.toggleMod(
-                                            mod.folderName,
-                                            enabled
-                                        )
-                                    },
-                                    onClick = { onModClick(mod.manifest.uniqueID) }
-                                )
+                                if (state.groupMode == ModGroupMode.BY_AUTHOR &&
+                                    (index == 0 || state.displayedMods[index - 1].manifest.author
+                                        != mod.manifest.author)) {
+                                    Text(mod.manifest.author.ifBlank { "Unknown author" },
+                                        style = MaterialTheme.typography.titleSmall)
+                                }
+                                if (state.selectionMode) {
+                                    StardewCard(modifier = Modifier.fillMaxWidth()) {
+                                        Row(Modifier.padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically) {
+                                            Checkbox(checked = state.selectedModIds.contains(
+                                                mod.manifest.uniqueID.lowercase(java.util.Locale.ROOT)),
+                                                onCheckedChange = { viewModel.toggleSelectedMod(mod.manifest.uniqueID) })
+                                            Column(Modifier.weight(1f)) {
+                                                Text(mod.manifest.name, style = MaterialTheme.typography.titleSmall)
+                                                Text("${mod.manifest.author} · ${if (mod.enabled) "Enabled" else "Disabled"}",
+                                                    style = MaterialTheme.typography.bodySmall)
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    ModCard(
+                                        mod = mod,
+                                        hasUpdate = state.updates.containsKey(mod.manifest.uniqueID),
+                                        onToggle = { enabled -> viewModel.toggleMod(mod.folderName, enabled) },
+                                        onClick = { onModClick(mod.manifest.uniqueID) }
+                                    )
+                                }
                             }
                         }
 
