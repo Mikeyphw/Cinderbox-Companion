@@ -60,8 +60,42 @@ def check(root:Path=ROOT)->None:
     path=root/CONFIG
     assert path.is_file() and not path.is_symlink(),'R47_CONFIG_MISSING_OR_LINKED'
     raw=path.read_bytes()
-    assert sha_blob(raw)==POST_BLOB,'R47_CONFIG_POST_BLOB_DRIFT'
+    # R47's historical post-image is immutable for its original patch command,
+    # but it is not an immutable *entire future Devtool configuration*.  A
+    # source-only R47 gate must permit independent additional targets/workflows.
+    # Instead, pin the complete R47-owned command, DAG, and read-only job.
     c=tomllib.loads(raw.decode('utf-8'))
+    assert c['project'] == {'runner': 'android', 'platform': 'android'}, 'R47_PROJECT_CHANGED'
+    assert c['workspace']['default_target'] == 'cinderbox', 'R47_DEFAULT_TARGET_CHANGED'
+    assert c['wrapper']['schema'] == 2, 'R47_WRAPPER_SCHEMA_CHANGED'
+    command=c['wrapper']['commands']['r47-check']
+    assert command == {
+        'description': 'R47 read-only synthetic UI and accessibility source contracts (no Gradle/device)',
+        'workflow': 'r47-check', 'target': 'cinderbox',
+    }, 'R47_COMMAND_CHANGED'
+    assert c['targets']['cinderbox']['workflows']['r47-check'] == [
+        {'id': 'security', 'ref': 'job:security-contract', 'depends_on': []},
+        {'id': 'r44b', 'ref': 'job:r44b-experience-source', 'depends_on': ['security']},
+        {'id': 'r45', 'ref': 'job:r45r2-audit-source', 'depends_on': ['r44b']},
+        {'id': 'r47', 'ref': 'job:r47-ui-source', 'depends_on': ['r45']},
+    ], 'R47_DAG_CHANGED'
+    job=c['targets']['cinderbox']['jobs']['r47-ui-source']
+    assert job == {
+        'runner': 'command',
+        'execution_environment': 'host',
+        'command': ['python3', '-B', 'scripts/devtool/r47_gate.py'],
+        'inputs': [
+            'scripts/devtool/r47_*.py', 'scripts/devtool/r47_emulator_ci.sh',
+            'scripts/devtool/test_r47_gate.py',
+            'app/src/androidTest/java/com/sdvsync/qualification/R47SyntheticExperienceDeviceTest.kt',
+            '.github/workflows/r47-ui-acceptance.yml',
+            'docs/security/M3_RELEASE_POLICY.json', '.devtool.toml',
+        ],
+        'metadata': {
+            'read_only': True, 'device_required': False, 'root_required': False,
+            'live_update_enabled': False, 'release_enabled': False,
+        },
+    }, 'R47_JOB_CHANGED'
     assert c['wrapper']['commands']['r47-check']['workflow']=='r47-check'
     assert [x['id'] for x in c['targets']['cinderbox']['workflows']['r47-check']]==['security','r44b','r45','r47']
     job=c['targets']['cinderbox']['jobs']['r47-ui-source']
