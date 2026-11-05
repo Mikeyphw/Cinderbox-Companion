@@ -47,6 +47,18 @@ class CompactHeaderTests(unittest.TestCase):
             f.write_text(f.read_text().replace('SteamLiveBadge()\n                        actions()', 'SteamLiveBadge()'))
             self.assertTrue(gate.check(p))
 
+    def test_flow_row_experimental_opt_in_is_mandatory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            p = Path(temp)
+            self.make_fixture(p)
+            f = p / SOURCES[0]
+            source = f.read_text()
+            self.assertIn('@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)', source)
+            f.write_text(source.replace(
+                '@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)',
+                '@OptIn(ExperimentalMaterial3Api::class)'))
+            self.assertTrue(any('ExperimentalLayoutApi::class' in e for e in gate.check(p)))
+
     def test_release_policy_cannot_be_promoted(self):
         with tempfile.TemporaryDirectory() as temp:
             p = Path(temp)

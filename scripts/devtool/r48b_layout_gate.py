@@ -20,6 +20,8 @@ def check(root: Path = ROOT) -> list[str]:
         'if (!compact)',
         'Row { SteamLiveBadge(); actions() }',
         'if (compact)',
+        'import androidx.compose.foundation.layout.ExperimentalLayoutApi',
+        '@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)',
         'FlowRow(',
         'SteamLiveBadge()\n                        actions()',
         'horizontalArrangement = Arrangement.spacedBy(8.dp)',
