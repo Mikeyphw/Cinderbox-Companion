@@ -1,0 +1,93 @@
+name: Cinderbox UX-09B2 — 21 native states, four read-only deep routes
+on:
+  pull_request:
+    paths:
+      - 'app/src/androidTest/java/com/sdvsync/ui/ux/**'
+      - 'scripts/devtool/ux09b2_*'
+      - 'scripts/devtool/test_ux09b2_gate.py'
+      - 'design/cinderbox/02_CONTRACT/**'
+      - '.github/workflows/cinderbox-ux09b2-deep-evidence.yml'
+      - 'docs/security/M3_RELEASE_POLICY.json'
+  push:
+    branches: [master]
+    paths:
+      - 'app/src/androidTest/java/com/sdvsync/ui/ux/**'
+      - 'scripts/devtool/ux09b2_*'
+      - '.github/workflows/cinderbox-ux09b2-deep-evidence.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cinderbox-ux09b2-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source-and-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Source-pinned deep-route tests, safety and visual reference hash
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 -B scripts/devtool/ux09b2_gate.py
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_ux09b2_gate.py' -v
+          python3 -B scripts/devtool/ux09b_gate.py
+          python3 -B scripts/devtool/ux09a_gate.py
+          python3 -B design/cinderbox/03_CI/scripts/check_native_parity.py --repo-root .
+          python3 -B scripts/devtool/ux08c_gate.py
+  hosted-api36-deep-capture:
+    needs: source-and-safety
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - run: sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Build debug app and instrumentation APK only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Verify KVM for disposable hosted emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+      - run: sdkmanager --install 'system-images;android-36;google_apis;x86_64'
+      - run: python3 -m pip install --user 'Pillow==11.3.0'
+      - name: Capture existing 17 plus four deep, actual offline MainActivity
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          disk-size: 3072M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash scripts/devtool/ux09b2_emulator_ci.sh
+      - name: Publish sanitized screenshots, differences and explicit three-case gap
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: ux09b2-read-only-deep-21-of-24-api36
+          path: ${{ runner.temp }}/ux09b-native-fidelity/
+          if-no-files-found: warn
+          retention-days: 14
