@@ -482,7 +482,13 @@ private fun ModsPaneSelector(selected: ModsPane, onSelect: (ModsPane) -> Unit) {
                 modifier = Modifier.weight(1f).heightIn(min = 48.dp)
                     .testTag("cinderbox.mods.section.${pane.name.lowercase(java.util.Locale.ROOT)}")
                     .selectable(selected = isSelected, role = Role.Tab) { onSelect(pane) }) {
-                Box(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 2.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 2.dp)
+                    .testTag(when (pane) {
+                        ModsPane.DISCOVER -> "cinderbox.mods.discover"
+                        ModsPane.INSTALLED -> "cinderbox.mods.installed"
+                        ModsPane.UPDATES -> "cinderbox.mods.updates"
+                        ModsPane.PROFILES -> "cinderbox.mods.profiles"
+                    }), contentAlignment = Alignment.Center) {
                     Text(pane.label, maxLines = 2, overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
                 }

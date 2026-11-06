@@ -89,7 +89,8 @@ fun ApprovedSavesScreen(
         }
         item {
             Surface(color = Dark.Paper, shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, Dark.Line)) {
+                border = BorderStroke(1.dp, Dark.Line),
+                modifier = Modifier.testTag("cinderbox.saves.cloud-pane")) {
                 Row(Modifier.fillMaxWidth().padding(5.dp),
                     horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     SavePaneButton("Local saves", selected = !cloudSelected,
