@@ -1,0 +1,128 @@
+name: M25-03 R2F Shizuku Service Diagnostics and Bounded Retry
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/m25-r2f-shizuku-diagnostics.yml'
+      - 'app/src/main/java/com/sdvsync/fileaccess/ShizukuFileAccess.kt'
+      - 'app/src/main/java/com/sdvsync/fileaccess/ShizukuGameDiagnostic.kt'
+      - 'app/src/test/java/com/sdvsync/fileaccess/ShizukuGameDiagnosticTest.kt'
+      - 'app/src/androidTest/java/com/sdvsync/mods/GameSessionDeviceProbeTest.kt'
+      - 'scripts/devtool/m25_r2f_shizuku_gate.py'
+      - 'scripts/devtool/m25_r2f_shizuku_device.zsh'
+      - 'docs/devtool/M25_03_R2F_SHIZUKU_DIAGNOSTICS.md'
+  push:
+    branches: [master]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: m25-r2f-shizuku-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Fail closed and preserve R1-R2E source safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 -B scripts/devtool/m25_r2f_shizuku_gate.py
+          python3 -B scripts/devtool/m25_bulk_r2e_gate.py
+          python3 -B scripts/devtool/m25_bulk_r2d_shizuku_gate.py
+          python3 -B scripts/devtool/m25_bulk_r2d_gate.py
+          python3 -B scripts/devtool/m25_bulk_r2c_gate.py
+          python3 -B scripts/devtool/m25_bulk_r2b_gate.py
+          python3 -B scripts/devtool/m25_bulk_gate.py
+          python3 -B scripts/devtool/m25_group_gate.py
+          python3 -B scripts/devtool/r47_gate.py
+          python3 -B scripts/devtool/r48_gate.py
+  hosted-kotlin-and-apks:
+    needs: [source-contract]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Run ten JVM fixtures and compile debug plus instrumentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:testDebugUnitTest \
+            --tests com.sdvsync.fileaccess.ShizukuGameDiagnosticTest \
+            --tests com.sdvsync.mods.GameSessionPrivilegedProviderTest \
+            --tests com.sdvsync.mods.GameSessionSafetyTest
+          ./gradlew --no-daemon --max-workers=2 :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Stage exact-source debug APK pair, checksums and safety receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/r2f-shizuku-apks"
+          mkdir -p "$out"
+          find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -exec cp '{}' "$out/" \;
+          find app/build/outputs/apk/androidTest/debug -maxdepth 1 -type f -name '*.apk' -exec cp '{}' "$out/" \;
+          test "$(find "$out" -maxdepth 1 -type f -name '*.apk' | wc -l)" = 2
+          (cd "$out" && sha256sum -- *.apk > SHA256SUMS.txt)
+          printf '{"source_sha":"%s","run_id":"%s","physical_device_qualified":false,"live_bulk_apply_enabled":false,"release_qualified":false}\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" > "$out/SOURCE.json"
+      - name: Upload opt-in physical-device diagnostic pair
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: R2F_SHIZUKU_APK_PAIR
+          path: ${{ runner.temp }}/r2f-shizuku-apks/
+          if-no-files-found: error
+          retention-days: 7
+  api36-no-shizuku-emulator:
+    needs: [hosted-kotlin-and-apks]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - run: sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'system-images;android-36;google_apis;x86_64'
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Build disposable debug app/test pair on hosted runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Require hosted KVM
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm
+          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then sudo chmod a+rw /dev/kvm; fi
+          test -r /dev/kvm && test -w /dev/kvm
+      - name: Run no-privilege policy-only instrumentation
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          disk-size: 3072M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash scripts/devtool/m25_r2e_emulator.sh
