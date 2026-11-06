@@ -167,7 +167,7 @@ def check(root: Path) -> None:
     assert 'HomeScreen(' in main and 'composable("home")' in main
     assert 'R45NavigationPolicy.isPrimaryRoute(route)' in main
     assert 'onOpenOperationCenter' in main and 'onOpenInstallationHealth' in main
-    assert 'BottomTab.HOME -> R45HomeIconData' in bottom
+    assert 'ApprovedTabIcon(tab, tint' in bottom and 'cinderbox.nav.home' in bottom
     assert '.selectableGroup()' in bottom and 'role = Role.Tab' in bottom
     assert '.heightIn(min = 56.dp)' in bottom
     for needle in ('R.string.tab_home', 'R.string.tab_game', 'R.string.tab_more'):

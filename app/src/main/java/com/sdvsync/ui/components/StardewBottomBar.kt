@@ -45,7 +45,7 @@ enum class BottomTab(val route: String, val labelRes: Int, val testTag: String) 
 fun StardewBottomBar(selectedTab: BottomTab, onTabSelected: (BottomTab) -> Unit, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier.fillMaxWidth().testTag("cinderbox.shell.bottomnav")
-            .drawBehind { drawLine(Dark.Line, Offset(0f, 0f), Offset(size.width, 0f), width = 1.dp.toPx()) },
+            .drawBehind { drawLine(Dark.Line, Offset(0f, 0f), Offset(size.width, 0f), strokeWidth = 1.dp.toPx()) },
         color = Dark.Paper
     ) {
         Row(
