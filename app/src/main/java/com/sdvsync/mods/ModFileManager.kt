@@ -31,6 +31,7 @@ class ModFileManager(
     private val profileTransactions = ModProfileTransaction(context.filesDir, modsDir)
     private val batchTransactions = ModBatchTransaction(context.filesDir, modsDir)
     private val bulkTransactions = ModBulkTransaction(context.filesDir, modsDir)
+    private var isolatedBulkReview: Pair<ModBulkPreview, BulkFolderReview>? = null
 
     fun isModsDirAccessible(): Boolean = modsDir.exists() && modsDir.isDirectory && modsDir.canRead()
 
@@ -183,16 +184,13 @@ class ModFileManager(
      * excluded: normal listInstalledMods() may migrate them, so it is NOT used here.
      * A filesystem witness is informative evidence, not user approval for a live write.
      */
-    @Synchronized fun previewBulkWithWitness(requestedIds: Set<String>, enable: Boolean): ModBulkPreview {
-        check(bulkTransactions.recover()) { "Bulk recovery needs manual inspection" }
-        check(batchTransactions.recover()) { "Batch recovery needs manual inspection" }
-        check(profileTransactions.recover()) { "Profile recovery needs manual inspection" }
-        check(safety.recover()) { "Mod operation recovery needs manual inspection" }
+    /** Read without migrating legacy names or walking arbitrary mod file trees. */
+    private fun scanBulkInventoryNoMigrations(): List<InstalledMod> {
         val folders = requireNotNull(modsDir.listFiles()) { "Mods inventory unavailable" }
         check(folders.none { Files.isSymbolicLink(it.toPath()) }) { "Linked entry in Mods" }
         // Avoid parseMod(): that legacy helper recursively walks files and follows aliases.
         // Byte verification belongs exclusively to the symlink-refusing transaction scanner.
-        val current = folders.filter { it.isDirectory && File(it, "manifest.json").isFile }
+        return folders.filter { it.isDirectory && File(it, "manifest.json").isFile }
             .map { folder ->
                 val manifestFile = File(folder, "manifest.json")
                 check(!Files.isSymbolicLink(folder.toPath()) &&
@@ -209,6 +207,15 @@ class ModFileManager(
                     fileSize = 0L
                 )
             }
+    }
+
+    @Synchronized fun previewBulkWithWitness(requestedIds: Set<String>, enable: Boolean): ModBulkPreview {
+        isolatedBulkReview = null
+        check(bulkTransactions.recover()) { "Bulk recovery needs manual inspection" }
+        check(batchTransactions.recover()) { "Batch recovery needs manual inspection" }
+        check(profileTransactions.recover()) { "Profile recovery needs manual inspection" }
+        check(safety.recover()) { "Mod operation recovery needs manual inspection" }
+        val current = scanBulkInventoryNoMigrations()
         val preview = ModSelectionPolicy.preview(current, requestedIds, enable)
         if (preview.blockers.isNotEmpty() || preview.steps.isEmpty()) return preview
         val physical = bulkTransactions.review(preview.steps.map {
@@ -226,7 +233,44 @@ class ModFileManager(
         }.toByteArray(Charsets.UTF_8)
         val proof = java.security.MessageDigest.getInstance("SHA-256")
             .digest(reviewBytes).joinToString("") { "%02x".format(it) }
-        return preview.copy(filesystemWitness = proof)
+        val preparedBulk = preview.copy(filesystemWitness = proof)
+        isolatedBulkReview = preparedBulk to physical
+        return preparedBulk
+    }
+
+    /**
+     * M25-03 R2C: isolated instrumentation fixture ONLY, never the real game Mods root.
+     * Requires the exact review object owned by this manager; every attempt consumes it.
+     */
+    @Synchronized internal fun commitIsolatedBulkFixture(approved: ModBulkPreview): Int {
+        val held = isolatedBulkReview ?: error("No approved isolated fixture review")
+        isolatedBulkReview = null
+        check(approved === held.first) { "Approval identity changed" }
+        check(approved.blockers.isEmpty() && approved.steps.isNotEmpty() &&
+            approved.filesystemWitness != null) { "Blocked or unverified approval" }
+        val cachePath = context.cacheDir.canonicalFile.toPath()
+        val rootPath = modsDir.canonicalFile.toPath()
+        check(modsDir.name == "Mods" && rootPath.startsWith(cachePath) &&
+            rootPath != cachePath &&
+            com.sdvsync.local.PlatformStoragePaths.inspect(modsDir).safe &&
+            !Files.isSymbolicLink(modsDir.toPath())) {
+            "Production bulk writes remain disabled; cache fixtures only"
+        }
+        check(bulkTransactions.recover()) { "Bulk recovery requires manual inspection" }
+        check(batchTransactions.recover()) { "Batch recovery requires manual inspection" }
+        check(profileTransactions.recover()) { "Profile recovery requires manual inspection" }
+        check(safety.recover()) { "Safety recovery requires manual inspection" }
+        val now = ModSelectionPolicy.preview(scanBulkInventoryNoMigrations(),
+            approved.selectedIds.toSet(), approved.intendedEnable)
+        check(now.blockers.isEmpty() && now.steps == approved.steps &&
+            now.selectedIds == approved.selectedIds &&
+            now.inventoryFingerprint == approved.inventoryFingerprint) {
+            "Mod inventory or intended operation changed since review"
+        }
+        check(held.second.moves == now.steps.map {
+            ProfileFolderMove(it.fromFolder, it.toFolder)
+        }) { "Filesystem transaction differs from reviewed selection" }
+        return bulkTransactions.apply(held.second, now.inventoryFingerprint)
     }
 
     @Synchronized fun enableMod(folderName: String): Boolean {

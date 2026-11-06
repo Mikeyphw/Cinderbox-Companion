@@ -20,10 +20,15 @@ def main():
     assert 'Avoid parseMod()' in fm and 'manifestFile.length() in 1..262144L' in fm
     assert 'physical.sourceHashes[index]' in fm and 'physical.rootWitness' in fm
     assert 'MessageDigest.getInstance("SHA-256")' in fm
-    assert 'return preview.copy(filesystemWitness = proof)' in fm
+    assert 'val preparedBulk = preview.copy(filesystemWitness = proof)' in fm
+    assert 'isolatedBulkReview = preparedBulk to physical' in fm
     assert 'bulkTransactions.recover()' in fm
     assert fm.count('check(bulkTransactions.recover())') >= 7
-    assert 'fun applyBulk' not in fm and 'bulkTransactions.apply(' not in fm
+    assert 'fun applyBulk' not in fm
+    preview_body = fm.split('fun previewBulkWithWitness(', 1)[1].split(
+        'internal fun commitIsolatedBulkFixture(', 1)[0]
+    assert 'bulkTransactions.apply(' not in preview_body
+    assert 'Production bulk writes remain disabled; cache fixtures only' in fm
     assert 'filesystemWitness: String? = null' in sel
     assert 'fileManager.previewBulkWithWitness(selected, enable)' in vm
     assert 'isPreparingBulkPreview' in vm and 'Dispatchers.IO' in vm
