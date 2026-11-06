@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -57,6 +58,7 @@ fun ApprovedSavesScreen(
     onOpenSyncDetail: (String, Boolean, Boolean) -> Unit,
     onOpenSyncHistory: () -> Unit,
     onOpenAdvancedSaves: () -> Unit,
+    onOpenSaveReview: (String) -> Unit = {},
     viewModel: DashboardViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -155,7 +157,8 @@ fun ApprovedSavesScreen(
                     isSteamConnected = isSteamConnected,
                     onOpenSave = { onOpenSave(save.folderName) },
                     onOpenBackups = { onOpenBackups(save.folderName) },
-                    onReviewSync = { onOpenSyncDetail(save.folderName, save.hasCloud, save.hasLocal) }
+                    onReviewSync = { onOpenSyncDetail(save.folderName, save.hasCloud, save.hasLocal) },
+                    onOpenSaveReview = { onOpenSaveReview(save.folderName) }
                 )
             }
         }
@@ -224,7 +227,7 @@ private fun SavesEmptyCard(title: String, detail: String, buttonLabel: String? =
 @Composable
 private fun ApprovedSaveRow(save: SaveEntry, isCloud: Boolean, isSteamConnected: Boolean,
                             onOpenSave: () -> Unit, onOpenBackups: () -> Unit,
-                            onReviewSync: () -> Unit) {
+                            onReviewSync: () -> Unit, onOpenSaveReview: () -> Unit) {
     val meta = if (isCloud) save.cloudMeta else save.localMeta
     val farmName = meta?.farmName?.takeIf { it.isNotBlank() } ?: save.folderName
     val farmer = meta?.farmerName?.takeIf { it.isNotBlank() } ?: "Farmer details unavailable"
@@ -272,6 +275,10 @@ private fun ApprovedSaveRow(save: SaveEntry, isCloud: Boolean, isSteamConnected:
                         Text("Review sync", color = Dark.Ink, fontSize = 12.sp)
                     }
                 }
+            }
+            TextButton(onClick = onOpenSaveReview,
+                modifier = Modifier.fillMaxWidth().testTag("cinderbox.saves.review-detail")) {
+                Text("Review save details", color = Dark.Forest)
             }
         }
     }
