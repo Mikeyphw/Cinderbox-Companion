@@ -91,7 +91,7 @@ class R48RealActivityDeviceTest {
             Triple(BottomTab.DOWNLOAD, "Stardew Valley", "game"),
             Triple(BottomTab.SAVES, "My saves", "saves"),
             Triple(BottomTab.MODS, "Your mods", "mods"),
-            Triple(BottomTab.SETTINGS, "Personalize and manage", "more")
+            Triple(BottomTab.SETTINGS, "Connections, preferences and support.", "more")
         )
         for ((dest, heading, imageName) in areas) {
             checkpoint("tabs", "select_$imageName")
