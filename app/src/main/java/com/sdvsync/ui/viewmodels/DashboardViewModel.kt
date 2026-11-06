@@ -143,7 +143,7 @@ class DashboardViewModel(
                         syncDirection = comparison.direction,
                         statusMessage = comparison.message,
                         hasCloud = folderName in cloudSaves,
-                        hasLocal = localMeta != null
+                        hasLocal = folderName in localMap
                     )
                 }.sortedByDescending {
                     maxOf(
