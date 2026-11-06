@@ -134,6 +134,7 @@ fun ApprovedModsScreen(
     onOpenRemoteMod: (String, String) -> Unit,
     onOpenInstalledMod: (String) -> Unit,
     onOpenAdvancedMods: () -> Unit,
+    onOpenQueue: () -> Unit = {},
     viewModel: ModManagerViewModel = koinViewModel(),
     browseViewModel: ModBrowseViewModel = koinViewModel()
 ) {
@@ -242,6 +243,11 @@ fun ApprovedModsScreen(
                     modifier = Modifier.semantics { heading() })
                 Text("Discover, organize and customize.",
                     color = Dark.Muted, style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = onOpenQueue,
+                    modifier = Modifier.testTag("cinderbox.mods.download-queue")
+                        .semantics { contentDescription = "Open mod download queue" }) {
+                    Text("Download queue", color = Dark.Forest)
+                }
             }
         }
         item { ModsPaneSelector(pane) { pane = it } }
