@@ -1,0 +1,43 @@
+name: Cinderbox UX-05 — approved dark Mods source and safety
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModsScreen.kt'
+      - 'app/src/androidTest/java/com/sdvsync/qualification/R48RealActivityDeviceTest.kt'
+      - 'scripts/devtool/ux_05_mods_gate.py'
+      - 'scripts/devtool/test_ux_05_mods.py'
+      - '.github/workflows/cinderbox-ux05-mods.yml'
+      - 'docs/security/M3_RELEASE_POLICY.json'
+  push:
+    branches: [master]
+    paths:
+      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModsScreen.kt'
+      - 'app/src/androidTest/java/com/sdvsync/qualification/R48RealActivityDeviceTest.kt'
+      - 'scripts/devtool/ux_05_mods_gate.py'
+      - 'scripts/devtool/test_ux_05_mods.py'
+      - '.github/workflows/cinderbox-ux05-mods.yml'
+      - 'docs/security/M3_RELEASE_POLICY.json'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-and-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Verify UX-05 and earlier UI/security contracts
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 -B scripts/devtool/ux_05_mods_gate.py
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_ux_05_mods.py' -v
+          python3 -B scripts/devtool/ux_04_saves_gate.py
+          python3 -B scripts/devtool/ux_03_game_gate.py
+          python3 -B scripts/devtool/ux_00_01_source_gate.py
+          python3 -B scripts/devtool/r47_gate.py
+          python3 -B scripts/devtool/r48_gate.py
