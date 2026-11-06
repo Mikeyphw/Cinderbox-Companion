@@ -53,6 +53,8 @@ import com.sdvsync.ui.components.StardewBottomBar
 import com.sdvsync.ui.screens.BackupListScreen
 import com.sdvsync.ui.screens.DashboardScreen
 import com.sdvsync.ui.screens.ApprovedSavesScreen
+import com.sdvsync.ui.screens.ApprovedSaveDeepScreen
+import com.sdvsync.ui.screens.SaveDeepArea
 import com.sdvsync.ui.screens.GameDownloadScreen
 import com.sdvsync.ui.screens.ApprovedGameScreen
 import com.sdvsync.ui.screens.HomeScreen
@@ -456,6 +458,43 @@ fun SdvSyncNavGraph(navController: NavHostController) {
             )
         }
 
+        // UX-08C: read-only local save and backup review. The original viewer,
+        // sync, and backup restore routes remain unchanged and guarded.
+        composable(
+            route = "save_review/{saveFolderName}",
+            arguments = listOf(navArgument("saveFolderName") { type = NavType.StringType })
+        ) { entry ->
+            val name = entry.arguments?.getString("saveFolderName") ?: return@composable
+            ApprovedSaveDeepScreen(
+                area = SaveDeepArea.SAVE_REVIEW,
+                saveFolderName = name,
+                onBack = { navController.popBackStack() },
+                onOpenViewer = { navController.navigate("save_viewer/${Uri.encode(name)}") },
+                onOpenBackupReview = { navController.navigate("backup_review/${Uri.encode(name)}") },
+                onOpenLegacyBackups = { navController.navigate("backups/${Uri.encode(name)}") },
+                onReviewSync = { cloud, local ->
+                    navController.navigate("sync_detail/${Uri.encode(name)}/$cloud/$local")
+                }
+            )
+        }
+        composable(
+            route = "backup_review/{saveFolderName}",
+            arguments = listOf(navArgument("saveFolderName") { type = NavType.StringType })
+        ) { entry ->
+            val name = entry.arguments?.getString("saveFolderName") ?: return@composable
+            ApprovedSaveDeepScreen(
+                area = SaveDeepArea.BACKUP_REVIEW,
+                saveFolderName = name,
+                onBack = { navController.popBackStack() },
+                onOpenViewer = { navController.navigate("save_viewer/${Uri.encode(name)}") },
+                onOpenBackupReview = { navController.navigate("backup_review/${Uri.encode(name)}") },
+                onOpenLegacyBackups = { navController.navigate("backups/${Uri.encode(name)}") },
+                onReviewSync = { cloud, local ->
+                    navController.navigate("sync_detail/${Uri.encode(name)}/$cloud/$local")
+                }
+            )
+        }
+
         // Saves sub-screens (outside bottom bar scaffold for clean back stack)
         composable(
             route = "sync_detail/{saveFolderName}/{hasCloud}/{hasLocal}",
@@ -696,7 +735,10 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
                         parentNavController.navigate("sync_detail/${Uri.encode(folderName)}/$hasCloud/$hasLocal")
                     },
                     onOpenSyncHistory = { parentNavController.navigate("sync_log") },
-                    onOpenAdvancedSaves = { parentNavController.navigate("saves_advanced") }
+                    onOpenAdvancedSaves = { parentNavController.navigate("saves_advanced") },
+                    onOpenSaveReview = { name ->
+                        parentNavController.navigate("save_review/${Uri.encode(name)}")
+                    }
                 )
             }
 
