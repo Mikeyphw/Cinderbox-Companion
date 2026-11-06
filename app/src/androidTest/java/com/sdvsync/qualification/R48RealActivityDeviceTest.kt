@@ -88,7 +88,7 @@ class R48RealActivityDeviceTest {
         screenshot("home")
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val areas = listOf(
-            Triple(BottomTab.DOWNLOAD, "Game setup path", "game"),
+            Triple(BottomTab.DOWNLOAD, "Stardew Valley", "game"),
             Triple(BottomTab.SAVES, "Your saves", "saves"),
             Triple(BottomTab.MODS, "Managing mods", "mods"),
             Triple(BottomTab.SETTINGS, "Personalize and manage", "more")
@@ -137,7 +137,7 @@ class R48RealActivityDeviceTest {
         enterOffline()
         tab(BottomTab.DOWNLOAD).performClick()
         tab(BottomTab.DOWNLOAD).assertIsSelected()
-        rule.onNodeWithText("Game setup path").assertExists()
+        rule.onNodeWithText("Stardew Valley").assertExists()
         Espresso.pressBack()
         tab(BottomTab.HOME).assertIsSelected()
         rule.onNodeWithText("Your valley, beautifully organized.").assertExists()
