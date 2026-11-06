@@ -90,7 +90,7 @@ class R48RealActivityDeviceTest {
         val areas = listOf(
             Triple(BottomTab.DOWNLOAD, "Stardew Valley", "game"),
             Triple(BottomTab.SAVES, "My saves", "saves"),
-            Triple(BottomTab.MODS, "Managing mods", "mods"),
+            Triple(BottomTab.MODS, "Your mods", "mods"),
             Triple(BottomTab.SETTINGS, "Personalize and manage", "more")
         )
         for ((dest, heading, imageName) in areas) {
@@ -110,6 +110,7 @@ class R48RealActivityDeviceTest {
                     )
                 }
                 BottomTab.MODS -> {
+                    rule.onNodeWithText("Your mods").assertExists()
                     // As with Saves, the Mods guide exists only for a nonempty
                     // inventory. Test the real page's safe no-data states.
                     assertAnyScreenState(
