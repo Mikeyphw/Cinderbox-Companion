@@ -52,6 +52,16 @@ def check(root:Path=ROOT)->dict:
  assert 'bash scripts/devtool/ux09b2_emulator_ci.sh' in runner
  assert 'OK (3 tests)' in runner and 'wm density 320' in runner
  assert 'UX09B3_INVALID_FIXTURE_CLAIM' in report and 'UX09B3_DIFFERENT_SOURCE' in report
+ # Native image liveness must be proved twice: after Compose root rendering
+ # and by independently inspecting the captured PNG in the host report.
+ for invariant in ('rule.onRoot().captureToImage()', 'UX09B3_COMPOSE_ROOT_BLANK',
+                   'UX09B3_BLANK_DISPLAY_CAPTURE', 'display_content_nonblank',
+                   'display_sampled_unique_colors', 'display_capture_attempt'):
+  assert invariant in fixture, 'UX09B3_MISSING_NATIVE_PIXEL_GUARD:'+invariant
+ for invariant in ('def visible_native_frame(', 'UX09B3_BLANK_NATIVE_FRAME',
+                   'independentDiversity=visible_native_frame(n,case)',
+                   "'display_content_nonblank':True"):
+  assert invariant in report, 'UX09B3_MISSING_HOST_PIXEL_GUARD:'+invariant
  for claim in ("'full_24_case_parity_verified':False","'native_goldens_approved':False",
                "'actual_real_activity_cases':21","'isolated_preview_fixture_cases':3",
                "'real_steam_auth_and_entitlement_qualified':False"):

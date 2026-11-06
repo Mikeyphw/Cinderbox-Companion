@@ -49,6 +49,14 @@ class UX09B3SourceGateTests(unittest.TestCase):
     def test_release_enabled_is_refused(self):
         p=self.root/FILES[6];v=json.loads(p.read_text());v['publication_enabled']=True;p.write_text(json.dumps(v))
         with self.assertRaisesRegex(AssertionError,'RELEASE_POLICY_DRIFT'):check(self.root)
+    def test_blank_frame_guard_cannot_be_removed(self):
+        p=self.root/FILES[2]
+        p.write_text(p.read_text().replace('UX09B3_BLANK_NATIVE_FRAME', 'NO_PIXEL_CHECK'))
+        with self.assertRaisesRegex(AssertionError,'MISSING_HOST_PIXEL_GUARD'):check(self.root)
+    def test_blank_ui_capture_guard_cannot_be_removed(self):
+        p=self.root/FILES[0]
+        p.write_text(p.read_text().replace('UX09B3_BLANK_DISPLAY_CAPTURE', 'NO_FRAME_CHECK'))
+        with self.assertRaisesRegex(AssertionError,'MISSING_NATIVE_PIXEL_GUARD'):check(self.root)
     def test_browser_reference_drift_refused(self):
         v=json.loads((self.root/FILES[4]).read_text())
         p=self.root/'design/cinderbox'/v['reference']['path'];p.write_text('drift')

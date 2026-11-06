@@ -16,6 +16,20 @@ def sha256(p:Path)->str:
     assert p.is_file() and not p.is_symlink(), 'UX09B3_MISSING_OR_SYMLINK:'+str(p)
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
+def visible_native_frame(image:Image.Image,case:str)->int:
+    """Refuse a uniform UI body even when the file is a valid PNG with a hash.
+
+    The crop excludes Android status/navigation bars. Deliberately conservative:
+    this is a nonblank guard, NOT a visual fidelity threshold.
+    """
+    rgb=image.convert('RGB')
+    w,h=rgb.size
+    interior=rgb.crop((w//8,h//4,w*7//8,h*3//4))
+    sample=interior.resize((64,64),Image.Resampling.NEAREST)
+    diversity=len(sample.getcolors(64*64) or [])
+    assert diversity>=12, 'UX09B3_BLANK_NATIVE_FRAME:'+case
+    return diversity
+
 def analyze(evidence_dir:Path,reference_dir:Path,layout_json:Path,source_sha:str,run_id:str,app_sha:str,test_sha:str)->dict:
     assert len(source_sha)==40 and all(x in '0123456789abcdef' for x in source_sha), 'UX09B3_BAD_SOURCE'
     assert len(app_sha)==64 and len(test_sha)==64 and run_id.isdecimal(), 'UX09B3_BAD_PROVENANCE'
@@ -49,14 +63,19 @@ def analyze(evidence_dir:Path,reference_dir:Path,layout_json:Path,source_sha:str
             'isolated_compose_fixture':True,'actual_main_activity_route':False,
             'steam_ui_boolean_preview':case!='mod-detail','real_steam_authentication':False,
             'real_steam_entitlement':False,'real_cloud_access':False,
-            'provider_catalog_verified':False,'production_state_mutated':False
+            'provider_catalog_verified':False,'production_state_mutated':False,
+            'display_content_nonblank':True,
         }.items():
             assert meta.get(field) is truth, 'UX09B3_INVALID_FIXTURE_CLAIM:'+field
+        assert meta.get('capture_method')=='android-ui-automation-full-display', 'UX09B3_UNVERIFIED_CAPTURE_METHOD:'+case
+        assert isinstance(meta.get('display_sampled_unique_colors'),int) and meta['display_sampled_unique_colors']>=12, 'UX09B3_NOT_RENDERED:'+case
+        assert isinstance(meta.get('display_capture_attempt'),int) and 1<=meta['display_capture_attempt']<=12, 'UX09B3_UNBOUNDED_RETRY:'+case
         assert approved[(case,393)]['viewport']==[393,852]
         with Image.open(native_file) as n, Image.open(reference_file) as r:
             n.load();r.load()
             assert n.format=='PNG' and n.size==(786,1704), 'UX09B3_WRONG_NATIVE_PNG:'+case
             assert r.format=='PNG' and r.size==(393,852), 'UX09B3_WRONG_REFERENCE_PNG:'+case
+            independentDiversity=visible_native_frame(n,case)
             native=n.convert('RGB').resize((393,852),Image.Resampling.LANCZOS)
             reference=r.convert('RGB')
         difference=ImageChops.difference(reference,native)
@@ -75,7 +94,9 @@ def analyze(evidence_dir:Path,reference_dir:Path,layout_json:Path,source_sha:str
             'diff_fraction_luma_gt_24':fraction,
             'origin':'isolated-compose-presentation-fixture','actual_user_data':False,
             'real_authentication_verified':False,'fixture_equivalence_verified':False,
-            'approved_native_golden':False
+            'approved_native_golden':False,
+            'nonblank_frame_verified':True,'independent_sampled_colors':independentDiversity,
+            'display_capture_attempt':meta['display_capture_attempt'],
         })
     receipt={
         'schema':'cinderbox-ux09b3-presentation-fixture-evidence-v1',

@@ -2,6 +2,7 @@ package com.sdvsync.ui.ux
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,7 +10,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -48,12 +52,58 @@ class UxNativeFixtureCaptureTest {
         }
     }
 
+    /** Test-only frame liveness check; blank backgrounds must not count as captured UI. */
+    private fun sampledInteriorColors(bitmap: Bitmap): Int {
+        val colors = HashSet<Int>()
+        val left = bitmap.width / 8
+        val right = bitmap.width * 7 / 8
+        val top = bitmap.height / 4
+        val bottom = bitmap.height * 3 / 4
+        for (y in top until bottom step 23) {
+            for (x in left until right step 23) {
+                colors.add(bitmap.getPixel(x, y) and 0x00ffffff)
+                if (colors.size >= 12) return colors.size
+            }
+        }
+        return colors.size
+    }
+
     private fun capture(caseId: String, isSteamUiPreview: Boolean) {
         require(caseId in setOf("game-steam-connected", "saves-cloud-connected", "mod-detail"))
         rule.onNodeWithTag("cinderbox.shell.bottomnav").assertExists()
-        rule.waitForIdle()
-        // Full display capture includes Android system bars on the isolated test Activity.
-        val image = checkNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        // Compose semantics can be present before the frame reaches Android's
+        // Surface/RenderThread. Force native Compose rendering, then check pixels.
+        var rootDiversity = 0
+        for (attempt in 1..10) {
+            rule.waitForIdle()
+            rootDiversity = sampledInteriorColors(rule.onRoot().captureToImage().asAndroidBitmap())
+            if (rootDiversity >= 12) break
+            SystemClock.sleep(250)
+        }
+        assertTrue("UX09B3_COMPOSE_ROOT_BLANK:$caseId", rootDiversity >= 12)
+
+        // Full-display evidence must come from Android, with intact system bars.
+        // Never write a visually blank screenshot just because semantics passed.
+        var validatedImage: Bitmap? = null
+        var successfulAttempt = 0
+        var displayDiversity = 0
+        for (attempt in 1..12) {
+            rule.waitForIdle()
+            instrumentation.waitForIdleSync()
+            val candidate = instrumentation.uiAutomation.takeScreenshot()
+            if (candidate != null && candidate.width == 786 && candidate.height == 1704) {
+                displayDiversity = sampledInteriorColors(candidate)
+                if (displayDiversity >= 12) {
+                    validatedImage = candidate
+                    successfulAttempt = attempt
+                    break
+                }
+            }
+            candidate?.recycle()
+            SystemClock.sleep(300)
+        }
+        val image = checkNotNull(validatedImage) { "UX09B3_BLANK_DISPLAY_CAPTURE:$caseId" }
         assertTrue(image.width == 786 && image.height == 1704)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         context.openFileOutput("ux09b3-$caseId.png", Context.MODE_PRIVATE).use { out ->
@@ -70,6 +120,10 @@ class UxNativeFixtureCaptureTest {
             .put("real_cloud_access", false)
             .put("provider_catalog_verified", false)
             .put("production_state_mutated", false)
+            .put("display_content_nonblank", true)
+            .put("display_sampled_unique_colors", displayDiversity)
+            .put("display_capture_attempt", successfulAttempt)
+            .put("capture_method", "android-ui-automation-full-display")
         context.openFileOutput("ux09b3-$caseId.json", Context.MODE_PRIVATE).use { out ->
             out.write((metadata.toString(2) + "\n").toByteArray(Charsets.UTF_8))
         }
