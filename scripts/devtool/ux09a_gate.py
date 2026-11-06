@@ -10,14 +10,14 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 
 UI={
- 'app/src/main/java/com/sdvsync/ui/screens/HomeScreen.kt':('cinderbox.screen.home','cinderbox.steam.connect','cinderbox.steam.connection-status'),
+ 'app/src/main/java/com/sdvsync/ui/screens/HomeScreen.kt':('cinderbox.screen.home','cinderbox.steam.connect','cinderbox.steam.connection-status','cinderbox.shell.topbar'),
  'app/src/main/java/com/sdvsync/ui/screens/ApprovedGameScreen.kt':('cinderbox.screen.game','cinderbox.game.download-action'),
  'app/src/main/java/com/sdvsync/ui/screens/ApprovedSavesScreen.kt':('cinderbox.screen.saves','cinderbox.saves.cloud-pane'),
  'app/src/main/java/com/sdvsync/ui/screens/ApprovedModsScreen.kt':('cinderbox.screen.mods','cinderbox.mods.discover','cinderbox.mods.installed','cinderbox.mods.updates','cinderbox.mods.profiles'),
  'app/src/main/java/com/sdvsync/ui/screens/ApprovedMoreScreen.kt':('cinderbox.screen.more',),
  'app/src/main/java/com/sdvsync/ui/components/StardewBottomBar.kt':(
     'cinderbox.nav.home','cinderbox.nav.game','cinderbox.nav.saves','cinderbox.nav.mods','cinderbox.nav.more','cinderbox.shell.bottomnav'),
- 'app/src/main/java/com/sdvsync/MainActivity.kt':('cinderbox.shell.topbar','cinderbox.shell.content'),
+ 'app/src/main/java/com/sdvsync/MainActivity.kt':('cinderbox.shell.content',),
 }
 TEST='app/src/androidTest/java/com/sdvsync/ui/ux/UxReferenceParityTest.kt'
 NAMES=('darkDefaultHome','optionalSteamFirstLaunch','offlineLocalSavesRemainAvailable',
@@ -41,6 +41,10 @@ def check(root:Path=ROOT)->dict:
             assert ('"'+tag+'"') in src,'UX09A_UI_TAG_MISSING:'+tag
     for tag in expected:
         assert ('"'+tag+'"') in ui, 'UX09A_CONTRACT_SEMANTICS_MISSING:'+tag
+    # Home owns the actual shell toolbar. MainActivity owns only the nested content.
+    # Prevent passing with a stray constant instead of the visible Compose testTag.
+    assert 'Row(Modifier.fillMaxWidth().height(49.dp).testTag("cinderbox.shell.topbar")' in read(root,
+        'app/src/main/java/com/sdvsync/ui/screens/HomeScreen.kt'), 'UX09A_TOPBAR_COMPOSE_SEMANTICS_MISSING'
     test=read(root,TEST)
     for name in NAMES:
         assert len(re.findall(r'@Test\s+fun\s+'+re.escape(name)+r'\s*\(',test))==1,'UX09A_TEST_MISSING_OR_DUPLICATE:'+name
