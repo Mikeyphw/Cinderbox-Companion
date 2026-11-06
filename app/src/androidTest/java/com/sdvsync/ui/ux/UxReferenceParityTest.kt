@@ -1,6 +1,7 @@
 package com.sdvsync.ui.ux
 
 import android.content.Context
+import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
