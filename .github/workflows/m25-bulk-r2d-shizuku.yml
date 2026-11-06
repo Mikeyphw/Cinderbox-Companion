@@ -1,0 +1,74 @@
+name: M25-03 R2D-S1 Optional Shizuku Game Status Fallback
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/m25-bulk-r2d-shizuku.yml'
+      - 'app/src/main/aidl/com/sdvsync/fileaccess/IFileService.aidl'
+      - 'app/src/main/java/com/sdvsync/fileaccess/FileService.kt'
+      - 'app/src/main/java/com/sdvsync/fileaccess/ShizukuFileAccess.kt'
+      - 'app/src/main/java/com/sdvsync/mods/GameSessionSafety.kt'
+      - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt'
+      - 'app/src/test/java/com/sdvsync/mods/GameSessionPrivilegedProviderTest.kt'
+      - 'scripts/devtool/m25_bulk_r2d_shizuku_gate.py'
+      - 'docs/devtool/M25_03_R2D_SHIZUKU_FALLBACK.md'
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/m25-bulk-r2d-shizuku.yml'
+      - 'app/src/main/aidl/com/sdvsync/fileaccess/IFileService.aidl'
+      - 'app/src/main/java/com/sdvsync/fileaccess/FileService.kt'
+      - 'app/src/main/java/com/sdvsync/fileaccess/ShizukuFileAccess.kt'
+      - 'app/src/main/java/com/sdvsync/mods/GameSessionSafety.kt'
+      - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt'
+      - 'app/src/test/java/com/sdvsync/mods/GameSessionPrivilegedProviderTest.kt'
+      - 'scripts/devtool/m25_bulk_r2d_shizuku_gate.py'
+      - 'docs/devtool/M25_03_R2D_SHIZUKU_FALLBACK.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Read-only game status, no live write permissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 -B scripts/devtool/m25_bulk_r2d_shizuku_gate.py
+          python3 -B scripts/devtool/m25_bulk_r2d_gate.py
+          python3 -B scripts/devtool/m25_bulk_r2c_gate.py
+          python3 -B scripts/devtool/m25_bulk_r2b_gate.py
+          python3 -B scripts/devtool/m25_group_gate.py
+          python3 -B scripts/devtool/r47_gate.py
+          python3 -B scripts/devtool/r48_gate.py
+  hosted-android-compilation:
+    needs: [source-contract]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Compile new AIDL service and both provider policies
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:testDebugUnitTest \
+            --tests com.sdvsync.mods.GameSessionSafetyTest \
+            --tests com.sdvsync.mods.GameSessionPrivilegedProviderTest
+          ./gradlew --no-daemon --max-workers=2 :app:assembleDebug

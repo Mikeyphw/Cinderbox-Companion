@@ -19,6 +19,14 @@ internal object GameSessionSafety {
         else -> GameSessionObservation.UNKNOWN
     }
 
+    /** Do not invoke root if a privileged Shizuku UserService gave a definite result. */
+    fun fromProviders(shizukuCode: Int?, rootFallback: () -> GameSessionObservation):
+        GameSessionObservation {
+        val shizukuObservation = fromRootProbeExit(shizukuCode)
+        return if (shizukuObservation == GameSessionObservation.UNKNOWN) rootFallback()
+            else shizukuObservation
+    }
+
     /** Never make a real Mods write admissible based solely on this observation. */
     @Suppress("UNUSED_PARAMETER")
     fun permitsLiveBulkWrite(observation: GameSessionObservation): Boolean = false

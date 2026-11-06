@@ -4,6 +4,7 @@ import android.os.RemoteException
 import android.util.Log
 import java.io.File
 import java.io.RandomAccessFile
+import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 
 /**
@@ -18,6 +19,45 @@ class FileService : IFileService.Stub() {
 
     private fun checked(path: String): File = PrivilegedSavePaths.requireAllowed(File(path))
     private fun checkedChild(path: String): File = PrivilegedSavePaths.requireChild(File(path))
+
+    /**
+     * Read-only Shizuku UserService diagnostic. This privileged endpoint has no inputs,
+     * no filesystem mutation, and returns only 40 (running), 41 (not observed) or
+     * 0 (unknown). A shell-backed service runs as UID 2000; Sui/root runs as UID 0.
+     */
+    override fun queryGameProcessStatus(): Int {
+        val readOnlyProbe = """
+            uid=${'$'}(id -u 2>/dev/null) || exit 71
+            [ "${'$'}uid" = 0 ] || [ "${'$'}uid" = 2000 ] || exit 72
+            pidof com.chucklefish.stardewvalley >/dev/null 2>&1
+            code=${'$'}?
+            [ "${'$'}code" = 0 ] && exit 40
+            [ "${'$'}code" = 1 ] || exit 73
+            names=${'$'}(ps -A -o NAME 2>/dev/null) || exit 74
+            printf '%s\n' "${'$'}names" | grep -E '^com[.]chucklefish[.]stardewvalley(:|${'$'})' >/dev/null 2>&1
+            code=${'$'}?
+            [ "${'$'}code" = 0 ] && exit 40
+            [ "${'$'}code" = 1 ] && exit 41
+            exit 75
+        """.trimIndent()
+        val process = runCatching {
+            ProcessBuilder("/system/bin/sh", "-c", readOnlyProbe)
+                .redirectErrorStream(true).start()
+        }.getOrNull() ?: return 0
+        return try {
+            if (!process.waitFor(4, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                0
+            } else {
+                process.exitValue().takeIf { it == 40 || it == 41 } ?: 0
+            }
+        } catch (_: Exception) {
+            process.destroyForcibly()
+            0
+        } finally {
+            process.destroy()
+        }
+    }
 
     override fun destroy() = exitProcess(0)
 

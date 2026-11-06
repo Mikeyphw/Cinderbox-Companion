@@ -189,8 +189,8 @@ fun ModManagerScreen(
                     if (state.isCheckingGameStatus) {
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     }
-                    Text("This check may request root access; even no detected process is not proof " +
-                        "that Stardew Valley is safely stopped.",
+                    Text("Checks authorized Shizuku first, then root if unavailable; " +
+                        "not detecting a game process is NOT proof the game is safely stopped.",
                         style = MaterialTheme.typography.bodySmall)
                     Text("No folders were changed. Live bulk apply is not enabled.",
                         style = MaterialTheme.typography.bodySmall)

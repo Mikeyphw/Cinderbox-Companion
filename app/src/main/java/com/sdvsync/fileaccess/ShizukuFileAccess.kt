@@ -7,7 +7,9 @@ import android.os.IBinder
 import com.sdvsync.logging.AppLogger
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import rikka.shizuku.Shizuku
 
 /**
@@ -48,7 +50,7 @@ class ShizukuFileAccess : FileAccessStrategy {
                 )
             )
                 .processNameSuffix("file_service")
-                .version(1)
+                .version(2)
         }
 
         fun isAvailable(): Boolean = try {
@@ -104,6 +106,19 @@ class ShizukuFileAccess : FileAccessStrategy {
         }
 
         fun isServiceBound(): Boolean = fileService != null
+
+        /** Optional, explicit, read-only game observation; no arbitrary shell input. */
+        suspend fun queryGameStatus(): Int? {
+            if (!isAvailable()) return null
+            if (fileService == null) bindService()
+            return withTimeoutOrNull(2500L) {
+                while (fileService == null) {
+                    if (!isAvailable()) return@withTimeoutOrNull null
+                    delay(75L)
+                }
+                runCatching { fileService?.queryGameProcessStatus() }.getOrNull()
+            }
+        }
     }
 
     private fun requireService(): IFileService = fileService ?: throw IllegalStateException(

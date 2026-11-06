@@ -15,6 +15,8 @@ import com.sdvsync.mods.ModSelectionPolicy
 import com.sdvsync.mods.ModGroupMode
 import com.sdvsync.mods.GameSessionObservation
 import com.sdvsync.mods.GameSessionProbe
+import com.sdvsync.mods.GameSessionSafety
+import com.sdvsync.fileaccess.ShizukuFileAccess
 import com.sdvsync.mods.ModBulkPreview
 import com.sdvsync.mods.ModCompatibilityIssue
 import com.sdvsync.mods.ModProfilePreview
@@ -398,7 +400,9 @@ class ModManagerViewModel(
         if (opened.filesystemWitness == null || _state.value.isCheckingGameStatus) return
         _state.update { it.copy(isCheckingGameStatus = true, gameStatusForBulk = null) }
         viewModelScope.launch(Dispatchers.IO) {
-            val observation = GameSessionProbe().observe()
+            val observation = GameSessionSafety.fromProviders(ShizukuFileAccess.queryGameStatus()) {
+                GameSessionProbe().observe()
+            }
             _state.update { state ->
                 if (state.bulkPreview !== opened) state.copy(isCheckingGameStatus = false)
                 else state.copy(isCheckingGameStatus = false, gameStatusForBulk = observation)
