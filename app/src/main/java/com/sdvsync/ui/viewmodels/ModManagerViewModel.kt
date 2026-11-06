@@ -63,6 +63,7 @@ data class ModManagerState(
     val selectionMode: Boolean = false,
     val selectedModIds: Set<String> = emptySet(),
     val bulkPreview: ModBulkPreview? = null,
+    val isPreparingBulkPreview: Boolean = false,
     val profiles: List<ModProfile> = emptyList(),
     val activeProfileName: String? = null,
     val isApplyingProfile: Boolean = false,
@@ -364,10 +365,25 @@ class ModManagerViewModel(
     }
 
     fun previewSelectedMods(enable: Boolean) {
-        _state.update { old ->
-            if (!old.selectionMode) old
-            else old.copy(bulkPreview = ModSelectionPolicy.preview(
-                old.installedMods, old.selectedModIds, enable))
+        val selected = _state.value.takeIf { it.selectionMode && !it.isPreparingBulkPreview }
+            ?.selectedModIds?.takeIf { it.isNotEmpty() } ?: return
+        _state.update { it.copy(isPreparingBulkPreview = true, bulkPreview = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val verified = fileManager.previewBulkWithWitness(selected, enable)
+                _state.update { current ->
+                    val sameInventory = ModCompatibility.fingerprint(current.installedMods) ==
+                        verified.inventoryFingerprint
+                    if (!current.selectionMode || current.selectedModIds != selected || !sameInventory)
+                        current.copy(isPreparingBulkPreview = false,
+                            profileMessage = "Mod inventory changed; preview again")
+                    else current.copy(isPreparingBulkPreview = false, bulkPreview = verified)
+                }
+            } catch (error: Exception) {
+                AppLogger.e(TAG, "Bulk filesystem review could not be verified", error)
+                _state.update { it.copy(isPreparingBulkPreview = false, bulkPreview = null,
+                    profileMessage = "Bulk preview unavailable; no mod folders were changed") }
+            }
         }
     }
 

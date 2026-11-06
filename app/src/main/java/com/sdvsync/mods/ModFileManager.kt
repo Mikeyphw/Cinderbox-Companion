@@ -30,12 +30,14 @@ class ModFileManager(
     private val safety = ModSafety(context.filesDir, modsDir)
     private val profileTransactions = ModProfileTransaction(context.filesDir, modsDir)
     private val batchTransactions = ModBatchTransaction(context.filesDir, modsDir)
+    private val bulkTransactions = ModBulkTransaction(context.filesDir, modsDir)
 
     fun isModsDirAccessible(): Boolean = modsDir.exists() && modsDir.isDirectory && modsDir.canRead()
 
     fun listRetainedSnapshots(): List<ModSnapshot> = safety.list()
 
     @Synchronized fun restoreSnapshot(id: String): Boolean {
+        check(bulkTransactions.recover()) { "Bulk recovery requires manual inspection" }
         check(batchTransactions.recover()) { "Mod batch recovery requires manual inspection" }
         check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         return safety.restore(id)
@@ -43,6 +45,7 @@ class ModFileManager(
 
     /** A read-only review of all destination changes. ZIP extraction uses existing budgets. */
     @Synchronized fun previewFromZip(zipFile: File): ModArchivePreview {
+        check(bulkTransactions.recover()) { "Bulk recovery requires manual inspection" }
         check(batchTransactions.recover()) { "Mod batch recovery requires manual inspection" }
         check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         check(safety.recover()) { "An interrupted mod operation needs manual recovery" }
@@ -100,6 +103,7 @@ class ModFileManager(
      * Scan the Mods/ directory and parse all installed mods.
      */
     @Synchronized fun listInstalledMods(): List<InstalledMod> {
+        check(bulkTransactions.recover()) { "Bulk recovery requires manual inspection" }
         check(batchTransactions.recover()) { "Mod batch recovery requires manual inspection" }
         check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         if (!modsDir.exists()) return emptyList()
@@ -148,6 +152,7 @@ class ModFileManager(
 
     /** Journaled before the first rename; recovery reverses interrupted profile changes. */
     @Synchronized fun applyProfileSafely(profile: ModProfile, expectedFingerprint: String): Int {
+        check(bulkTransactions.recover()) { "Bulk recovery requires manual inspection" }
         check(batchTransactions.recover()) { "Mod batch recovery requires manual inspection" }
         check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         check(safety.recover()) { "An interrupted mod operation needs recovery" }
@@ -172,7 +177,54 @@ class ModFileManager(
         })
     }
 
+    /**
+     * R2B: explicit selection gets a fresh physical-byte witness from the actual Mods root.
+     * This method NEVER applies folder moves. Legacy *.disabled migrations are deliberately
+     * excluded: normal listInstalledMods() may migrate them, so it is NOT used here.
+     * A filesystem witness is informative evidence, not user approval for a live write.
+     */
+    @Synchronized fun previewBulkWithWitness(requestedIds: Set<String>, enable: Boolean): ModBulkPreview {
+        check(bulkTransactions.recover()) { "Bulk recovery needs manual inspection" }
+        check(batchTransactions.recover()) { "Batch recovery needs manual inspection" }
+        check(profileTransactions.recover()) { "Profile recovery needs manual inspection" }
+        check(safety.recover()) { "Mod operation recovery needs manual inspection" }
+        val folders = requireNotNull(modsDir.listFiles()) { "Mods inventory unavailable" }
+        check(folders.none { Files.isSymbolicLink(it.toPath()) }) { "Linked entry in Mods" }
+        // Avoid parseMod(): that legacy helper recursively walks files and follows aliases.
+        // Byte verification belongs exclusively to the symlink-refusing transaction scanner.
+        val current = folders.filter { it.isDirectory && File(it, "manifest.json").isFile }
+            .map { folder ->
+                val manifestFile = File(folder, "manifest.json")
+                check(!Files.isSymbolicLink(folder.toPath()) &&
+                    !Files.isSymbolicLink(manifestFile.toPath()) &&
+                    manifestFile.length() in 1..262144L) { "Unsafe mod manifest" }
+                val manifest = requireNotNull(parser.parse(manifestFile.readText())) {
+                    "Unreadable mod manifest" }
+                InstalledMod(manifest, folder.name, folder.absolutePath,
+                    !folder.name.startsWith("."), manifestFile.lastModified(), 0L)
+            }
+        val preview = ModSelectionPolicy.preview(current, requestedIds, enable)
+        if (preview.blockers.isNotEmpty() || preview.steps.isEmpty()) return preview
+        val physical = bulkTransactions.review(preview.steps.map {
+            ProfileFolderMove(it.fromFolder, it.toFolder)
+        }, preview.inventoryFingerprint)
+        // Include the WHOLE source-byte witness; rootWitness alone only covers names/types.
+        // Delimit fields to avoid ambiguous encodings; never persist/display paths or bytes.
+        val reviewBytes = buildString {
+            append(physical.rootWitness); append('\u0000')
+            append(physical.inventoryFingerprint); append('\u0000')
+            physical.moves.forEachIndexed { index, move ->
+                append(move.from); append('\u0000'); append(move.to); append('\u0000')
+                append(physical.sourceHashes[index]); append('\u0000')
+            }
+        }.toByteArray(Charsets.UTF_8)
+        val proof = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(reviewBytes).joinToString("") { "%02x".format(it) }
+        return preview.copy(filesystemWitness = proof)
+    }
+
     @Synchronized fun enableMod(folderName: String): Boolean {
+        check(bulkTransactions.recover()) { "Bulk recovery requires manual inspection" }
         check(batchTransactions.recover()) { "Mod batch recovery requires manual inspection" }
         check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         if (!folderName.startsWith(".")) return true
@@ -180,6 +232,7 @@ class ModFileManager(
     }
 
     @Synchronized fun disableMod(folderName: String): Boolean {
+        check(bulkTransactions.recover()) { "Bulk recovery requires manual inspection" }
         check(batchTransactions.recover()) { "Mod batch recovery requires manual inspection" }
         check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         if (folderName.startsWith(".")) return true
@@ -206,6 +259,7 @@ class ModFileManager(
 
     /** Remove one validated direct child, never an arbitrary path. */
     @Synchronized fun removeMod(folderName: String): Boolean {
+        check(bulkTransactions.recover()) { "Bulk recovery requires manual inspection" }
         check(batchTransactions.recover()) { "Mod batch recovery requires manual inspection" }
         check(profileTransactions.recover()) { "Profile recovery needs manual review" }
         val folder = safeFolder(folderName)
