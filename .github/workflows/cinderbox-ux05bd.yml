@@ -1,0 +1,132 @@
+name: UX-05B-D Native Mod Detail, Requirements and Visual Fidelity
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
+      - 'app/src/main/java/com/sdvsync/mods/ModRequirementsAssessor.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModDetailScreen.kt'
+      - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModDetailViewModel.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModsScreen.kt'
+      - 'app/src/test/java/com/sdvsync/mods/ModRequirementsAssessorTest.kt'
+      - 'app/src/androidTest/java/com/sdvsync/qualification/UX05DetailVisualDeviceTest.kt'
+      - 'scripts/devtool/ux05bd_*'
+      - '.github/workflows/cinderbox-ux05bd.yml'
+      - 'docs/security/M3_RELEASE_POLICY.json'
+  push:
+    branches: [master]
+    paths:
+      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
+      - 'app/src/main/java/com/sdvsync/mods/ModRequirementsAssessor.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModDetailScreen.kt'
+      - 'scripts/devtool/ux05bd_*'
+      - '.github/workflows/cinderbox-ux05bd.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ux05bd-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native-unit-and-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - run: sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Verify source, requirements unit tests, and APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 -B scripts/devtool/ux05bd_gate.py
+          python3 -B scripts/devtool/ux_05_mods_gate.py
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+  native-screen-evidence:
+    needs: native-unit-and-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - run: sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Compile disposable debug and test APKs
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Require hosted KVM
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+      - name: Install API 36 emulator system image
+        run: sdkmanager --install 'system-images;android-36;google_apis;x86_64'
+      - name: Capture two native synthetic viewports
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          disk-size: 3072M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash scripts/devtool/ux05bd_emulator_ci.sh
+      - name: Install pinned comparison and reference-render dependencies
+        run: |
+          set -euo pipefail
+          python3 -m pip install 'Pillow==11.3.0' 'playwright==1.57.0'
+          python3 -m playwright install --with-deps chromium
+      - name: Render independent 360x800 HTML reference from frozen approved source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B scripts/devtool/ux05bd_reference_render.py \
+            --width 360 --height 800 \
+            --output "$RUNNER_TEMP/ux05bd-visual/ux05bd-approved-360x800.png"
+      - name: Compare each native viewport to its corresponding HTML reference
+        shell: bash
+        run: |
+          set -euo pipefail
+          for width in 393 360; do
+            if [[ "$width" == 393 ]]; then
+              height=852
+              reference=design/cinderbox/01_REFERENCE/screenshots/mod-detail-393x852.png
+            else
+              height=800
+              reference="$RUNNER_TEMP/ux05bd-visual/ux05bd-approved-360x800.png"
+            fi
+            python3 -B scripts/devtool/ux05bd_visual_check.py \
+              --actual "$RUNNER_TEMP/ux05bd-visual/ux05bd-detail-${width}x${height}.png" \
+              --reference "$reference" \
+              --expected-width "$width" --expected-height "$height" \
+              --output-dir "$RUNNER_TEMP/ux05bd-visual/${width}" \
+              --source-sha "$GITHUB_SHA"
+          done
+      - name: Upload sanitized synthetic evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: ux05bd-android-api36-visual-evidence
+          path: ${{ runner.temp }}/ux05bd-visual/
+          if-no-files-found: warn
+          retention-days: 14

@@ -60,6 +60,7 @@ import com.sdvsync.ui.screens.InstallationHealthScreen
 import com.sdvsync.ui.screens.InstalledModDetailScreen
 import com.sdvsync.ui.screens.LoginScreen
 import com.sdvsync.ui.screens.ModBrowseScreen
+import com.sdvsync.ui.screens.ApprovedModDetailScreen
 import com.sdvsync.ui.screens.ModDetailScreen
 import com.sdvsync.ui.screens.ModManagerScreen
 import com.sdvsync.ui.screens.ApprovedModsScreen
@@ -469,10 +470,32 @@ fun SdvSyncNavGraph(navController: NavHostController) {
             val modId = backStackEntry.arguments?.getString("modId") ?: return@composable
             val source = backStackEntry.arguments?.getString("source") ?: return@composable
             val viewModel: ModDetailViewModel = koinViewModel { parametersOf(modId, source) }
-            ModDetailScreen(
+            ApprovedModDetailScreen(
                 viewModel = viewModel,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onReviewFiles = {
+                    navController.navigate("mod_detail_advanced/" + Uri.encode(modId) + "/" + Uri.encode(source))
+                },
+                onSelectTab = { tab ->
+                    navController.popBackStack("main", inclusive = false).let { hadMain ->
+                        if (!hadMain) navController.navigate("main")
+                    }
+                    navController.currentBackStackEntry?.savedStateHandle?.set("switchToTab", tab.route)
+                }
             )
+        }
+        // Existing guarded file/download interaction remains available by explicit choice.
+        composable(
+            route = "mod_detail_advanced/{modId}/{source}",
+            arguments = listOf(
+                navArgument("modId") { type = NavType.StringType },
+                navArgument("source") { type = NavType.StringType }
+            )
+        ) { entry ->
+            val modId = entry.arguments?.getString("modId") ?: return@composable
+            val source = entry.arguments?.getString("source") ?: return@composable
+            val viewModel: ModDetailViewModel = koinViewModel { parametersOf(modId, source) }
+            ModDetailScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
         }
     }
 }

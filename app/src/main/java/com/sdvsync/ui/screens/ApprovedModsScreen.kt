@@ -147,6 +147,10 @@ fun ApprovedModsScreen(
     var savedCards by androidx.compose.runtime.remember(bookmarks) {
         mutableStateOf(readSavedCards(bookmarks.getString("cards", null)))
     }
+    androidx.lifecycle.compose.LifecycleResumeEffect(bookmarks) {
+        savedCards = readSavedCards(bookmarks.getString("cards", null))
+        onPauseOrDispose {}
+    }
     val savedIds = savedCards.keys
     var pane by rememberSaveable { mutableStateOf(ModsPane.DISCOVER) }
     var filter by rememberSaveable { mutableStateOf(DiscoverFilter.ALL) }

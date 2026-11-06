@@ -3,6 +3,8 @@ package com.sdvsync.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sdvsync.logging.AppLogger
+import com.sdvsync.mods.ModRequirementsAssessor
+import com.sdvsync.mods.ModRequirementsReport
 import com.sdvsync.mods.ModDownloadManager
 import com.sdvsync.mods.ModFileManager
 import com.sdvsync.mods.api.NexusModSource
@@ -19,6 +21,8 @@ import kotlinx.coroutines.launch
 data class ModDetailState(
     val mod: RemoteMod? = null,
     val files: List<RemoteModFile> = emptyList(),
+    val fileListError: String? = null,
+    val requirements: ModRequirementsReport? = null,
     val isLoading: Boolean = true,
     val isDownloading: Boolean = false,
     val error: String? = null,
@@ -53,8 +57,20 @@ class ModDetailViewModel(
             _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val mod = nexusSource.getModDetails(modId)
-                val files = nexusSource.getModFiles(modId)
-                _state.update { it.copy(mod = mod, files = files, isLoading = false) }
+                // Missing inventory is UNKNOWN, never an empty verified dependency set.
+                _state.update { it.copy(mod = mod, isLoading = false) }
+                val inventory = try { fileManager.listInstalledMods() }
+                    catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (_: Exception) { null }
+                _state.update { it.copy(requirements = ModRequirementsAssessor.assess(mod, inventory)) }
+                // A provider file-list failure does not erase valid detail metadata.
+                val fileList = try { nexusSource.getModFiles(modId) }
+                    catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (_: Exception) {
+                        _state.update { it.copy(fileListError = "Provider files unavailable") }
+                        emptyList()
+                    }
+                _state.update { it.copy(files = fileList) }
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Failed to load mod details", e)
                 _state.update {
