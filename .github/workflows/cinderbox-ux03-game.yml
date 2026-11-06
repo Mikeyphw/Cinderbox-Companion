@@ -1,0 +1,39 @@
+name: Cinderbox UX-03 — approved dark Game source and safety
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedGameScreen.kt'
+      - 'app/src/androidTest/java/com/sdvsync/qualification/R48RealActivityDeviceTest.kt'
+      - 'scripts/devtool/ux_03_game_gate.py'
+      - 'scripts/devtool/test_ux_03_game.py'
+      - '.github/workflows/cinderbox-ux03-game.yml'
+      - 'docs/security/M3_RELEASE_POLICY.json'
+  push:
+    branches: [master]
+    paths:
+      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedGameScreen.kt'
+      - 'scripts/devtool/ux_03_game_gate.py'
+      - '.github/workflows/cinderbox-ux03-game.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ux03-game-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Source-pinned UX-03 and release safety
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 -B scripts/devtool/ux_00_01_source_gate.py
+          python3 -B scripts/devtool/ux_03_game_gate.py
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_ux_03_game.py' -v
+          python3 -B scripts/devtool/r43d_gate.py
+          python3 -B scripts/devtool/r48_gate.py
+          python3 -B scripts/devtool/m25_bulk_r2e_gate.py

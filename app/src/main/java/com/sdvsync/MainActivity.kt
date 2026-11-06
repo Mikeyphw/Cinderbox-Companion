@@ -53,6 +53,7 @@ import com.sdvsync.ui.components.StardewBottomBar
 import com.sdvsync.ui.screens.BackupListScreen
 import com.sdvsync.ui.screens.DashboardScreen
 import com.sdvsync.ui.screens.GameDownloadScreen
+import com.sdvsync.ui.screens.ApprovedGameScreen
 import com.sdvsync.ui.screens.HomeScreen
 import com.sdvsync.ui.screens.InstallationHealthScreen
 import com.sdvsync.ui.screens.InstalledModDetailScreen
@@ -326,6 +327,15 @@ fun SdvSyncNavGraph(navController: NavHostController) {
             }
         }
 
+        // UX-03: the established backend and its guarded setup actions survive
+        // behind an explicit secondary route. Normal Game tab never auto-downloads.
+        composable("game_setup_advanced") {
+            GameDownloadScreen(
+                onBack = { navController.popBackStack() },
+                onOpenInstallationHealth = { navController.navigate("installation_health") }
+            )
+        }
+
         // Main section with bottom bar
         composable("main") {
             MainScreen(
@@ -569,19 +579,15 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
                 )
             }
 
-            // Download tab
+            // UX-03: approved dark Game tab, read-only state; Steam sign-in optional.
+            // All existing service-layer download and filesystem checks remain intact.
             composable("game_download") {
-                GameDownloadScreen(
+                ApprovedGameScreen(
+                    isSteamConnected = steamConnection == ConnectionState.LOGGED_IN,
+                    onConnectSteam = { parentNavController.navigate("login") },
                     onOpenInstallationHealth = { parentNavController.navigate("installation_health") },
-                    onBack = {
-                        mainNavController.navigate("home") {
-                            popUpTo(mainNavController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
+                    onOpenGameSetup = { parentNavController.navigate("game_setup_advanced") },
+                    onOpenOperationCenter = { parentNavController.navigate("operation_center") }
                 )
             }
 
