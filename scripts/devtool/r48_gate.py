@@ -25,7 +25,7 @@ def check(root: Path = ROOT) -> list[str]:
     activity = (root / 'app/src/main/java/com/sdvsync/MainActivity.kt').read_text()
     for expected in ('class MainActivity : ComponentActivity()',
                      'fun SdvSyncNavGraph(', 'fun MainScreen(',
-                     'startDestination = "main"', 'startDestination = "home",
+                     'startDestination = "main"', 'startDestination = "home"',
                      'onContinueOffline = {', 'StardewBottomBar('):
         if expected not in activity:
             errors.append('R48 real-Activity navigation prerequisite missing: ' + expected)
