@@ -2,7 +2,6 @@ package com.sdvsync.qualification
 
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
