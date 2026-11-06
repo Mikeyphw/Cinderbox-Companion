@@ -200,8 +200,14 @@ class ModFileManager(
                     manifestFile.length() in 1..262144L) { "Unsafe mod manifest" }
                 val manifest = requireNotNull(parser.parse(manifestFile.readText())) {
                     "Unreadable mod manifest" }
-                InstalledMod(manifest, folder.name, folder.absolutePath,
-                    !folder.name.startsWith("."), manifestFile.lastModified(), 0L)
+                InstalledMod(
+                    manifest = manifest,
+                    folderName = folder.name,
+                    folderPath = folder.absolutePath,
+                    enabled = !folder.name.startsWith("."),
+                    installedAt = manifestFile.lastModified(),
+                    fileSize = 0L
+                )
             }
         val preview = ModSelectionPolicy.preview(current, requestedIds, enable)
         if (preview.blockers.isNotEmpty() || preview.steps.isEmpty()) return preview
