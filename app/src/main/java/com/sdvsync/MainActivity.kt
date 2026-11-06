@@ -69,6 +69,9 @@ import com.sdvsync.ui.screens.SaveViewerScreen
 import com.sdvsync.ui.screens.SettingsScreen
 import com.sdvsync.ui.screens.ApprovedMoreScreen
 import com.sdvsync.ui.screens.ApprovedDeepStatusScreen
+import com.sdvsync.ui.screens.ApprovedGameDeepScreen
+import com.sdvsync.ui.screens.ApprovedProfileDetailScreen
+import com.sdvsync.ui.screens.DeepGameArea
 import com.sdvsync.ui.screens.DeepStatusArea
 import com.sdvsync.ui.screens.ApprovedMoreInfoScreen
 import com.sdvsync.ui.screens.SteamDiagnosticsScreen
@@ -412,6 +415,38 @@ fun SdvSyncNavGraph(navController: NavHostController) {
             )
         }
 
+        // UX-08B: read-only SMAPI/recovery/profile summaries. All real operations
+        // stay behind the existing reviewed flows.
+        composable("smapi_overview") {
+            ApprovedGameDeepScreen(
+                area = DeepGameArea.SMAPI,
+                onBack = { navController.popBackStack() },
+                onOpenInstallationHealth = { navController.navigate("installation_health") },
+                onReviewAdvancedSetup = { navController.navigate("game_setup_advanced") },
+                onOpenOperations = { navController.navigate("operation_center") }
+            )
+        }
+        composable("recovery_overview") {
+            ApprovedGameDeepScreen(
+                area = DeepGameArea.RECOVERY,
+                onBack = { navController.popBackStack() },
+                onOpenInstallationHealth = { navController.navigate("installation_health") },
+                onReviewAdvancedSetup = { navController.navigate("game_setup_advanced") },
+                onOpenOperations = { navController.navigate("operation_center") }
+            )
+        }
+        composable(
+            route = "profile_detail/{profileId}",
+            arguments = listOf(navArgument("profileId") { type = NavType.StringType })
+        ) { entry ->
+            val profileId = entry.arguments?.getString("profileId") ?: return@composable
+            ApprovedProfileDetailScreen(
+                profileId = profileId,
+                onBack = { navController.popBackStack() },
+                onReviewAdvancedManager = { navController.navigate("mods_advanced") }
+            )
+        }
+
         // Main section with bottom bar
         composable("main") {
             MainScreen(
@@ -676,7 +711,10 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
                         parentNavController.navigate("installed_mod/${Uri.encode(uniqueId)}")
                     },
                     onOpenAdvancedMods = { parentNavController.navigate("mods_advanced") },
-                    onOpenQueue = { parentNavController.navigate("download_queue") }
+                    onOpenQueue = { parentNavController.navigate("download_queue") },
+                    onOpenProfileDetail = { profileId ->
+                        parentNavController.navigate("profile_detail/${Uri.encode(profileId)}")
+                    }
                 )
             }
 
@@ -688,7 +726,9 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
                     onConnectSteam = { parentNavController.navigate("login") },
                     onOpenInstallationHealth = { parentNavController.navigate("installation_health") },
                     onOpenGameSetup = { parentNavController.navigate("game_setup_advanced") },
-                    onOpenOperationCenter = { parentNavController.navigate("operation_center") }
+                    onOpenOperationCenter = { parentNavController.navigate("operation_center") },
+                    onOpenSmapi = { parentNavController.navigate("smapi_overview") },
+                    onOpenRecovery = { parentNavController.navigate("recovery_overview") }
                 )
             }
 

@@ -135,6 +135,7 @@ fun ApprovedModsScreen(
     onOpenInstalledMod: (String) -> Unit,
     onOpenAdvancedMods: () -> Unit,
     onOpenQueue: () -> Unit = {},
+    onOpenProfileDetail: (String) -> Unit = {},
     viewModel: ModManagerViewModel = koinViewModel(),
     browseViewModel: ModBrowseViewModel = koinViewModel()
 ) {
@@ -448,7 +449,7 @@ fun ApprovedModsScreen(
                         ModsEntry(title = profile.name,
                             detail = "${profile.enabledModIds.size} selected mods${if (profile.isProtected) " · Protected" else ""}",
                             status = if (profile.name == state.activeProfileName) "Current" else "Saved",
-                            onClick = onOpenAdvancedMods)
+                            onClick = { onOpenProfileDetail(profile.id) })
                     }
                 }
                 item {

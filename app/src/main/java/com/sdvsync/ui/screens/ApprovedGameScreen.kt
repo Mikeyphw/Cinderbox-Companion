@@ -61,6 +61,8 @@ fun ApprovedGameScreen(
     onOpenInstallationHealth: () -> Unit,
     onOpenGameSetup: () -> Unit,
     onOpenOperationCenter: () -> Unit,
+    onOpenSmapi: () -> Unit = {},
+    onOpenRecovery: () -> Unit = {},
     viewModel: GameDownloadViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -197,7 +199,7 @@ fun ApprovedGameScreen(
                 Text("Detection is not compatibility or file-integrity verification.",
                     color = Dark.Muted, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(10.dp))
-                GameSmallAction("Check modding setup", onOpenInstallationHealth, Modifier.fillMaxWidth())
+                GameSmallAction("Check modding setup", onOpenSmapi, Modifier.fillMaxWidth())
             }
         }
         Spacer(Modifier.height(20.dp))
@@ -214,7 +216,9 @@ fun ApprovedGameScreen(
                 Text("Existing game files, saves and mods remain protected.", color = Dark.Muted,
                     style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(10.dp))
-                GameSmallAction("View setup & recovery", onOpenGameSetup, Modifier.fillMaxWidth())
+                GameSmallAction("View setup & recovery", onOpenRecovery, Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                GameSmallAction("Advanced game setup", onOpenGameSetup, Modifier.fillMaxWidth())
             }
         }
         Spacer(Modifier.height(28.dp))
