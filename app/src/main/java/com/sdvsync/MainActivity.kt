@@ -67,6 +67,8 @@ import com.sdvsync.ui.screens.ApprovedModsScreen
 import com.sdvsync.ui.screens.OperationCenterScreen
 import com.sdvsync.ui.screens.SaveViewerScreen
 import com.sdvsync.ui.screens.SettingsScreen
+import com.sdvsync.ui.screens.ApprovedMoreScreen
+import com.sdvsync.ui.screens.ApprovedMoreInfoScreen
 import com.sdvsync.ui.screens.SteamDiagnosticsScreen
 import com.sdvsync.ui.policy.DeveloperFeaturePolicy
 import com.sdvsync.ui.policy.R45NavigationPolicy
@@ -364,6 +366,29 @@ fun SdvSyncNavGraph(navController: NavHostController) {
             )
         }
 
+        // UX-06: preserve established Settings controls and explicit opt-ins.
+        // Secondary route never starts an elevated operation by navigation alone.
+        composable("more_advanced") {
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onLogout = {
+                    navController.popBackStack("main", inclusive = false).let { mainExists ->
+                        if (!mainExists) navController.navigate("main")
+                    }
+                    navController.currentBackStackEntry?.savedStateHandle?.set("switchToTab", "home")
+                },
+                onOpenDeveloperDiagnostics = { navController.navigate("steam_diagnostics") },
+                onOpenInstallationHealth = { navController.navigate("installation_health") },
+                onOpenOperationCenter = { navController.navigate("operation_center") }
+            )
+        }
+        composable("more_help") {
+            ApprovedMoreInfoScreen(topic = "help", onBack = { navController.popBackStack() })
+        }
+        composable("more_about") {
+            ApprovedMoreInfoScreen(topic = "about", onBack = { navController.popBackStack() })
+        }
+
         // Main section with bottom bar
         composable("main") {
             MainScreen(
@@ -643,29 +668,15 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
                 )
             }
 
-            // Settings tab
+            // UX-06: approved native dark More hub, no privileged action from this view.
             composable("settings") {
-                SettingsScreen(
-                    onBack = {
-                        mainNavController.navigate("home") {
-                            popUpTo(mainNavController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    onLogout = {
-                        // Logout never sends users back to a mandatory Steam login screen.
-                        mainNavController.navigate("home") {
-                            popUpTo(mainNavController.graph.findStartDestination().id) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    onOpenDeveloperDiagnostics = { parentNavController.navigate("steam_diagnostics") },
+                ApprovedMoreScreen(
+                    onConnectSteam = { parentNavController.navigate("login") },
+                    onOpenSettings = { parentNavController.navigate("more_advanced") },
+                    onOpenOperationCenter = { parentNavController.navigate("operation_center") },
                     onOpenInstallationHealth = { parentNavController.navigate("installation_health") },
-                    onOpenOperationCenter = { parentNavController.navigate("operation_center") }
+                    onOpenHelp = { parentNavController.navigate("more_help") },
+                    onOpenAbout = { parentNavController.navigate("more_about") }
                 )
             }
         }
