@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
@@ -93,9 +94,6 @@ fun SettingsScreen(
     val migrationState by migrationViewModel.state.collectAsState()
 
     val context = LocalContext.current
-    val appearanceStore = remember(context) { AppearancePreferences(context.applicationContext) }
-    val appearance by appearanceStore.settings.collectAsState(initial = AppearanceSettings())
-    val appearanceScope = rememberCoroutineScope()
     var steamBackgroundEnabled by remember {
         mutableStateOf(SteamBackgroundService.isEnabled(context))
     }
@@ -187,6 +185,7 @@ fun SettingsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .testTag("cinderbox.screen.more")
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
@@ -200,50 +199,20 @@ fun SettingsScreen(
             if (!preLogin) {
                 R45AreaGuide(R45GuideArea.MORE)
             }
-            // Offline, app-private visual preferences. No Steam or storage permissions required.
+            // UX-01: the single approved appearance is fixed and never requires permissions.
             SectionHeader(stringResource(R.string.appearance_section))
             Spacer(Modifier.height(8.dp))
             StardewCard {
-                Column(Modifier.padding(12.dp)) {
-                    Text(stringResource(R.string.appearance_style_label), style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        stringResource(R.string.appearance_style_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = appearance.style == AppearanceStyle.CLASSIC,
-                            onClick = { appearanceScope.launch { appearanceStore.setStyle(AppearanceStyle.CLASSIC) } },
-                            label = { Text(stringResource(R.string.appearance_classic)) },
-                            colors = filterChipColors
-                        )
-                        FilterChip(
-                            selected = appearance.style == AppearanceStyle.EARTHY,
-                            onClick = { appearanceScope.launch { appearanceStore.setStyle(AppearanceStyle.EARTHY) } },
-                            label = { Text(stringResource(R.string.appearance_earthy)) },
-                            colors = filterChipColors
-                        )
+                Row(Modifier.fillMaxWidth().padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Color theme", style = MaterialTheme.typography.titleSmall)
+                        Text("The approved Cinderbox appearance", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall)
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text(stringResource(R.string.appearance_brightness_label), style = MaterialTheme.typography.titleMedium)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AppearanceMode.entries.forEach { mode ->
-                            val text = when (mode) {
-                                AppearanceMode.SYSTEM -> stringResource(R.string.appearance_system)
-                                AppearanceMode.LIGHT -> stringResource(R.string.appearance_light)
-                                AppearanceMode.DARK -> stringResource(R.string.appearance_dark)
-                            }
-                            FilterChip(
-                                selected = appearance.mode == mode,
-                                onClick = { appearanceScope.launch { appearanceStore.setMode(mode) } },
-                                label = { Text(text) },
-                                colors = filterChipColors
-                            )
-                        }
-                    }
+                    Text("Dark · default", color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelSmall)
                 }
             }
 

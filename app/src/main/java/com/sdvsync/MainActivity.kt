@@ -25,6 +25,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -116,12 +117,8 @@ class MainActivity : ComponentActivity() {
             }
         }
         setContent {
-            val appearanceStore = remember { AppearancePreferences(applicationContext) }
-            val appearance by appearanceStore.settings.collectAsState(initial = AppearanceSettings())
-            SdvSyncTheme(
-                style = appearance.style,
-                darkTheme = appearance.mode.resolve(isSystemInDarkTheme())
-            ) {
+            // UX-00: approved sole dark appearance; stored legacy modes are ignored.
+            SdvSyncTheme {
                 val navController = rememberNavController()
                 SdvSyncNavGraph(navController)
             }
@@ -249,7 +246,7 @@ fun SdvSyncNavGraph(navController: NavHostController) {
 
     NavHost(
         navController = navController,
-        startDestination = "login",
+        startDestination = "main",
         enterTransition = {
             slideIntoContainer(
                 towards = AnimatedContentTransitionScope.SlideDirection.Left,
@@ -283,16 +280,12 @@ fun SdvSyncNavGraph(navController: NavHostController) {
         ) {
             LoginScreen(
                 onLoginSuccess = {
-                    navController.navigate("main") {
-                        popUpTo("login") { inclusive = true }
-                    }
+                    // Steam is a voluntary secondary flow. Return to the local shell.
+                    if (!navController.popBackStack()) navController.navigate("main")
                 },
                 onOpenSettings = { navController.navigate("prelogin_settings") },
                 onContinueOffline = {
-                    navController.navigate("main") {
-                        popUpTo("login") { inclusive = true }
-                        launchSingleTop = true
-                    }
+                    if (!navController.popBackStack()) navController.navigate("main")
                 }
             )
         }
@@ -460,6 +453,8 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
         onPauseOrDispose {}
     }
 
+    val steamClientManager: SteamClientManager = org.koin.compose.koinInject()
+    val steamConnection by steamClientManager.connectionState.collectAsState()
     val mainNavController = rememberNavController()
 
     // Handle tab switch requests from parent nav (e.g. SyncDetailScreen → Settings)
@@ -520,6 +515,7 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
             startDestination = "home",
             modifier = Modifier
                 .weight(1f)
+                .testTag("cinderbox.shell.content")
                 .consumeWindowInsets(
                     if (isMainShowBottomBar) WindowInsets.navigationBars else WindowInsets(0, 0, 0, 0)
                 ),
@@ -540,7 +536,9 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
                     },
                     onOpenOperationCenter = {
                         parentNavController.navigate("operation_center")
-                    }
+                    },
+                    isSteamConnected = steamConnection == ConnectionState.LOGGED_IN,
+                    onConnectSteam = { parentNavController.navigate("login") }
                 )
             }
 
@@ -600,8 +598,11 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
                         }
                     },
                     onLogout = {
-                        parentNavController.navigate("login") {
-                            popUpTo(0) { inclusive = true }
+                        // Logout never sends users back to a mandatory Steam login screen.
+                        mainNavController.navigate("home") {
+                            popUpTo(mainNavController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
                         }
                     },
                     onOpenDeveloperDiagnostics = { parentNavController.navigate("steam_diagnostics") },

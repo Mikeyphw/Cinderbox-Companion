@@ -1,0 +1,61 @@
+name: Cinderbox UX — native dark/local-first foundation
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
+      - 'app/src/main/java/com/sdvsync/ui/**'
+      - 'app/src/test/java/com/sdvsync/ui/**'
+      - 'scripts/devtool/ux_00_01_source_gate.py'
+      - '.github/workflows/cinderbox-ux-foundation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-and-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - run: |
+          set -euo pipefail
+          python3 -B scripts/devtool/ux_00_01_source_gate.py
+          python3 -B scripts/devtool/m25_bulk_r2e_gate.py
+          python3 -B scripts/devtool/m25_bulk_r2d_shizuku_gate.py
+          python3 -B scripts/devtool/m25_bulk_r2d_gate.py
+          python3 -B scripts/devtool/m25_bulk_r2c_gate.py
+          python3 -B scripts/devtool/m25_bulk_r2b_gate.py
+          python3 -B scripts/devtool/m25_bulk_gate.py
+          python3 -B scripts/devtool/r44_gate.py
+          python3 -B scripts/devtool/r47_gate.py
+          python3 -B scripts/devtool/r48_gate.py
+  hosted-kotlin-and-apk:
+    needs: source-and-safety
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:testDebugUnitTest --tests com.sdvsync.ui.policy.SteamCapabilityGateTest
+          ./gradlew --no-daemon --max-workers=2 :app:assembleDebug :app:assembleDebugAndroidTest
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        if: always()
+        with:
+          name: cinderbox-ux-foundation-android-output
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/androidTest/debug/*.apk
+          if-no-files-found: warn
+          retention-days: 7

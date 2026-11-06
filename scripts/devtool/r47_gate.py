@@ -37,12 +37,12 @@ def check()->dict:
                      'errorPanelNeverRetriesBeforeExplicitTap','staticErrorCannotExposeAnUnwiredAction',
                      'fontScale = 1.6f','AppearanceStyle.CLASSIC','AppearanceStyle.EARTHY',
                      'captureToImage().asAndroidBitmap()', 'Context.MODE_PRIVATE',
-                     '"Open operation center" to "operations"','assertIsSelected()'):
+                     '"All activity" to "operations"','assertIsSelected()'):
         assert expected in test,'R47_MISSING_UI_CHECK:'+expected
     # R2: check behavior-focused instrumentation, not only @Test name counts.
     for expected in ('mutableStateListOf<String>()',
-                     'Open Game', 'Open Saves', 'Open Mods', 'Open More',
-                     'View installation health', 'Open operation center',
+                     'Explore mods', 'Open local saves', 'Discover mods',
+                     'Installation health', 'All activity',
                      'calls.isEmpty()', 'shortcuts.forEachIndexed',
                      'SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)', 'assertIsNotSelected()',
                      'StardewBottomBar(tab, onTabSelected = {})',

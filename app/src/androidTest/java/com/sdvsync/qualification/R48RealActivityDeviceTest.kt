@@ -43,8 +43,7 @@ class R48RealActivityDeviceTest {
     )
 
     private fun enterOffline() {
-        rule.onNodeWithText("Continue offline").performScrollTo().performClick()
-        rule.onNodeWithText("Your Cinderbox workspace").assertExists()
+        rule.onNodeWithText("Your valley, beautifully organized.").assertExists()
         tab(BottomTab.HOME).assertIsSelected().assertIsDisplayed()
         rule.onNodeWithText("Continue offline").assertDoesNotExist()
     }
@@ -130,19 +129,19 @@ class R48RealActivityDeviceTest {
         }
         checkpoint("tabs", "return_home")
         tab(BottomTab.HOME).performClick().assertIsSelected().assertIsDisplayed()
-        rule.onNodeWithText("Your Cinderbox workspace").assertExists()
+        rule.onNodeWithText("Your valley, beautifully organized.").assertExists()
         checkpoint("tabs", "done")
     }
 
     @Test fun realHomeShortcutsAndNestedBackNavigation() {
         enterOffline()
-        rule.onNodeWithText("Open Game").performScrollTo().performClick()
+        tab(BottomTab.DOWNLOAD).performClick()
         tab(BottomTab.DOWNLOAD).assertIsSelected()
         rule.onNodeWithText("Game setup path").assertExists()
         Espresso.pressBack()
         tab(BottomTab.HOME).assertIsSelected()
-        rule.onNodeWithText("Your Cinderbox workspace").assertExists()
-        rule.onNodeWithText("View installation health").performScrollTo().performClick()
+        rule.onNodeWithText("Your valley, beautifully organized.").assertExists()
+        rule.onNodeWithText("Installation health").performScrollTo().performClick()
         rule.onNodeWithText("Read-only checks. Detection is not cryptographic integrity verification.")
             .assertExists()
         Espresso.pressBack()
@@ -150,22 +149,19 @@ class R48RealActivityDeviceTest {
     }
 
     @Test fun realPreLoginSettingsBackRequiresNoSteam() {
-        // Settings are accessible before Steam authentication and must return to Login.
-        rule.onNodeWithText("Continue offline").assertExists()
-        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
-        rule.onNodeWithText(ctx.getString(com.sdvsync.R.string.settings_title))
-            .performScrollTo().performClick()
-        rule.onNodeWithText(ctx.getString(com.sdvsync.R.string.appearance_style_label)).assertExists()
-        Espresso.pressBack()
-        rule.onNodeWithText("Continue offline").assertExists()
-        rule.onNodeWithText("Your Cinderbox workspace").assertDoesNotExist()
+        // UX-00: local settings are accessible without Steam; back returns Home.
+        enterOffline()
+        tab(BottomTab.SETTINGS).performClick().assertIsSelected()
+        rule.onNodeWithText("Dark · default").performScrollTo().assertExists()
+        tab(BottomTab.HOME).performClick().assertIsSelected()
+        rule.onNodeWithText("Your valley, beautifully organized.").assertExists()
     }
 
     @Test fun realOperationCenterReadOnlyReturn() {
         checkpoint("operations", "enter_offline")
         enterOffline()
         checkpoint("operations", "open_center")
-        rule.onNodeWithText("Open operation center").performScrollTo().performClick()
+        rule.onNodeWithText("All activity").performScrollTo().performClick()
         checkpoint("operations", "expect_title")
         assertAnyScreenState("Live, read-only status and recovery guidance")
         checkpoint("operations", "expect_no_auto_retry")
@@ -177,7 +173,7 @@ class R48RealActivityDeviceTest {
         // The operation center belongs to the parent NavHost. Restoration of
         // the nested MainScreen can span an animated navigation transition.
         checkpoint("operations", "expect_home")
-        assertAnyScreenState("Your Cinderbox workspace")
+        assertAnyScreenState("Your valley, beautifully organized.")
         checkpoint("operations", "expect_home_tab")
         tab(BottomTab.HOME).assertIsSelected()
         checkpoint("operations", "done")

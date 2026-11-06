@@ -1,0 +1,233 @@
+{
+  "schema": "cinderbox-ux-parity-v1",
+  "intent": "IMPLEMENT THE APPROVED 2026-11-06 PORTRAIT MOCKUP EXACTLY, except for light-to-dark palette and browser-to-native adaptation; do not invent replacement layouts.",
+  "reference": {
+    "path": "01_REFERENCE/cinderbox-portrait-DARK.html",
+    "sha256": "2dbcfa5003d9f7836550e891b510dcebe88f9c7d71eb084375c7256e2121a5af",
+    "approved_origin": "cinderbox-portrait-prototype-fixed.html (light) from previous chat, translated palette-only + browser top identifier collision fix; 2026-11-06 user change: remove all alternate theme switches",
+    "origin_sha256": "e40a357fd4cace72d69bf7e499d9eb5da31467fb87748cb1ff3afe38e35d4c2b",
+    "dark_default": true,
+    "source_of_truth": true,
+    "preserve_dom_geometry": true,
+    "preserve_screen_text_content": true,
+    "preserve_navigation": true,
+    "previous_dark_sha256": "0fb1b70e1ca4ffc6190711bc16f0ff0c00139e701d7ea0a90056e2ebd64b4efe",
+    "sole_theme": "dark",
+    "disallowed_appearance_options": [
+      "normal",
+      "classic",
+      "earthy",
+      "light",
+      "system"
+    ]
+  },
+  "viewport_reference": [
+    {
+      "width_px": 393,
+      "height_px": 852,
+      "density": 1
+    },
+    {
+      "width_px": 360,
+      "height_px": 800,
+      "density": 1
+    }
+  ],
+  "dark_palette": {
+    "bg": "#101915",
+    "paper": "#1b2922",
+    "paper2": "#22362b",
+    "paper3": "#2a4536",
+    "ink": "#ecf5e9",
+    "muted": "#acbdb0",
+    "faint": "#829b8a",
+    "line": "#324739",
+    "forest": "#8cd9a8",
+    "forest2": "#78c89a",
+    "accent": "#eebc78",
+    "mint": "#274936",
+    "warn": "#ecc58a",
+    "warnbg": "#45341e",
+    "danger": "#e9a198",
+    "dangerbg": "#412824",
+    "hero": "#173d2d"
+  },
+  "navigation": {
+    "global_order": [
+      "Home",
+      "Game",
+      "Saves",
+      "Mods",
+      "More"
+    ],
+    "global_routes": [
+      "home",
+      "game_download",
+      "saves",
+      "mods",
+      "settings"
+    ],
+    "mods_order": [
+      "Discover",
+      "Installed",
+      "Updates",
+      "Profiles"
+    ],
+    "save_panes": [
+      "Local saves",
+      "Cloud saves"
+    ],
+    "must_preserve_existing_routes": true
+  },
+  "screens": {
+    "main": [
+      "Home",
+      "Game",
+      "Saves",
+      "Mods/Discover",
+      "Mods/Installed",
+      "Mods/Updates",
+      "Mods/Profiles",
+      "More"
+    ],
+    "secondary": [
+      "Mod detail",
+      "Installed mod detail",
+      "Save detail",
+      "Backups",
+      "Installation health",
+      "Activity / Operation center",
+      "SMAPI",
+      "Recovery",
+      "Steam game download",
+      "File access",
+      "Diagnostics",
+      "Help",
+      "About",
+      "Download queue",
+      "Profile detail"
+    ]
+  },
+  "core_flows": {
+    "first_launch_local": {
+      "start": "home",
+      "steam_connected": false,
+      "no_forced_login": true,
+      "unlocked": [
+        "local_saves",
+        "backup_view",
+        "mods_browse",
+        "installed_mods",
+        "profiles",
+        "installation_health",
+        "settings"
+      ],
+      "locked": [
+        "steam_game_download",
+        "steam_cloud_saves",
+        "steam_cloud_sync"
+      ]
+    },
+    "connect_steam": {
+      "user_initiated": true,
+      "unlocks": [
+        "steam_game_download_if_authorized",
+        "steam_cloud_saves_if_authorized"
+      ],
+      "disconnect_does_not_delete_local": true
+    },
+    "nexus_independent_of_steam": true,
+    "browse_mods": [
+      "discover",
+      "search/filter",
+      "details",
+      "file/version",
+      "review/stage",
+      "explicit_permission_and_safety_gate"
+    ],
+    "saves": [
+      "local_list",
+      "farmer_detail",
+      "backups",
+      "cloud_only_if_steam_authenticated",
+      "conflict_preview"
+    ],
+    "game": [
+      "installation_health",
+      "SMAPI",
+      "steam_download_if_authenticated",
+      "protected_repair_preview"
+    ],
+    "settings": [
+      "optional_steam",
+      "optional_nexus",
+      "Shizuku",
+      "root_opt_in",
+      "appearance",
+      "operation_center",
+      "support"
+    ]
+  },
+  "state_invariants": [
+    "A production app opens Home in local mode even without Steam login.",
+    "No Steam login is mandatory at app startup; no forced redirect to login.",
+    "Steam-dependent downloads, cloud saves, and cloud syncing are unavailable without valid Steam auth/entitlement.",
+    "Local saves, backups, Mods, profiles, and Settings work without Steam.",
+    "Nexus auth is independent of Steam.",
+    "Dangerous writes remain disabled until separate safety qualification; no false green safety badges.",
+    "Installer remains protected by source and destination checks, explicit approval and recovery.",
+    "Root and Shizuku permissions are requested only on explicit user intent, with provider-specific diagnostics.",
+    "The approved dark theme is the only app appearance. No light, classic, earthy, normal or system theme option.",
+    "Responsive portrait layouts should match the reference; do not replace with debug/admin lists.",
+    "Screens, semantic hierarchy and transitions match HTML reference; no additional global tabs."
+  ],
+  "ui_semantics": {
+    "nav_tags": [
+      "cinderbox.nav.home",
+      "cinderbox.nav.game",
+      "cinderbox.nav.saves",
+      "cinderbox.nav.mods",
+      "cinderbox.nav.more"
+    ],
+    "root_tags": [
+      "cinderbox.screen.home",
+      "cinderbox.screen.game",
+      "cinderbox.screen.saves",
+      "cinderbox.screen.mods",
+      "cinderbox.screen.more"
+    ],
+    "mods_tags": [
+      "cinderbox.mods.discover",
+      "cinderbox.mods.installed",
+      "cinderbox.mods.updates",
+      "cinderbox.mods.profiles"
+    ],
+    "steam_tags": [
+      "cinderbox.steam.connect",
+      "cinderbox.steam.connection-status",
+      "cinderbox.game.download-action",
+      "cinderbox.saves.cloud-pane"
+    ],
+    "container_tags": [
+      "cinderbox.shell.topbar",
+      "cinderbox.shell.content",
+      "cinderbox.shell.bottomnav"
+    ]
+  },
+  "implementation_gates": {
+    "web_reference": "Pinned reference hash + 24 browser screenshots + geometry + click/Steam/JS-disabled tests",
+    "android_source": "Contract JSON values + Compose design token and testTag source contracts; implement before claiming pass",
+    "android_emulator": "GitHub-hosted API36, screenshot/semantics tests for matching screen/states, offline Steam flow; no Gradle in Termux",
+    "physical_device": "Post-feature-finish opt-in acceptance; do not bypass security and installation write gates"
+  },
+  "screenshot_cases": {
+    "size_393x852": 16,
+    "size_360x800": 8,
+    "count": 24
+  },
+  "visual_parity": {
+    "anchor_geometry_tolerance_px": 2.0,
+    "browser_golden_mean_rgb_diff_tolerance": 7.0,
+    "android_tolerance": "Compare native screenshot against committed Compose goldens AND structural anchors from this HTML, accounting for system insets/font metrics. Never use only matching keywords as proof."
+  }
+}

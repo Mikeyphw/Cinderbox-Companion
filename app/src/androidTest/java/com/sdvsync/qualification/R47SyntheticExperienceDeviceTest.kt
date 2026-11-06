@@ -99,12 +99,11 @@ class R47SyntheticExperienceDeviceTest {
             }
         }
         val shortcuts = listOf(
-            "Open Game" to "game",
-            "Open Saves" to "saves",
-            "Open Mods" to "mods",
-            "Open More" to "more",
-            "View installation health" to "health",
-            "Open operation center" to "operations"
+            "Explore mods" to "mods",
+            "Open local saves" to "saves",
+            "Installation health" to "health",
+            "Discover mods" to "mods",
+            "All activity" to "operations"
         )
         rule.runOnIdle { assertTrue(calls.isEmpty()) }
         shortcuts.forEachIndexed { index, (label, expected) ->
@@ -207,7 +206,7 @@ class R47SyntheticExperienceDeviceTest {
             SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab))
             .assertIsSelected().assertIsDisplayed()
         if (area == null) {
-            rule.onNodeWithText("Your Cinderbox workspace").assertIsDisplayed()
+            rule.onNodeWithText("Your valley, beautifully organized.").assertIsDisplayed()
         } else {
             val error = when (area) {
                 R45GuideArea.GAME -> R46UiErrorArea.GAME
