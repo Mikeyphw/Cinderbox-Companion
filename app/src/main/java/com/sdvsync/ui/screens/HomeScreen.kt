@@ -99,7 +99,8 @@ fun HomeScreen(
                     style = MaterialTheme.typography.bodySmall)
             }
             Spacer(Modifier.width(6.dp))
-            Surface(shape = RoundedCornerShape(50), color = Dark.Mint) {
+            Surface(modifier = Modifier.testTag("cinderbox.steam.connection-status"),
+                shape = RoundedCornerShape(50), color = Dark.Mint) {
                 Text(if (isSteamConnected) "Steam connected" else "Local mode",
                     color = Dark.Forest, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
