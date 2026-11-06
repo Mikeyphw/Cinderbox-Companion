@@ -26,9 +26,19 @@ def check(root:Path=ROOT)->dict:
     assert main.count('route = "save_viewer/{saveFolderName}"') == 1
     assert main.count('route = "backups/{saveFolderName}"') == 1
     assert main.count('route = "sync_detail/{saveFolderName}/{hasCloud}/{hasLocal}"') == 1
+    # The route argument is read into the local variable `name`. Only the
+    # original Save folder identity is URI-encoded; display names never route.
+    for routed, expected_count in (
+        ('navController.navigate("save_viewer/${Uri.encode(name)}")', 2),
+        ('navController.navigate("backup_review/${Uri.encode(name)}")', 2),
+        ('navController.navigate("backups/${Uri.encode(name)}")', 2),
+        ('navController.navigate("sync_detail/${Uri.encode(name)}/$cloud/$local")', 2),
+        ('parentNavController.navigate("save_review/${Uri.encode(name)}")', 1),
+    ):
+        assert main.count(routed) == expected_count, 'UX08C_ENCODED_ROUTE_DRIFT:' + routed
     for fragment in ('ApprovedSaveDeepScreen(', 'SaveDeepArea.SAVE_REVIEW',
-        'SaveDeepArea.BACKUP_REVIEW', 'Uri.encode(saveFolderName)',
-        'onOpenSaveReview = { folderName ->',
+        'SaveDeepArea.BACKUP_REVIEW',
+        'onOpenSaveReview = { name ->',
         'onOpenSave = { folderName -> parentNavController.navigate("save_viewer/${Uri.encode(folderName)}") }',
         'onOpenBackups = { folderName -> parentNavController.navigate("backups/${Uri.encode(folderName)}") }',
         'SaveViewerScreen(', 'BackupListScreen(', 'SyncDetailScreen('):
