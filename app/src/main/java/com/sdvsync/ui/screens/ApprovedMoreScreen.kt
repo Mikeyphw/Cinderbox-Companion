@@ -39,6 +39,7 @@ fun ApprovedMoreScreen(
     onOpenInstallationHealth: () -> Unit,
     onOpenHelp: () -> Unit,
     onOpenAbout: () -> Unit,
+    onOpenFileAccess: () -> Unit = {},
     viewModel: SettingsViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -51,7 +52,8 @@ fun ApprovedMoreScreen(
         onOpenOperationCenter = onOpenOperationCenter,
         onOpenInstallationHealth = onOpenInstallationHealth,
         onOpenHelp = onOpenHelp,
-        onOpenAbout = onOpenAbout
+        onOpenAbout = onOpenAbout,
+        onOpenFileAccess = onOpenFileAccess
     )
 }
 
@@ -115,7 +117,8 @@ fun ApprovedMoreContent(
     onOpenOperationCenter: () -> Unit,
     onOpenInstallationHealth: () -> Unit,
     onOpenHelp: () -> Unit,
-    onOpenAbout: () -> Unit
+    onOpenAbout: () -> Unit,
+    onOpenFileAccess: () -> Unit = {}
 ) {
     Column(Modifier.fillMaxSize().testTag("cinderbox.screen.more")
         .background(Dark.Background).verticalScroll(rememberScrollState())
@@ -200,7 +203,7 @@ fun ApprovedMoreContent(
                     false, "cinderbox.more.root", onOpenSettings)
                 MoreActionRow(Icons.Outlined.Folder, "File access",
                     "Storage permissions and directory selection",
-                    "Configure", tag = "cinderbox.more.file-access", onClick = onOpenSettings)
+                    "Inspect", tag = "cinderbox.more.file-access", onClick = onOpenFileAccess)
             }
         }
 

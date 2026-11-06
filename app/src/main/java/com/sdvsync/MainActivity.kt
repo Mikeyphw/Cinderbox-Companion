@@ -68,6 +68,8 @@ import com.sdvsync.ui.screens.OperationCenterScreen
 import com.sdvsync.ui.screens.SaveViewerScreen
 import com.sdvsync.ui.screens.SettingsScreen
 import com.sdvsync.ui.screens.ApprovedMoreScreen
+import com.sdvsync.ui.screens.ApprovedDeepStatusScreen
+import com.sdvsync.ui.screens.DeepStatusArea
 import com.sdvsync.ui.screens.ApprovedMoreInfoScreen
 import com.sdvsync.ui.screens.SteamDiagnosticsScreen
 import com.sdvsync.ui.policy.DeveloperFeaturePolicy
@@ -389,6 +391,27 @@ fun SdvSyncNavGraph(navController: NavHostController) {
             ApprovedMoreInfoScreen(topic = "about", onBack = { navController.popBackStack() })
         }
 
+        // UX-08A: explicit, read-only secondary screens; no permission requests
+        // or transfer modifications occur on navigation.
+        composable("download_queue") {
+            ApprovedDeepStatusScreen(
+                area = DeepStatusArea.DOWNLOAD_QUEUE,
+                onBack = { navController.popBackStack() },
+                onOpenAdvancedSettings = { navController.navigate("more_advanced") },
+                onOpenOperations = { navController.navigate("operation_center") },
+                onOpenHealth = { navController.navigate("installation_health") }
+            )
+        }
+        composable("file_access_overview") {
+            ApprovedDeepStatusScreen(
+                area = DeepStatusArea.FILE_ACCESS,
+                onBack = { navController.popBackStack() },
+                onOpenAdvancedSettings = { navController.navigate("more_advanced") },
+                onOpenOperations = { navController.navigate("operation_center") },
+                onOpenHealth = { navController.navigate("installation_health") }
+            )
+        }
+
         // Main section with bottom bar
         composable("main") {
             MainScreen(
@@ -652,7 +675,8 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
                     onOpenInstalledMod = { uniqueId ->
                         parentNavController.navigate("installed_mod/${Uri.encode(uniqueId)}")
                     },
-                    onOpenAdvancedMods = { parentNavController.navigate("mods_advanced") }
+                    onOpenAdvancedMods = { parentNavController.navigate("mods_advanced") },
+                    onOpenQueue = { parentNavController.navigate("download_queue") }
                 )
             }
 
@@ -676,7 +700,8 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
                     onOpenOperationCenter = { parentNavController.navigate("operation_center") },
                     onOpenInstallationHealth = { parentNavController.navigate("installation_health") },
                     onOpenHelp = { parentNavController.navigate("more_help") },
-                    onOpenAbout = { parentNavController.navigate("more_about") }
+                    onOpenAbout = { parentNavController.navigate("more_about") },
+                    onOpenFileAccess = { parentNavController.navigate("file_access_overview") }
                 )
             }
         }
