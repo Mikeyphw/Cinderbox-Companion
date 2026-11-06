@@ -10,4 +10,6 @@ interface IFileService {
     void deleteFile(String path) = 6;
     void createDirectory(String path) = 7;
     boolean renameFile(String fromPath, String toPath) = 8;
+    // Fixed-target, read-only game process status; never accepts shell input.
+    int queryGameProcessStatus() = 9;
 }

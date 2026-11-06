@@ -16,7 +16,8 @@ data class ModBulkPreview(
     val selectedIds: List<String>,
     val intendedEnable: Boolean,
     val steps: List<ModProfileStep>,
-    val issues: List<ModCompatibilityIssue>
+    val issues: List<ModCompatibilityIssue>,
+    val filesystemWitness: String? = null
 ) {
     val blockers: List<ModCompatibilityIssue> get() = issues.filter { it.blocking }
 }

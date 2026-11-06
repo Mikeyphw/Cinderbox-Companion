@@ -1,0 +1,129 @@
+name: M25-03 R2E Fail-closed Game Monitor and Read-only Device Diagnostics
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/sdvsync/autosync/GameProcessMonitor.kt'
+      - 'app/src/main/java/com/sdvsync/autosync/GameSessionTransitionPolicy.kt'
+      - 'app/src/test/java/com/sdvsync/autosync/GameSessionTransitionPolicyTest.kt'
+      - 'app/src/androidTest/java/com/sdvsync/mods/GameSessionDeviceProbeTest.kt'
+      - 'scripts/devtool/m25_bulk_r2e_gate.py'
+      - 'scripts/devtool/m25_r2e_emulator.sh'
+      - 'scripts/devtool/m25_r2e_device_acceptance.zsh'
+      - '.github/workflows/m25-bulk-r2e.yml'
+      - 'docs/devtool/M25_03_R2E_DEVICE_AND_AUTOSYNC_SAFETY.md'
+  push:
+    branches: [master]
+    paths:
+      - 'app/src/main/java/com/sdvsync/autosync/GameProcessMonitor.kt'
+      - 'app/src/main/java/com/sdvsync/autosync/GameSessionTransitionPolicy.kt'
+      - 'app/src/test/java/com/sdvsync/autosync/GameSessionTransitionPolicyTest.kt'
+      - 'app/src/androidTest/java/com/sdvsync/mods/GameSessionDeviceProbeTest.kt'
+      - 'scripts/devtool/m25_bulk_r2e_gate.py'
+      - 'scripts/devtool/m25_r2e_emulator.sh'
+      - 'scripts/devtool/m25_r2e_device_acceptance.zsh'
+      - '.github/workflows/m25-bulk-r2e.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: m25-r2e-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source-and-policy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Prove no new live writes, no monitor fail-open and prior gates retained
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 -B scripts/devtool/m25_bulk_r2e_gate.py
+          python3 -B scripts/devtool/m25_bulk_r2d_shizuku_gate.py
+          python3 -B scripts/devtool/m25_bulk_r2d_gate.py
+          python3 -B scripts/devtool/m25_bulk_r2c_gate.py
+          python3 -B scripts/devtool/m25_bulk_r2b_gate.py
+          python3 -B scripts/devtool/m25_bulk_gate.py
+          python3 -B scripts/devtool/m25_group_gate.py
+          python3 -B scripts/devtool/r47_gate.py
+          python3 -B scripts/devtool/r48_gate.py
+  hosted-kotlin-and-apk-pair:
+    needs: [source-and-policy]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Run R2E pure JVM transitions and compile an instrumentation pair
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:testDebugUnitTest --tests com.sdvsync.autosync.GameSessionTransitionPolicyTest
+          ./gradlew --no-daemon --max-workers=2 :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Prepare source-bound diagnostic APK receipt (debug only)
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/r2e-pair"
+          find app/build/outputs/apk/debug -maxdepth 1 -name '*.apk' -type f -exec cp '{}' "$RUNNER_TEMP/r2e-pair/" \;
+          find app/build/outputs/apk/androidTest/debug -maxdepth 1 -name '*.apk' -type f -exec cp '{}' "$RUNNER_TEMP/r2e-pair/" \;
+          test "$(find "$RUNNER_TEMP/r2e-pair" -name '*.apk' -type f | wc -l)" = 2
+          (cd "$RUNNER_TEMP/r2e-pair" && sha256sum -- *.apk > SHA256SUMS.txt)
+          printf '{"schema":1,"source_sha":"%s","run_id":"%s","emulator_only":true,"physical_device_qualified":false,"release_qualified":false,"live_bulk_apply_enabled":false}\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > "$RUNNER_TEMP/r2e-pair/SOURCE.json"
+      - name: Upload exact-source debug APK pair for separate opt-in device qualification
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: R2E_APP_TEST_APKS
+          path: ${{ runner.temp }}/r2e-pair/
+          if-no-files-found: error
+          retention-days: 7
+  api36-no-privilege-emulator:
+    needs: [hosted-kotlin-and-apk-pair]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - run: sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'system-images;android-36;google_apis;x86_64'
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Compile debug/test APKs only on hosted Linux
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Require hosted KVM and storage reserve
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm
+          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then sudo chmod a+rw /dev/kvm; fi
+          test -r /dev/kvm && test -w /dev/kvm
+          mkdir -p "${ANDROID_AVD_HOME:-$HOME/.android/avd}"
+          test "$(df -Pk "${ANDROID_AVD_HOME:-$HOME/.android/avd}" | awk 'END{print $4}')" -ge 4194304
+      - name: No-root no-Shizuku instrumented policy fixture
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          disk-size: 3072M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash scripts/devtool/m25_r2e_emulator.sh

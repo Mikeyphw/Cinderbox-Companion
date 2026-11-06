@@ -155,7 +155,7 @@ fun ModManagerScreen(
             dismissButton = { TextButton(onClick = { restoreConfirm = null }) { Text("Cancel") } })
     }
 
-    // M25-03 R1 preview only: deliberately has no Apply/Confirm action.
+    // M25-03 R2B: byte-witnessed preview only; no Apply/Confirm action.
     state.bulkPreview?.let { preview ->
         AlertDialog(onDismissRequest = { viewModel.dismissBulkPreview() },
             title = { Text("Bulk preview only") },
@@ -173,7 +173,26 @@ fun ModManagerScreen(
                             color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodySmall)
                     }
-                    Text("No folders were changed. Batch transactions require separate R2 acceptance.",
+                    if (preview.filesystemWitness != null) {
+                        Text("Folder bytes verified: ${preview.filesystemWitness.take(12)}…",
+                            style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        Text("File witness unavailable (blocked or no changes).",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text("Game session: ${state.gameStatusForBulk?.explanation ?: "Not checked"}",
+                        style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = viewModel::checkGameStatusForBulk,
+                        enabled = !state.isCheckingGameStatus && preview.filesystemWitness != null) {
+                        Text("Check game status")
+                    }
+                    if (state.isCheckingGameStatus) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                    Text("Checks authorized Shizuku first, then root if unavailable; " +
+                        "not detecting a game process is NOT proof the game is safely stopped.",
+                        style = MaterialTheme.typography.bodySmall)
+                    Text("No folders were changed. Live bulk apply is not enabled.",
                         style = MaterialTheme.typography.bodySmall)
                 }
             },
@@ -386,6 +405,10 @@ fun ModManagerScreen(
                             if (state.selectionMode) {
                                 Text("${state.selectedModIds.size} selected · ${state.displayedMods.size} visible",
                                     style = MaterialTheme.typography.bodySmall)
+                                if (state.isPreparingBulkPreview) {
+                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                    Text("Verifying mod folders…", style = MaterialTheme.typography.bodySmall)
+                                }
                                 @OptIn(ExperimentalLayoutApi::class)
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                     TextButton(onClick = { viewModel.selectVisibleMods() },
@@ -394,11 +417,11 @@ fun ModManagerScreen(
                                         Text("Clear selection")
                                     }
                                     TextButton(onClick = { viewModel.previewSelectedMods(true) },
-                                        enabled = state.selectedModIds.isNotEmpty()) {
+                                        enabled = state.selectedModIds.isNotEmpty() && !state.isPreparingBulkPreview) {
                                         Text("Enable selected")
                                     }
                                     TextButton(onClick = { viewModel.previewSelectedMods(false) },
-                                        enabled = state.selectedModIds.isNotEmpty()) {
+                                        enabled = state.selectedModIds.isNotEmpty() && !state.isPreparingBulkPreview) {
                                         Text("Disable selected")
                                     }
                                 }
