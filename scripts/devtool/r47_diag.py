@@ -12,13 +12,13 @@ ALLOWED_TESTS = (
     'homeShortcutInvokesOnlyItsProvidedCallback',
     'errorPanelNeverRetriesBeforeExplicitTap',
     'staticErrorCannotExposeAnUnwiredAction',
-    'earthyHomeDay320Font160',
-    'earthyHomeNight320Font160',
-    'classicHomeDay320Font160',
-    'earthyGame320Font160',
-    'earthySaves320Font160',
-    'earthyMods320Font160',
-    'earthyMore320Font160',
+    'darkHomeMorning320Font160',
+    'darkHomeAfternoon320Font160',
+    'darkHomeEvening320Font160',
+    'darkGame320Font160',
+    'darkSaves320Font160',
+    'darkMods320Font160',
+    'darkMore320Font160',
 )
 _ALLOWED = frozenset(ALLOWED_TESTS)
 _CATEGORIES = (

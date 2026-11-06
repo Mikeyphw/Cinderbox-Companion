@@ -19,8 +19,8 @@ from r47_diag import summarize_instrumentation
 CLASS='com.sdvsync.qualification.R47SyntheticExperienceDeviceTest'
 RUNNER='com.sdvsync.test/androidx.test.runner.AndroidJUnitRunner'
 NAMES=tuple('r47-synthetic-'+label+'-320dp-fs160.png' for label in (
-    'home-earthy-day', 'home-earthy-night', 'home-classic-day',
-    'game-earthy-day', 'saves-earthy-night', 'mods-earthy-day', 'more-earthy-day'))
+    'home-dark-morning', 'home-dark-afternoon', 'home-dark-evening',
+    'game-dark', 'saves-dark', 'mods-dark', 'more-dark'))
 EXPECTED_TESTS=11
 MAX_PNG_BYTES=16*1024*1024
 MAX_RAW_BYTES=64*1024*1024
