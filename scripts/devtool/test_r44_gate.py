@@ -21,10 +21,18 @@ class R44SourceOnlyTests(unittest.TestCase):
         button = r44_gate.read('app/src/main/java/com/sdvsync/ui/components/StardewButton.kt')
         self.assertIn('.pixelBorder()', card)
         self.assertEqual(button.count('else modifier.drawBehind {'),2)
-    def test_earthy_modern_tokens_are_opt_in(self):
+    def test_single_approved_dark_theme_is_fixed(self):
         theme = r44_gate.read('app/src/main/java/com/sdvsync/ui/theme/Theme.kt')
-        self.assertIn('R44ProductTypography else Typography',theme)
-        self.assertIn('R44ProductShapes else StardewShapes',theme)
+        activity = r44_gate.read('app/src/main/java/com/sdvsync/MainActivity.kt')
+        settings = r44_gate.read('app/src/main/java/com/sdvsync/ui/screens/SettingsScreen.kt')
+        self.assertIn('colorScheme = CinderboxDarkTokens.colorScheme', theme)
+        self.assertIn('typography = R44ProductTypography', theme)
+        self.assertIn('shapes = R44ProductShapes', theme)
+        self.assertIn('SdvSyncTheme {', activity)
+        self.assertNotIn('appearance.mode.resolve(', activity)
+        self.assertIn('Dark · default', settings)
+        self.assertNotIn('appearanceStore.setStyle(', settings)
+        self.assertNotIn('appearanceStore.setMode(', settings)
     def test_visual_status_is_not_write_authorization(self):
         tone = r44_gate.read('app/src/main/java/com/sdvsync/ui/policy/R44StatusTone.kt')
         status = r44_gate.read('app/src/main/java/com/sdvsync/ui/components/R44StatusSummary.kt')
