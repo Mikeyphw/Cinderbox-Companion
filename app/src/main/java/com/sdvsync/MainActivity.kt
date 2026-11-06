@@ -52,6 +52,7 @@ import com.sdvsync.ui.components.CinderboxMigrationDialog
 import com.sdvsync.ui.components.StardewBottomBar
 import com.sdvsync.ui.screens.BackupListScreen
 import com.sdvsync.ui.screens.DashboardScreen
+import com.sdvsync.ui.screens.ApprovedSavesScreen
 import com.sdvsync.ui.screens.GameDownloadScreen
 import com.sdvsync.ui.screens.ApprovedGameScreen
 import com.sdvsync.ui.screens.HomeScreen
@@ -336,6 +337,20 @@ fun SdvSyncNavGraph(navController: NavHostController) {
             )
         }
 
+        // UX-04: original import, backup and sync dashboard remains available
+        // only by explicit navigation. No automatic sync or file mutation.
+        composable("saves_advanced") {
+            DashboardScreen(
+                onSignInClick = { navController.navigate("login") },
+                onBackupsClick = { folderName -> navController.navigate("backups/${Uri.encode(folderName)}") },
+                onViewSaveClick = { folderName -> navController.navigate("save_viewer/${Uri.encode(folderName)}") },
+                onSaveClick = { folderName, hasCloud, hasLocal ->
+                    navController.navigate("sync_detail/${Uri.encode(folderName)}/$hasCloud/$hasLocal")
+                },
+                onSyncLogClick = { navController.navigate("sync_log") }
+            )
+        }
+
         // Main section with bottom bar
         composable("main") {
             MainScreen(
@@ -552,18 +567,18 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
                 )
             }
 
-            // Saves tab
+            // UX-04: approved local-first Saves tab, no automatic sync.
             composable("saves") {
-                DashboardScreen(
-                    onSignInClick = { parentNavController.navigate("login") },
-                    onBackupsClick = { folderName -> parentNavController.navigate("backups/$folderName") },
-                    onViewSaveClick = { folderName -> parentNavController.navigate("save_viewer/$folderName") },
-                    onSaveClick = { folderName, hasCloud, hasLocal ->
-                        parentNavController.navigate("sync_detail/$folderName/$hasCloud/$hasLocal")
+                ApprovedSavesScreen(
+                    isSteamConnected = steamConnection == ConnectionState.LOGGED_IN,
+                    onConnectSteam = { parentNavController.navigate("login") },
+                    onOpenSave = { folderName -> parentNavController.navigate("save_viewer/${Uri.encode(folderName)}") },
+                    onOpenBackups = { folderName -> parentNavController.navigate("backups/${Uri.encode(folderName)}") },
+                    onOpenSyncDetail = { folderName, hasCloud, hasLocal ->
+                        parentNavController.navigate("sync_detail/${Uri.encode(folderName)}/$hasCloud/$hasLocal")
                     },
-                    onSyncLogClick = {
-                        parentNavController.navigate("sync_log")
-                    }
+                    onOpenSyncHistory = { parentNavController.navigate("sync_log") },
+                    onOpenAdvancedSaves = { parentNavController.navigate("saves_advanced") }
                 )
             }
 

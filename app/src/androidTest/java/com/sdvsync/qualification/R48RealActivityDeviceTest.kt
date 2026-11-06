@@ -89,7 +89,7 @@ class R48RealActivityDeviceTest {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val areas = listOf(
             Triple(BottomTab.DOWNLOAD, "Stardew Valley", "game"),
-            Triple(BottomTab.SAVES, "Your saves", "saves"),
+            Triple(BottomTab.SAVES, "My saves", "saves"),
             Triple(BottomTab.MODS, "Managing mods", "mods"),
             Triple(BottomTab.SETTINGS, "Personalize and manage", "more")
         )
@@ -102,8 +102,7 @@ class R48RealActivityDeviceTest {
                     // A fresh offline emulator has no real saves. The guide is
                     // displayed ONLY when the save list is populated. Loading,
                     // empty and bounded error states are valid, not test failures.
-                    rule.onNodeWithText(ctx.getString(com.sdvsync.R.string.dashboard_title))
-                        .assertExists()
+                    rule.onNodeWithText("My saves").assertExists()
                     assertAnyScreenState(
                         heading, "Loading your saves",
                         ctx.getString(com.sdvsync.R.string.dashboard_no_saves),
