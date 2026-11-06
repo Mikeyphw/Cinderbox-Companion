@@ -180,6 +180,18 @@ fun ModManagerScreen(
                         Text("File witness unavailable (blocked or no changes).",
                             style = MaterialTheme.typography.bodySmall)
                     }
+                    Text("Game session: ${state.gameStatusForBulk?.explanation ?: "Not checked"}",
+                        style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = viewModel::checkGameStatusForBulk,
+                        enabled = !state.isCheckingGameStatus && preview.filesystemWitness != null) {
+                        Text("Check game status")
+                    }
+                    if (state.isCheckingGameStatus) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                    Text("This check may request root access; even no detected process is not proof " +
+                        "that Stardew Valley is safely stopped.",
+                        style = MaterialTheme.typography.bodySmall)
                     Text("No folders were changed. Live bulk apply is not enabled.",
                         style = MaterialTheme.typography.bodySmall)
                 }

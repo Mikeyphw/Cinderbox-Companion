@@ -13,6 +13,8 @@ import com.sdvsync.mods.ModFileManager
 import com.sdvsync.mods.ModCompatibility
 import com.sdvsync.mods.ModSelectionPolicy
 import com.sdvsync.mods.ModGroupMode
+import com.sdvsync.mods.GameSessionObservation
+import com.sdvsync.mods.GameSessionProbe
 import com.sdvsync.mods.ModBulkPreview
 import com.sdvsync.mods.ModCompatibilityIssue
 import com.sdvsync.mods.ModProfilePreview
@@ -64,6 +66,8 @@ data class ModManagerState(
     val selectedModIds: Set<String> = emptySet(),
     val bulkPreview: ModBulkPreview? = null,
     val isPreparingBulkPreview: Boolean = false,
+    val isCheckingGameStatus: Boolean = false,
+    val gameStatusForBulk: GameSessionObservation? = null,
     val profiles: List<ModProfile> = emptyList(),
     val activeProfileName: String? = null,
     val isApplyingProfile: Boolean = false,
@@ -367,7 +371,8 @@ class ModManagerViewModel(
     fun previewSelectedMods(enable: Boolean) {
         val selected = _state.value.takeIf { it.selectionMode && !it.isPreparingBulkPreview }
             ?.selectedModIds?.takeIf { it.isNotEmpty() } ?: return
-        _state.update { it.copy(isPreparingBulkPreview = true, bulkPreview = null) }
+        _state.update { it.copy(isPreparingBulkPreview = true, bulkPreview = null,
+            gameStatusForBulk = null) }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val verified = fileManager.previewBulkWithWitness(selected, enable)
@@ -387,8 +392,23 @@ class ModManagerViewModel(
         }
     }
 
+    /** Manual diagnostic only: NEVER authorization for a live Mods write. */
+    fun checkGameStatusForBulk() {
+        val opened = _state.value.bulkPreview ?: return
+        if (opened.filesystemWitness == null || _state.value.isCheckingGameStatus) return
+        _state.update { it.copy(isCheckingGameStatus = true, gameStatusForBulk = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val observation = GameSessionProbe().observe()
+            _state.update { state ->
+                if (state.bulkPreview !== opened) state.copy(isCheckingGameStatus = false)
+                else state.copy(isCheckingGameStatus = false, gameStatusForBulk = observation)
+            }
+        }
+    }
+
     fun dismissBulkPreview() {
-        _state.update { it.copy(bulkPreview = null) }
+        _state.update { it.copy(bulkPreview = null, isCheckingGameStatus = false,
+            gameStatusForBulk = null) }
     }
 
     // ── Profiles ─────────────────────────────────────────────────────────
