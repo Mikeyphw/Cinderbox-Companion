@@ -48,7 +48,9 @@ class R45ANavigationSourceTests(unittest.TestCase):
         txt=(root/'app/src/main/java/com/sdvsync/ui/screens/HomeScreen.kt').read_text()
         self.assertNotIn('File(', txt)
         self.assertNotIn('startProtectedUpdate(',txt)
-        self.assertIn('Shortcuts do not change files',txt)
+        self.assertIn('HomeSectionTitle("Recent activity", "All activity", onOpenOperationCenter)', txt)
+        self.assertIn('HomeAction(', txt)
+        self.assertIn('onOpenInstallationHealth', txt)
         self.assertIn('HomeScreen(',txt)
 
 if __name__ == '__main__':

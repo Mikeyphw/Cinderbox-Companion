@@ -43,12 +43,12 @@ def check() -> dict:
     assert 'composable("game_download")' in main and 'composable("saves")' in main
     assert 'composable("mods")' in main and 'composable("settings")' in main
     # Legacy enum identities and deep-link routes stay stable: just add Home and change captions.
-    assert 'HOME("home", R.string.tab_home)' in bottom
-    assert 'DOWNLOAD("game_download", R.string.tab_game)' in bottom
-    assert 'SAVES("saves", R.string.tab_saves)' in bottom
-    assert 'MODS("mods", R.string.tab_mods)' in bottom
-    assert 'SETTINGS("settings", R.string.tab_more)' in bottom
-    assert 'BottomTab.HOME -> R45HomeIconData' in bottom
+    assert 'HOME("home", R.string.tab_home, "cinderbox.nav.home")' in bottom
+    assert 'DOWNLOAD("game_download", R.string.tab_game, "cinderbox.nav.game")' in bottom
+    assert 'SAVES("saves", R.string.tab_saves, "cinderbox.nav.saves")' in bottom
+    assert 'MODS("mods", R.string.tab_mods, "cinderbox.nav.mods")' in bottom
+    assert 'SETTINGS("settings", R.string.tab_more, "cinderbox.nav.more")' in bottom
+    assert 'ApprovedTabIcon(tab, tint' in bottom and '.selectableGroup()' in bottom
     assert 'val R45HomeIconData = arrayOf(' in icon
     assert all('intArrayOf(' in line for line in icon.splitlines() if line.strip().startswith('intArrayOf('))
     assert all(ch in {'0','1'} for line in icon.splitlines() if 'intArrayOf(' in line for ch in line.split('intArrayOf(',1)[1].split(')',1)[0] if ch.isdigit())
@@ -59,7 +59,7 @@ def check() -> dict:
     assert '.heightIn(min = 56.dp)' in bottom
     for key in ('tab_home','tab_game','tab_more','tab_saves','tab_mods','tab_download','tab_settings'):
         assert strings.count('name="'+key+'"') == 1, 'R45A_LABEL_MISSING_OR_AMBIGUOUS:'+key
-    assert 'R44BResponsiveColumn' in home and 'R44BStatePanel(' in home
+    assert 'ApprovedHomeHero(onOpenMods)' in home and 'HomeAction(' in home and 'onOpenOperationCenter' in home
     assert 'modifier = Modifier.semantics { heading() }' in home
     for key in ('onOpenGame','onOpenSaves','onOpenMods','onOpenMore',
                 'onOpenInstallationHealth','onOpenOperationCenter'):

@@ -55,12 +55,12 @@ class R47SanitizedDiagnostics(unittest.TestCase):
         self.assertFalse(r47_capture.parse_result('FAILURES!!!\nINSTRUMENTATION_CODE: 0\n'))
 
     def test_pass_diagnostic_cannot_promote_failing_gate(self):
-        sample=('INSTRUMENTATION_STATUS: test=earthyGame320Font160\n'
+        sample=('INSTRUMENTATION_STATUS: test=darkGame320Font160\n'
                 'INSTRUMENTATION_STATUS_CODE: -2\n'
                 'OK (11 tests)\nINSTRUMENTATION_CODE: -1\n')
         self.assertTrue(r47_capture.parse_result(sample))  # existing legacy parser alone
         record=r47_diag.summarize_instrumentation(sample)
-        self.assertEqual(record['failed_tests'],['earthyGame320Font160'])
+        self.assertEqual(record['failed_tests'],['darkGame320Font160'])
         source=Path(r47_capture.__file__).read_text()
         self.assertIn("or summary['failed_tests']",source)
 
@@ -74,7 +74,7 @@ class R47SanitizedDiagnostics(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             out=Path(root)
             source='a'*40
-            failed='earthySaves320Font160'
+            failed='darkSaves320Font160'
             trace='sensitive@example.com /storage/emulated/0/private/game-files'
             output=(f'INSTRUMENTATION_STATUS: test={failed}\n'
                     'INSTRUMENTATION_STATUS_CODE: 1\n'

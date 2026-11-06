@@ -1,0 +1,39 @@
+name: Cinderbox UX — approved dark reference fidelity
+on:
+  pull_request:
+    paths:
+      - 'design/cinderbox/**'
+      - '.github/workflows/cinderbox-ux-approved-reference.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'design/cinderbox/**'
+      - '.github/workflows/cinderbox-ux-approved-reference.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  exact-layout-and-browser-parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Install Inter font used by the frozen design (hosted only)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y fonts-inter
+          fc-cache -f
+          fc-match Inter -f "%{family}\n" | grep -x Inter
+      - name: Install pinned browser test engine (hosted only)
+        run: |
+          python -m pip install 'playwright==1.57.0' 'Pillow==11.3.0'
+          python -m playwright install --with-deps chromium
+      - name: Prove dark variant retains approved UI geometry, content and interactions
+        run: |
+          python design/cinderbox/03_CI/scripts/verify_layout_fidelity.py
+          python design/cinderbox/03_CI/scripts/verify_reference.py --verify

@@ -23,9 +23,9 @@ class PreLoginSettingsContract(unittest.TestCase):
         self.assertIn('onLogout = { navController.popBackStack() }', route)
 
     def test_steam_success_flow_unchanged(self):
-        self.assertIn('startDestination = "login"', self.main)
-        self.assertIn('navController.navigate("main")', self.main)
-        self.assertIn('popUpTo("login") { inclusive = true }', self.main)
+        self.assertIn('startDestination = "main"', self.main)
+        self.assertIn('route = "login"', self.main)
+        self.assertIn('if (!navController.popBackStack()) navController.navigate("main")', self.main)
         self.assertIn('is AuthState.LoggedIn', self.login)
         self.assertIn('onLoginSuccess()', self.login)
 

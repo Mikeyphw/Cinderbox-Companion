@@ -51,8 +51,8 @@ class EvidenceTests(unittest.TestCase):
         # "View operation center", whereas the real Home action says "Open".
         home = (ROOT / 'app/src/main/java/com/sdvsync/ui/screens/HomeScreen.kt').read_text()
         activity_test = (ROOT / 'app/src/androidTest/java/com/sdvsync/qualification/R48RealActivityDeviceTest.kt').read_text()
-        self.assertIn('"Open operation center", onOpenOperationCenter', home)
-        self.assertIn('onNodeWithText("Open operation center").performScrollTo().performClick()', activity_test)
+        self.assertIn('HomeSectionTitle("Recent activity", "All activity", onOpenOperationCenter)', home)
+        self.assertIn('onNodeWithText("All activity").performScrollTo().performClick()', activity_test)
         self.assertNotIn('onNodeWithText("View operation center")', activity_test)
 
     def test_phase_allowlist_accepts_only_expected_case_steps(self):
@@ -168,7 +168,7 @@ class EvidenceTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(' '.join((
                 'class MainActivity : ComponentActivity()', 'fun SdvSyncNavGraph(',
-                'fun MainScreen(', 'startDestination = "login"', 'startDestination = "home"',
+                'fun MainScreen(', 'startDestination = "main"', 'startDestination = "home"',
                 'onContinueOffline = {', 'StardewBottomBar(')))
             path = root / 'app/src/main/java/com/sdvsync/download/R43BUpdateCoordinator.kt'
             path.parent.mkdir(parents=True, exist_ok=True)

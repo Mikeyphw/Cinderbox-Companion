@@ -162,8 +162,8 @@ def check(root: Path) -> None:
     button = (root/BUTTON).read_text(encoding='utf-8')
     screen = (root/SCREEN).read_text(encoding='utf-8')
     cfg = tomllib.loads((root/TOML).read_text(encoding='utf-8'))
-    assert 'if (style == AppearanceStyle.EARTHY) R44ProductTypography else Typography' in theme
-    assert 'if (style == AppearanceStyle.EARTHY) R44ProductShapes else StardewShapes' in theme
+    assert 'typography = R44ProductTypography' in theme and 'CinderboxDarkTokens.colorScheme' in theme
+    assert 'shapes = R44ProductShapes' in theme and 'LocalAppearanceStyle provides AppearanceStyle.EARTHY' in theme
     assert '.pixelBorder()' in card and 'if (earthy) modifier.fillMaxWidth() else modifier' in card
     assert 'if (earthy) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surfaceContainerHigh' in card
     assert 'cardModifier.clickable(role = Role.Button, onClick = onClick)' in card

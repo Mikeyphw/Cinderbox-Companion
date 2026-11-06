@@ -172,33 +172,23 @@ object SdvSyncThemeExtras {
         get() = LocalAppearanceStyle.current == AppearanceStyle.EARTHY
 }
 
+/** UX-01: SINGLE approved dark appearance. Legacy arguments retained for call compatibility. */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 fun SdvSyncTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = true,
     style: AppearanceStyle = AppearanceStyle.CLASSIC,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        style == AppearanceStyle.EARTHY && darkTheme -> EarthyDarkColorScheme
-        style == AppearanceStyle.EARTHY -> EarthyLightColorScheme
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
-    val stardewColors = when {
-        style == AppearanceStyle.EARTHY && darkTheme -> EarthyDarkStardewColors
-        style == AppearanceStyle.EARTHY -> EarthyLightStardewColors
-        darkTheme -> DarkStardewColors
-        else -> LightStardewColors
-    }
-
     CompositionLocalProvider(
-        LocalAppearanceStyle provides style,
-        LocalStardewColors provides stardewColors
+        // Historic theme key is now an internal compatibility signal for rounded controls.
+        LocalAppearanceStyle provides AppearanceStyle.EARTHY,
+        LocalStardewColors provides DarkStardewColors
     ) {
         MaterialTheme(
-            colorScheme = colorScheme,
-            typography = if (style == AppearanceStyle.EARTHY) R44ProductTypography else Typography,
-            shapes = if (style == AppearanceStyle.EARTHY) R44ProductShapes else StardewShapes,
+            colorScheme = CinderboxDarkTokens.colorScheme,
+            typography = R44ProductTypography,
+            shapes = R44ProductShapes,
             content = content
         )
     }

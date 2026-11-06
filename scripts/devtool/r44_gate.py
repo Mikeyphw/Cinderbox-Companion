@@ -45,11 +45,16 @@ def check() -> dict:
     assert 'const val LIVE_UPDATES_ENABLED: Boolean = false' in coordinator
     assert 'const val DEVICE_ACCEPTED: Boolean = false' in coordinator
     assert 'debugBuild && unlocked' in ui_policy and 'BuildConfig.DEBUG' in ui_policy
-    assert 'AppearanceStyle.CLASSIC' in theme and 'AppearanceStyle.EARTHY' in theme
-    assert 'R44ProductTypography else Typography' in theme
-    assert 'R44ProductShapes else StardewShapes' in theme
-    assert 'MaterialTheme(' in theme and 'LocalAppearanceStyle provides style' in theme
-    assert 'EarthyLightColorScheme' in theme and 'EarthyDarkColorScheme' in theme
+    # UX-01 supersedes the historic dual-appearance choice without weakening release/safety gates.
+    assert 'CinderboxDarkTokens.colorScheme' in theme
+    assert 'typography = R44ProductTypography' in theme
+    assert 'shapes = R44ProductShapes' in theme
+    assert 'MaterialTheme(' in theme and 'LocalAppearanceStyle provides AppearanceStyle.EARTHY' in theme
+    main = read('app/src/main/java/com/sdvsync/MainActivity.kt')
+    assert 'SdvSyncTheme {' in main and 'appearance.mode.resolve(' not in main
+    settings = read('app/src/main/java/com/sdvsync/ui/screens/SettingsScreen.kt')
+    assert 'Dark · default' in settings
+    assert 'appearanceStore.setStyle(' not in settings and 'appearanceStore.setMode(' not in settings
     assert 'lightColorScheme(' in earthy and 'darkColorScheme(' in earthy
     for shape in ('extraSmall','small','medium','large','extraLarge'):
         assert shape + ' = RoundedCornerShape(' in tokens, 'R44_SHAPE_MISSING:' + shape
@@ -90,7 +95,7 @@ def check() -> dict:
         assert name in workflow, 'R44_CI_MISSING:' + name
     assert 'gradle ' not in workflow.lower() and 'adb ' not in workflow.lower()
     return {'result':'R44_M3_FOUNDATION_SOURCE_PASS', 'source_only':True,
-            'classic_style_preserved':True, 'earthy_m3_enabled':True,
+            'single_approved_dark_theme':True,
             'ui_device_qualified':False, 'live_updates_enabled':False, 'release_enabled':False}
 
 if __name__ == '__main__':

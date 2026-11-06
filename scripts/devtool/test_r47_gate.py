@@ -63,6 +63,22 @@ class R47Contracts(unittest.TestCase):
             with self.assertRaises((ValueError,zlib.error)):
                 r47_capture.png_dimensions(v)
 
+    def test_single_dark_synthetic_states_are_real_and_distinct(self):
+        source = (r47_gate.ROOT / 'app/src/androidTest/java/com/sdvsync/qualification/R47SyntheticExperienceDeviceTest.kt').read_text()
+        actual = tuple(n.removeprefix('r47-synthetic-').removesuffix('-320dp-fs160.png')
+                       for n in r47_capture.NAMES)
+        self.assertEqual(actual, (
+            'home-dark-morning', 'home-dark-afternoon', 'home-dark-evening',
+            'game-dark', 'saves-dark', 'mods-dark', 'more-dark'))
+        for content in ('Good morning ☀', 'Good afternoon ☀', 'Good evening ☾'):
+            self.assertIn(content, source)
+        self.assertIn('greetingOverride = homeGreeting', source)
+        self.assertIn('weekdayOverride = "FRIDAY"', source)
+        self.assertIn('if (area == null && homeGreeting != null)', source)
+        # Never turn a failed duplicate-image check into a passing receipt.
+        capture = (r47_gate.ROOT / 'scripts/devtool/r47_capture.py').read_text()
+        self.assertIn("if digest in hashes:raise ValueError('duplicate synthetic screenshot bytes')", capture)
+
     def test_capture_inventory_is_public_and_unique(self):
         self.assertEqual(7,len(r47_capture.NAMES))
         self.assertEqual(len(r47_capture.NAMES),len(set(r47_capture.NAMES)))

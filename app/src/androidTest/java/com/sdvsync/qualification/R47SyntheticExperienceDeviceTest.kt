@@ -99,12 +99,11 @@ class R47SyntheticExperienceDeviceTest {
             }
         }
         val shortcuts = listOf(
-            "Open Game" to "game",
-            "Open Saves" to "saves",
-            "Open Mods" to "mods",
-            "Open More" to "more",
-            "View installation health" to "health",
-            "Open operation center" to "operations"
+            "Explore mods" to "mods",
+            "Open local saves" to "saves",
+            "Installation health" to "health",
+            "Discover mods" to "mods",
+            "All activity" to "operations"
         )
         rule.runOnIdle { assertTrue(calls.isEmpty()) }
         shortcuts.forEachIndexed { index, (label, expected) ->
@@ -139,20 +138,23 @@ class R47SyntheticExperienceDeviceTest {
         rule.onNodeWithText("Try sign-in again").assertDoesNotExist()
     }
 
-    @Test fun earthyHomeDay320Font160() = capture("home-earthy-day", AppearanceStyle.EARTHY, false, null)
-    @Test fun earthyHomeNight320Font160() = capture("home-earthy-night", AppearanceStyle.EARTHY, true, null)
-    @Test fun classicHomeDay320Font160() = capture("home-classic-day", AppearanceStyle.CLASSIC, false, null)
-    @Test fun earthyGame320Font160() = capture("game-earthy-day", AppearanceStyle.EARTHY, false, R45GuideArea.GAME)
-    @Test fun earthySaves320Font160() = capture("saves-earthy-night", AppearanceStyle.EARTHY, true, R45GuideArea.SAVES)
-    @Test fun earthyMods320Font160() = capture("mods-earthy-day", AppearanceStyle.EARTHY, false, R45GuideArea.MODS)
-    @Test fun earthyMore320Font160() = capture("more-earthy-day", AppearanceStyle.EARTHY, false, R45GuideArea.MORE)
+    // UX-R4: The approved theme is always dark. Previous three theme-only Home
+    // previews became byte-identical; capture distinct deterministic Home content
+    // states instead. Keep seven actual unique screenshots and fail-closed hashes.
+    @Test fun darkHomeMorning320Font160() = capture("home-dark-morning", AppearanceStyle.EARTHY, false, null, "Good morning ☀")
+    @Test fun darkHomeAfternoon320Font160() = capture("home-dark-afternoon", AppearanceStyle.EARTHY, true, null, "Good afternoon ☀")
+    @Test fun darkHomeEvening320Font160() = capture("home-dark-evening", AppearanceStyle.CLASSIC, false, null, "Good evening ☾")
+    @Test fun darkGame320Font160() = capture("game-dark", AppearanceStyle.EARTHY, false, R45GuideArea.GAME)
+    @Test fun darkSaves320Font160() = capture("saves-dark", AppearanceStyle.EARTHY, true, R45GuideArea.SAVES)
+    @Test fun darkMods320Font160() = capture("mods-dark", AppearanceStyle.EARTHY, false, R45GuideArea.MODS)
+    @Test fun darkMore320Font160() = capture("more-dark", AppearanceStyle.EARTHY, false, R45GuideArea.MORE)
 
     /**
      * Synthetic viewport only, not a claim about real screen / TalkBack focus order.
      * A separate scroll container and fixed bottom navigation let large-font
      * content reflow without hiding the primary tab controls.
      */
-    private fun capture(name: String, style: AppearanceStyle, dark: Boolean, area: R45GuideArea?) {
+    private fun capture(name: String, style: AppearanceStyle, dark: Boolean, area: R45GuideArea?, homeGreeting: String? = null) {
         rule.setContent {
             CompositionLocalProvider(LocalDensity provides Density(2f, fontScale = 1.6f)) {
                 SdvSyncTheme(style = style, darkTheme = dark) {
@@ -172,7 +174,8 @@ class R47SyntheticExperienceDeviceTest {
                                 if (area == null) {
                                     HomeScreen(
                                         onOpenGame = {}, onOpenSaves = {}, onOpenMods = {}, onOpenMore = {},
-                                        onOpenInstallationHealth = {}, onOpenOperationCenter = {}
+                                        onOpenInstallationHealth = {}, onOpenOperationCenter = {},
+                                        greetingOverride = homeGreeting, weekdayOverride = "FRIDAY"
                                     )
                                 } else {
                                     val error = when (area) {
@@ -207,7 +210,7 @@ class R47SyntheticExperienceDeviceTest {
             SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab))
             .assertIsSelected().assertIsDisplayed()
         if (area == null) {
-            rule.onNodeWithText("Your Cinderbox workspace").assertIsDisplayed()
+            rule.onNodeWithText("Your valley, beautifully organized.").assertIsDisplayed()
         } else {
             val error = when (area) {
                 R45GuideArea.GAME -> R46UiErrorArea.GAME
@@ -217,6 +220,10 @@ class R47SyntheticExperienceDeviceTest {
             }
             rule.onNodeWithText(R46UiErrorPolicy.forArea(error).title)
                 .performScrollTo().assertIsDisplayed()
+        }
+        // Verify the actual greeting is visible, not just a differently named PNG.
+        if (area == null && homeGreeting != null) {
+            rule.onNodeWithText(homeGreeting).assertIsDisplayed()
         }
         val bitmap = rule.onNodeWithTag("r47-synthetic").captureToImage().asAndroidBitmap()
         assertTrue(bitmap.width >= 320 && bitmap.height > 100)
