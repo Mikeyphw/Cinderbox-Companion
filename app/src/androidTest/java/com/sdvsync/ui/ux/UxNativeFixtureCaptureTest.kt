@@ -7,6 +7,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -46,7 +49,8 @@ class UxNativeFixtureCaptureTest {
 
     @Composable
     private fun FixtureMainShell(tab: BottomTab, content: @Composable () -> Unit) {
-        Column(Modifier.fillMaxSize().background(Dark.Background)) {
+        Column(Modifier.fillMaxSize().background(Dark.Background)
+            .windowInsetsPadding(WindowInsets.statusBars)) {
             Box(Modifier.weight(1f).testTag("cinderbox.shell.content")) { content() }
             StardewBottomBar(selectedTab = tab, onTabSelected = {})
         }
@@ -71,6 +75,16 @@ class UxNativeFixtureCaptureTest {
     private fun capture(caseId: String, isSteamUiPreview: Boolean) {
         require(caseId in setOf("game-steam-connected", "saves-cloud-connected", "mod-detail"))
         rule.onNodeWithTag("cinderbox.shell.bottomnav").assertExists()
+        val screenTag = when (caseId) {
+            "game-steam-connected" -> "cinderbox.screen.game"
+            "saves-cloud-connected" -> "cinderbox.screen.saves"
+            else -> "cinderbox.screen.mod-detail"
+        }
+        // Geometry is asserted from the *real Compose semantics tree*, not inferred
+        // from visible text or by inspecting a browser-only golden screenshot.
+        val topPx = rule.onNodeWithTag(screenTag).fetchSemanticsNode().boundsInRoot.top
+        assertTrue("UX09B4_STATUS_BAR_OVERLAP:$caseId:top=$topPx", topPx >= 40f)
+        assertTrue("UX09B4_SCREEN_OFFSCREEN:$caseId:top=$topPx", topPx <= 120f)
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         // Compose semantics can be present before the frame reaches Android's
         // Surface/RenderThread. Force native Compose rendering, then check pixels.
@@ -124,6 +138,9 @@ class UxNativeFixtureCaptureTest {
             .put("display_sampled_unique_colors", displayDiversity)
             .put("display_capture_attempt", successfulAttempt)
             .put("capture_method", "android-ui-automation-full-display")
+            .put("status_bar_safe_area_asserted", true)
+            .put("content_top_px", topPx.toDouble())
+            .put("safe_area_kind", "isolated-fixture-compose-statusBars")
         context.openFileOutput("ux09b3-$caseId.json", Context.MODE_PRIVATE).use { out ->
             out.write((metadata.toString(2) + "\n").toByteArray(Charsets.UTF_8))
         }
@@ -182,12 +199,14 @@ class UxNativeFixtureCaptureTest {
         )
         rule.setContent {
             SdvSyncTheme {
+                Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
                 ApprovedModDetailContent(
                     mod = fixture, files = emptyList(),
                     requirements = ModRequirementsAssessor.assess(fixture, null),
                     fileError = null, saved = false,
                     onBack = {}, onReviewFiles = {}, onSelectTab = {}, onToggleSaved = {}
                 )
+                }
             }
         }
         rule.onNodeWithTag("cinderbox.screen.mod-detail").assertExists()

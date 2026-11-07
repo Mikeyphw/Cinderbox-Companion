@@ -4,6 +4,8 @@ on:
     paths:
       - 'app/src/androidTest/java/com/sdvsync/ui/ux/**'
       - 'scripts/devtool/ux09b3_*'
+      - 'scripts/devtool/ux09b4_*'
+      - 'scripts/devtool/test_ux09b4_gate.py'
       - 'scripts/devtool/test_ux09b3_gate.py'
       - 'design/cinderbox/**'
       - 'docs/security/M3_RELEASE_POLICY.json'
@@ -13,6 +15,8 @@ on:
     paths:
       - 'app/src/androidTest/java/com/sdvsync/ui/ux/**'
       - 'scripts/devtool/ux09b3_*'
+      - 'scripts/devtool/ux09b4_*'
+      - 'scripts/devtool/test_ux09b4_gate.py'
       - '.github/workflows/cinderbox-ux09b3-presentation-fixtures.yml'
   workflow_dispatch:
 permissions:
@@ -34,6 +38,8 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python3 -B scripts/devtool/ux09b3_gate.py
+          python3 -B scripts/devtool/ux09b4_gate.py
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_ux09b4_gate.py' -v
           python3 -B -m unittest discover -s scripts/devtool -p 'test_ux09b3_gate.py' -v
           python3 -B scripts/devtool/ux09b2_gate.py
           python3 -B scripts/devtool/ux09b_gate.py
@@ -79,7 +85,7 @@ jobs:
             sleep 10
           done
       - run: python3 -m pip install --user 'Pillow==11.3.0'
-      - name: Capture 21 actual routes and three separate test-only UI presentations
+      - name: Capture 21 actual routes plus 3 safe-area-corrected presentation fixtures; audit all 24
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
           api-level: 36
@@ -92,7 +98,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: bash scripts/devtool/ux09b3_emulator_ci.sh
-      - name: Publish unapproved native candidate coverage and clean provenance
+      - name: Publish unapproved 24-case native geometry, safe-area and visual-difference evidence
         if: always()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
