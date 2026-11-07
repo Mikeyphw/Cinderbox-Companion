@@ -22,18 +22,64 @@ for viewport in '786x1704' '720x1600'; do
   adb -s "$serial" shell wm density 320 >/dev/null
   adb -s "$serial" shell settings put system font_scale 2.0 >/dev/null
   [[ "$(adb -s "$serial" shell settings get system font_scale | tr -d '\r')" == '2.0' ]] || { echo UX09C_FONT_SCALE_NOT_SET >&2; exit 1; }
-  if ! adb -s "$serial" shell am instrument -w -r -e class \
+  log="$out/.runner-${viewport}.log"
+  # `am instrument` can exit 0 even when Android reports a JUnit failure.
+  # Preserve only bounded, allowlisted diagnostics; never publish raw device logs.
+  set +e
+  adb -s "$serial" shell am instrument -w -r -e class \
     com.sdvsync.ui.ux.UxNativeAccessibilityTest \
-    com.sdvsync.test/androidx.test.runner.AndroidJUnitRunner > "$out/.runner-${viewport}.log" 2>&1; then
-    grep -E 'FAILURES!!!|Tests run:|INSTRUMENTATION_CODE|AssertionError|INSTRUMENTATION_FAILED|Exception' \
-      "$out/.runner-${viewport}.log" | tail -55 >&2 || :
-    echo "UX09C_ACCESSIBILITY_INSTRUMENTATION_FAILED:$viewport" >&2; exit 1
+    com.sdvsync.test/androidx.test.runner.AndroidJUnitRunner > "$log" 2>&1
+  instrument_rc=$?
+  set -e
+  if [[ $instrument_rc -ne 0 ]] || \
+     ! grep -F 'OK (3 tests)' "$log" >/dev/null || \
+     ! grep -F 'INSTRUMENTATION_CODE: -1' "$log" >/dev/null; then
+    width_px="${viewport%%x*}"
+    width_dp="$((width_px / 2))"
+    python3 -B - "$log" "$out/UX09C_TEST_FAILURE_RECEIPT_${width_dp}.json" "$viewport" "$instrument_rc" "$GITHUB_SHA" "$GITHUB_RUN_ID" <<'PYDIAGNOSTICS'
+import json,re,sys
+from pathlib import Path
+log_path,out_path,viewport,rc,source_sha,run_id=sys.argv[1:]
+lines=Path(log_path).read_text(errors='replace').splitlines()
+class_name=test_name=''
+failed=[]
+for line in lines:
+    if line.startswith('INSTRUMENTATION_STATUS: class='):
+        class_name=line.split('=',1)[1].strip()
+    elif line.startswith('INSTRUMENTATION_STATUS: test='):
+        test_name=line.split('=',1)[1].strip()
+    elif line.startswith('INSTRUMENTATION_STATUS_CODE:'):
+        value=line.split(':',1)[1].strip()
+        if value == '-2':
+            # Report identifiers only, never error-stack text or device data.
+            failed.append({'test':re.sub(r'[^A-Za-z0-9_.]', '',test_name)[:100],
+                'class':re.sub(r'[^A-Za-z0-9_.]', '',class_name)[:140]})
+markers=sorted(set(re.findall(r'\bUX09C_[A-Z0-9_]+', '\n'.join(lines))))[:20]
+types=[name for name,pattern in (
+    ('junit_failure',r'FAILURES!!!|Tests run: [0-9]+,\s*Failures:'),
+    ('assertion',r'AssertionError|AssertionFailedError'),
+    ('compose_node_missing',r'NoMatchingNodeException'),
+    ('compose_node_not_enabled',r'not enabled|assertIsNotEnabled'),
+    ('compose_idle_timeout',r'ComposeNotIdleException|not idle'),
+    ('instrumentation_crash',r'INSTRUMENTATION_FAILED|Process crashed'),
+) if re.search(pattern,'\n'.join(lines),re.I)]
+receipt={'schema':'cinderbox-ux09c01-failed-test-v1',
+    'result':'UX09C_INSTRUMENTATION_FAILURE_EVIDENCE',
+    'viewport_px':viewport,'source_sha':source_sha,'run_id':run_id,
+    'adb_exit_code':int(rc),'junit_tests_ok':any('OK (3 tests)' in x for x in lines),
+    'android_runner_succeeded':any('INSTRUMENTATION_CODE: -1' in x for x in lines),
+    'failed_tests':failed[:10], 'assertion_markers':markers,
+    'failure_types':types or ['unclassified_failure'],
+    'raw_device_log_included':False,
+    'credentials_or_filesystem_paths_included':False}
+Path(out_path).write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n')
+print('UX09C_HOSTED_DIAGNOSTIC',json.dumps(receipt,sort_keys=True),file=sys.stderr)
+PYDIAGNOSTICS
+    rm -f -- "$log"  # Never persist private logs in artifact.
+    echo "UX09C_INSTRUMENTATION_FAILED_WITH_SANITIZED_RECEIPT:$viewport" >&2
+    exit 1
   fi
-  if ! grep -F 'OK (3 tests)' "$out/.runner-${viewport}.log" >/dev/null || \
-     ! grep -F 'INSTRUMENTATION_CODE: -1' "$out/.runner-${viewport}.log" >/dev/null; then
-    echo "UX09C_INCOMPLETE_INSTRUMENTATION:$viewport" >&2; exit 1
-  fi
-  rm -f -- "$out/.runner-${viewport}.log"  # Never publish raw logs.
+  rm -f -- "$log"  # Never publish raw logs.
   width="${viewport%%x*}"
   width="$((width / 2))"
   for tab in home game saves mods more; do

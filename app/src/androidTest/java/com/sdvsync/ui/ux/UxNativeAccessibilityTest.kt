@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -12,6 +14,9 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasTestTag
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -118,7 +123,10 @@ class UxNativeAccessibilityTest {
         rule.onNodeWithTag(BottomTab.SAVES.testTag).performClick()
         rule.onNodeWithTag("cinderbox.screen.saves").assertExists()
         rule.onNodeWithText("Cloud · Locked").performClick()
-        rule.onNodeWithText("Cloud saves are optional").assertExists()
+        // The cloud notice may not be composed until scrolled into view at 200%.
+        rule.onNodeWithTag("cinderbox.screen.saves")
+            .performScrollToNode(hasText("Cloud saves are optional"))
+        rule.onNodeWithText("Cloud saves are optional").assertIsDisplayed()
         rule.onNodeWithTag(BottomTab.DOWNLOAD.testTag).performClick()
         rule.onNodeWithText("Connect Steam to download").assertExists()
         rule.onNodeWithTag(BottomTab.SETTINGS.testTag).performClick()
@@ -131,9 +139,23 @@ class UxNativeAccessibilityTest {
     @Test fun searchImeKeepsOfflineModsAccessible() {
         rule.onNodeWithTag(BottomTab.MODS.testTag).performClick()
         rule.onNodeWithTag("cinderbox.screen.mods").assertExists()
-        rule.onNodeWithTag("cinderbox.mods.search").performScrollTo().performTextInput("test query")
-        rule.onNodeWithTag("cinderbox.screen.mods").assertExists()
+        // Fresh offline emulators have NO Nexus key: the search field is correctly
+        // disabled. Typing into it would fail for the right production reason.
+        rule.onNodeWithTag("cinderbox.screen.mods")
+            .performScrollToNode(hasTestTag("cinderbox.mods.search"))
+        rule.onNodeWithTag("cinderbox.mods.search").assertIsNotEnabled()
         rule.onNodeWithTag("cinderbox.shell.bottomnav").assertExists()
-        // Do not click a remote result, grant files, or interpret provider errors as success.
+
+        // Exercise the real Android IME using a separate, enabled Settings input.
+        // Input is an unmistakably synthetic placeholder and is NEVER submitted,
+        // validated against a provider or stored as a Nexus credential.
+        rule.onNodeWithTag(BottomTab.SETTINGS.testTag).performClick()
+        rule.onNodeWithTag("cinderbox.more.nexus").performScrollTo().performClick()
+        rule.onNode(hasSetTextAction())
+            .performScrollTo()
+            .performTextInput("ux09c_unsaved_ime_fixture")
+        rule.onNode(hasSetTextAction()).assertIsDisplayed()
+        // Leave the screen with Android Back without pressing Save.
+        // No provider request, key save, or privilege operation is authorized.
     }
 }

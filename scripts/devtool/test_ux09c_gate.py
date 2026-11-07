@@ -36,6 +36,15 @@ class UX09CSourceTests(unittest.TestCase):
     def test_rejects_lost_font_scale(self):
         self.replace(REQUIRED[1],'font_scale 2.0','font_scale 1.0')
         with self.assertRaisesRegex(AssertionError,'HOST_DRIVER_MISSING'):check(self.root)
+    def test_rejects_credentialless_mods_search_input(self):
+        self.replace(REQUIRED[0], 'assertIsNotEnabled()', 'performClick()')
+        with self.assertRaisesRegex(AssertionError,'A11Y_ASSERTION'):check(self.root)
+    def test_rejects_unsaved_real_ime_path_removal(self):
+        self.replace(REQUIRED[0], 'ux09c_unsaved_ime_fixture', 'skipped')
+        with self.assertRaisesRegex(AssertionError,'A11Y_ASSERTION'):check(self.root)
+    def test_rejects_missing_diagnostic_receipt(self):
+        self.replace(REQUIRED[1], 'UX09C_TEST_FAILURE_RECEIPT_', 'missing-evidence-')
+        with self.assertRaisesRegex(AssertionError,'HOST_DRIVER_MISSING'):check(self.root)
     def test_rejects_tiny_touch_targets(self):
         self.replace(REQUIRED[0],'b.width >= 96f && b.height >= 96f','b.width >= 24f && b.height >= 24f')
         with self.assertRaisesRegex(AssertionError,'A11Y_ASSERTION'):check(self.root)

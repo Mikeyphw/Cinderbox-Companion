@@ -46,14 +46,18 @@ def check(root:Path=ROOT)->dict:
   assert '"'+tag+'"' in test,'UX09C_MISSING_ACTUAL_ROUTE:'+tag
  for token in ('b.width >= 96f && b.height >= 96f','performTextInput(',
                'Cloud · Locked','Connect Steam to download','Espresso.pressBack()',
-               'UX09C_BLANK_COMPOSE_FRAME','real_offline_main_activity'):
+               'UX09C_BLANK_COMPOSE_FRAME','real_offline_main_activity',
+               'cinderbox.more.nexus','assertIsNotEnabled()','hasSetTextAction()',
+               'ux09c_unsaved_ime_fixture','performScrollToNode(hasText('):
   assert token in test,'UX09C_MISSING_A11Y_ASSERTION:'+token
  for forbidden in FORBIDDEN:
   assert forbidden not in test,'UX09C_FORBIDDEN_SIDE_EFFECT:'+forbidden
  assert 'UX09C_PHYSICAL_DEVICE_REFUSED' in runner
  for token in ('wm density 320','font_scale 2.0','786x1704','720x1600',
                'OK (3 tests)','svc wifi disable','svc data disable',
-               'UX09C_FONT_SCALE_NOT_SET'):
+               'UX09C_FONT_SCALE_NOT_SET','UX09C_TEST_FAILURE_RECEIPT_',
+               'UX09C_HOSTED_DIAGNOSTIC','raw_device_log_included',
+               'UX09C_INSTRUMENTATION_FAILED_WITH_SANITIZED_RECEIPT'):
   assert token in runner,'UX09C_HOST_DRIVER_MISSING:'+token
  for token in ("'actual_offline_screenshots':10", "'native_goldens_approved':False",
                "'real_steam_authentication_qualified':False", "'release_enabled':False",
