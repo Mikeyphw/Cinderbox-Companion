@@ -1,6 +1,7 @@
 package com.sdvsync.ui.ux
 
 import android.content.Context
+import android.os.SystemClock
 import android.graphics.Bitmap
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -73,15 +74,56 @@ class UxDeviceChromeTest {
         capture("home", "cinderbox.shell.topbar")
     }
 
+    /**
+     * A Steam session-resume transition and NavHost animations can outlive
+     * Compose's immediate idle signal, especially after a 200% font change.
+     * Await the SAME required semantics (never skip or assume authentication).
+     * Named failures keep hosted logs useful without exposing form values.
+     */
+    private fun requireStage(stage: String, assertion: () -> Unit) {
+        val deadline = SystemClock.uptimeMillis() + 12_000L
+        var lastFailure: AssertionError? = null
+        do {
+            rule.waitForIdle()
+            try {
+                assertion()
+                println("UX09C02_STAGE_PASS:" + stage)
+                return
+            } catch (failure: AssertionError) {
+                lastFailure = failure
+            }
+            SystemClock.sleep(200L)
+        } while (SystemClock.uptimeMillis() < deadline)
+        throw AssertionError("UX09C02_STAGE_FAILED:" + stage, lastFailure)
+    }
+
     @Test fun voluntarySteamConnectionHasClearReturnToApp() {
+        requireStage("home-connect-action") {
+            rule.onNodeWithTag("cinderbox.steam.connect").assertExists()
+        }
         rule.onNodeWithTag("cinderbox.steam.connect").performClick()
-        rule.onNodeWithTag("cinderbox.steam-login.screen").assertExists()
-        rule.onNodeWithText("Connect your Steam account").assertExists()
+        requireStage("steam-screen") {
+            rule.onNodeWithTag("cinderbox.steam-login.screen").assertExists()
+        }
+        requireStage("steam-introduction") {
+            rule.onNodeWithText("Connect your Steam account").assertExists()
+        }
+        // This negative contract remains strict: local mode was already active.
         rule.onNodeWithText("Continue offline").assertDoesNotExist()
-        rule.onNodeWithTag("cinderbox.steam-login.qr").assertExists()
+        requireStage("steam-qr-action") {
+            rule.onNodeWithTag("cinderbox.steam-login.qr").assertExists()
+        }
+        requireStage("steam-header") {
+            rule.onNodeWithTag("cinderbox.steam-login.header").assertExists()
+        }
         capture("steam", "cinderbox.steam-login.header")
+        requireStage("steam-back-action") {
+            rule.onNodeWithTag("cinderbox.steam-login.back").assertExists()
+        }
         rule.onNodeWithTag("cinderbox.steam-login.back").performClick()
-        rule.onNodeWithTag("cinderbox.screen.home").assertExists()
+        requireStage("home-after-steam-back") {
+            rule.onNodeWithTag("cinderbox.screen.home").assertExists()
+        }
     }
 
     @Test fun advancedModManagerHasResponsiveToolbarAndBack() {

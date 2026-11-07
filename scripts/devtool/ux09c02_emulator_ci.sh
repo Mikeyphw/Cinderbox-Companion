@@ -34,11 +34,11 @@ for spec in '786x1704:100:1.0' '786x1704:200:2.0' '720x1600:100:1.0' '720x1600:2
   fi
   if (( failure != 0 )); then
     echo "UX09C02_INSTRUMENTATION_REFUSED:${viewport}:${percent}" >&2
-    grep -E 'FAILURES!!!|Test[s]? run:|Assertion|Exception|Error|INSTRUMENTATION_CODE|UX09C02_' "$logfile" | tail -60 >&2 || :
+    grep -E 'FAILURES!!!|Test[s]? run:|Assertion|Exception|Error in|INSTRUMENTATION_CODE|UX09C02_STAGE_|UX09C02_' "$logfile" | tail -90 >&2 || :
     python3 - "$logfile" "$out/UX09C02_FAILURE.txt" <<'PYFAIL'
 import re,sys,pathlib
 s=pathlib.Path(sys.argv[1]).read_text(errors='replace')
-lines=[x[:250] for x in s.splitlines() if re.search(r'FAILURES!!!|Tests run:|AssertionError|UX09C02_|INSTRUMENTATION_CODE:',x)]
+lines=[x[:250] for x in s.splitlines() if re.search(r'FAILURES!!!|Tests run:|AssertionError|Error in|UX09C02_STAGE_|UX09C02_|INSTRUMENTATION_CODE:',x)]
 pathlib.Path(sys.argv[2]).write_text('UX09C02_HOSTED_FAILURE\n'+'\n'.join(lines[-30:])+'\n')
 PYFAIL
     rm -f -- "$logfile"
