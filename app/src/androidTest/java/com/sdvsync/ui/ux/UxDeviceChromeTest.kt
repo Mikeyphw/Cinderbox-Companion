@@ -6,7 +6,8 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.sdvsync.MainActivity
@@ -86,7 +87,11 @@ class UxDeviceChromeTest {
     @Test fun advancedModManagerHasResponsiveToolbarAndBack() {
         rule.onNodeWithTag(BottomTab.MODS.testTag).performClick()
         rule.onNodeWithTag("cinderbox.screen.mods").assertExists()
-        rule.onNodeWithTag("cinderbox.mods.advanced").performScrollTo().performClick()
+        // The Advanced action belongs to a LazyColumn item. Scroll the container
+        // to that item before clicking: a child-level scroll action is unsupported.
+        rule.onNodeWithTag("cinderbox.screen.mods")
+            .performScrollToNode(hasTestTag("cinderbox.mods.advanced"))
+        rule.onNodeWithTag("cinderbox.mods.advanced").performClick()
         rule.onNodeWithTag("cinderbox.screen.advanced-mods").assertExists()
         for (name in listOf("backups", "updates", "browse", "import")) {
             rule.onNodeWithTag("cinderbox.advanced-mods.action.$name").assertExists()

@@ -10,9 +10,13 @@ class M4Contracts(unittest.TestCase):
     def test_offline_is_explicit(self):
         login = read('app/src/main/java/com/sdvsync/ui/screens/LoginScreen.kt')
         nav = read('app/src/main/java/com/sdvsync/MainActivity.kt')
-        assert 'Continue offline' in login
-        assert 'onContinueOffline' in login
-        assert 'navController.navigate("main")' in nav
+        # UX-09C02: local mode is already active; Login is only an optional Steam flow.
+        # The return action is explicit, and its callback still routes to the app.
+        assert 'Continue offline' not in login
+        assert 'CinderboxSteamLoginHeader(onBack = onContinueOffline)' in login
+        assert 'onContinueOffline = {' in nav
+        assert 'if (!navController.popBackStack()) navController.navigate("main")' in nav
+        assert 'onOpenSettings = { navController.navigate("prelogin_settings") }' in nav
 
     def test_local_saves_do_not_wait_for_steam(self):
         src = read('app/src/main/java/com/sdvsync/ui/viewmodels/DashboardViewModel.kt')
