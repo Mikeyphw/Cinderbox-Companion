@@ -6,6 +6,8 @@ import android.graphics.Bitmap
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.performScrollToNode
@@ -100,6 +102,16 @@ class UxDeviceChromeTest {
     @Test fun voluntarySteamConnectionHasClearReturnToApp() {
         requireStage("home-connect-action") {
             rule.onNodeWithTag("cinderbox.steam.connect").assertExists()
+        }
+        // Home is a real vertically scrolling screen. At 200% system text,
+        // the optional Steam card can be below the visible viewport. Compose
+        // can find its semantics node without that node being tappable.
+        // Scroll the existing button into view and require actual visibility
+        // BEFORE a real click; never navigate directly or fake login state.
+        requireStage("home-connect-visible") {
+            rule.onNodeWithTag("cinderbox.steam.connect")
+                .performScrollTo()
+                .assertIsDisplayed()
         }
         rule.onNodeWithTag("cinderbox.steam.connect").performClick()
         requireStage("steam-screen") {
