@@ -3,7 +3,6 @@ package com.sdvsync.ui.ux
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
