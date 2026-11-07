@@ -1,0 +1,103 @@
+name: Cinderbox UX-09C02 — status bar and real-device screen overhaul
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/LoginScreen.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/AdvancedCinderboxChrome.kt'
+      - 'app/src/androidTest/java/com/sdvsync/ui/ux/UxDeviceChromeTest.kt'
+      - 'scripts/devtool/ux09c02_*'
+      - 'scripts/devtool/test_ux09c02_gate.py'
+      - '.github/workflows/cinderbox-ux09c02-device-chrome.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/LoginScreen.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/AdvancedCinderboxChrome.kt'
+      - 'app/src/androidTest/java/com/sdvsync/ui/ux/UxDeviceChromeTest.kt'
+      - 'scripts/devtool/ux09c02_*'
+      - '.github/workflows/cinderbox-ux09c02-device-chrome.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cinderbox-ux09c02-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Validate status-bar contract, callbacks and locked release policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 -B scripts/devtool/ux09c02_gate.py
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_ux09c02_gate.py' -v
+          python3 -B scripts/devtool/ux09c_gate.py
+          python3 -B scripts/devtool/ux09b4_gate.py
+  hosted-api36-ui:
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - run: sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Hosted app and test APK compile only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Require isolated KVM
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+      - name: SDK image download with bounded retries
+        shell: bash
+        run: |
+          set -euo pipefail
+          for n in 1 2 3; do
+            if sdkmanager --install 'system-images;android-36;google_apis;x86_64'; then exit 0; fi
+            test "$n" -lt 3 || { echo UX09C02_SDK_FAILED >&2; exit 1; }
+            sleep 10
+          done
+      - name: Verify 3 real routes at 2 display widths and 2 font scales
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          disk-size: 3072M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash scripts/devtool/ux09c02_emulator_ci.sh
+      - name: Publish 12 actual screenshots or sanitized failure receipt
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: ux09c02-real-device-chrome-api36
+          path: ${{ runner.temp }}/ux09c02-real-chrome/
+          if-no-files-found: warn
+          retention-days: 14

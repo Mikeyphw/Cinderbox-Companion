@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -257,9 +259,14 @@ fun SdvSyncNavGraph(navController: NavHostController) {
         }
     }
 
+    // All navigation destinations, including Steam and Advanced Mods, must respect
+    // the actual phone status bar on Android edge-to-edge. Consume once here.
     NavHost(
         navController = navController,
         startDestination = "main",
+        modifier = Modifier.fillMaxSize()
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .consumeWindowInsets(WindowInsets.statusBars),
         enterTransition = {
             slideIntoContainer(
                 towards = AnimatedContentTransitionScope.SlideDirection.Left,
@@ -366,6 +373,7 @@ fun SdvSyncNavGraph(navController: NavHostController) {
         // No operations are triggered by navigating to this secondary route.
         composable("mods_advanced") {
             ModManagerScreen(
+                onBack = { navController.popBackStack() },
                 onBrowseClick = { navController.navigate("mods_browse") },
                 onModClick = { uniqueId ->
                     navController.navigate("installed_mod/${Uri.encode(uniqueId)}")
