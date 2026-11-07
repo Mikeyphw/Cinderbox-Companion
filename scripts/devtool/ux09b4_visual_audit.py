@@ -30,10 +30,16 @@ def mae(left:Image.Image,right:Image.Image) -> float:
     return round(sum(ImageStat.Stat(d).mean)/3,4)
 
 def independent_colors(img:Image.Image) -> int:
-    w,h=img.size; colors=set()
-    for y in range(h//4,(h*3)//4,23):
-        for x in range(w//8,(w*7)//8,23):
-            colors.add(img.getpixel((x,y)))
+    # Cover actual text and cards above/below the old narrow center band.
+    # A frame still fails if it lacks visible foreground or diverse pixels.
+    w,h=img.size; colors=set(); foreground=0
+    for y in range(h//8,(h*7)//8,13):
+        for x in range(w//12,(w*11)//12,13):
+            r,g,b=img.getpixel((x,y))
+            colors.add((r,g,b))
+            if max(r,g,b)>115 and min(r,g,b)>70:
+                foreground+=1
+    assert foreground>=8, 'UX09B4_NO_VISIBLE_FOREGROUND'
     return len(colors)
 
 def analyze(evidence:Path,reference:Path,layout_path:Path,sha:str,run_id:str)->dict:

@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.sdvsync.diagnostics.CenterItem
 import com.sdvsync.diagnostics.CenterStatus
@@ -84,8 +85,10 @@ fun OperationCenterScreen(
                 Toast.LENGTH_LONG).show()
         }
     }
-    Scaffold(topBar = { StardewTopAppBar("Operation center", navigationIcon = {
-        TextButton(onClick = onBack) { Text("Back") }
+    Scaffold(modifier = Modifier.testTag("cinderbox.screen.operation-center"),
+        topBar = { StardewTopAppBar("Operation center", navigationIcon = {
+        TextButton(onClick = onBack,
+            modifier = Modifier.testTag("cinderbox.operation-center.back")) { Text("Back") }
     }) }) { padding ->
         R44BResponsiveColumn(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
             Text("Live, read-only status and recovery guidance", style = MaterialTheme.typography.titleMedium)
