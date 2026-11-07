@@ -4,7 +4,7 @@ from __future__ import annotations
 import json,shutil,tempfile,unittest
 from pathlib import Path
 from ux09b4_gate import ROOT,REQUIRED,check
-from ux09b4_visual_audit import analyze
+# Source-only tests must import without optional Pillow; hosted visual audit imports it separately.
 
 class SourceGateTests(unittest.TestCase):
     def setUp(self):
