@@ -3,6 +3,10 @@ package com.sdvsync.ui.screens
 import android.graphics.Bitmap
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.platform.testTag
+import com.sdvsync.ui.theme.CinderboxDarkTokens as Dark
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -87,47 +91,22 @@ fun LoginScreen(
     )
 
     Scaffold(
-        topBar = {
-            StardewTopAppBar(title = stringResource(R.string.login_title))
-        }
+        modifier = Modifier.testTag("cinderbox.steam-login.screen"),
+        containerColor = Dark.Background,
+        topBar = { CinderboxSteamLoginHeader(onBack = onContinueOffline) }
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 24.dp)
+                .padding(horizontal = 18.dp, vertical = 18.dp)
+                .imePadding()
                 .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Spacer(Modifier.weight(1f))
-
-            Box(
-                contentAlignment = Alignment.Center
-            ) {
-                SparkleOverlay(
-                    modifier = Modifier
-                        .size(width = 200.dp, height = 100.dp)
-                )
-                PixelIcon(
-                    pixelData = BarnData,
-                    palette = BarnPalette,
-                    size = 64.dp
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-
-            Text(
-                stringResource(R.string.app_name),
-                style = MaterialTheme.typography.displayLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Text(
-                stringResource(R.string.login_brand_tagline),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(32.dp))
+            CinderboxSteamLoginIntroduction()
+            Spacer(Modifier.height(8.dp))
 
             when (val state = authState) {
                 is AuthState.Idle -> {
@@ -212,7 +191,7 @@ fun LoginScreen(
                             null
                         },
                         colors = warmTextFieldColors,
-                        shape = RectangleShape,
+                        shape = RoundedCornerShape(12.dp),
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Ascii,
                             imeAction = ImeAction.Done
@@ -278,13 +257,6 @@ fun LoginScreen(
                 }
             }
 
-            // An offline launch keeps local saves, backups, mods and settings accessible.
-            if (authState !is AuthState.LoggedIn) {
-                Spacer(Modifier.height(12.dp))
-                StardewOutlinedButton(onClick = onContinueOffline, modifier = Modifier.fillMaxWidth()) {
-                    Text("Continue offline")
-                }
-            }
 
             // Local settings must be accessible without Steam authentication.
             if (authState !is AuthState.LoggedIn) {
@@ -297,7 +269,7 @@ fun LoginScreen(
                 }
             }
 
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(24.dp))
         }
     }
 }
@@ -327,9 +299,11 @@ private fun LoginOptions(
     val iconTint = MaterialTheme.colorScheme.onSurfaceVariant
     val canLogin = username.isNotBlank() && password.isNotBlank()
 
-    StardewOutlinedButton(
+    Button(
         onClick = onQRLogin,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+            .testTag("cinderbox.steam-login.qr"),
+        shape = RoundedCornerShape(12.dp)
     ) {
         PixelIcon(
             pixelData = QrCodeData,
@@ -364,7 +338,7 @@ private fun LoginOptions(
         label = { Text(stringResource(R.string.login_username_hint)) },
         singleLine = true,
         colors = textFieldColors,
-        shape = RectangleShape,
+        shape = RoundedCornerShape(12.dp),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         modifier = Modifier.fillMaxWidth()
     )
@@ -375,7 +349,7 @@ private fun LoginOptions(
         label = { Text(stringResource(R.string.login_password_hint)) },
         singleLine = true,
         colors = textFieldColors,
-        shape = RectangleShape,
+        shape = RoundedCornerShape(12.dp),
         visualTransformation = if (passwordVisible) {
             VisualTransformation.None
         } else {
