@@ -25,6 +25,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sdvsync.BuildConfig
+import com.sdvsync.ui.components.CinderboxBrandTopBar
 import com.sdvsync.ui.theme.CinderboxDarkTokens as Dark
 import com.sdvsync.ui.viewmodels.SettingsState
 import com.sdvsync.ui.viewmodels.SettingsViewModel
@@ -124,6 +125,10 @@ fun ApprovedMoreContent(
         .background(Dark.Background).verticalScroll(rememberScrollState())
         .padding(horizontal = 17.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        CinderboxBrandTopBar(
+            subtitle = "SETTINGS & MORE",
+            onOpenOperationCenter = onOpenOperationCenter
+        )
         Row(verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.weight(1f)) {

@@ -118,7 +118,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         handleIncomingIntent(intent)
         // Only launch a foreground service from a STARTED (visible) Activity.
         // The service remains active while the app is backgrounded and until logout/opt-out.
@@ -743,6 +743,7 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
                         parentNavController.navigate("sync_detail/${Uri.encode(folderName)}/$hasCloud/$hasLocal")
                     },
                     onOpenSyncHistory = { parentNavController.navigate("sync_log") },
+                    onOpenOperationCenter = { parentNavController.navigate("operation_center") },
                     onOpenAdvancedSaves = { parentNavController.navigate("saves_advanced") },
                     onOpenSaveReview = { name ->
                         parentNavController.navigate("save_review/${Uri.encode(name)}")
@@ -762,6 +763,7 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
                     },
                     onOpenAdvancedMods = { parentNavController.navigate("mods_advanced") },
                     onOpenQueue = { parentNavController.navigate("download_queue") },
+                    onOpenOperationCenter = { parentNavController.navigate("operation_center") },
                     onOpenProfileDetail = { profileId ->
                         parentNavController.navigate("profile_detail/${Uri.encode(profileId)}")
                     }

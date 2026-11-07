@@ -39,6 +39,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sdvsync.ui.components.CinderboxBrandTopBar
 import com.sdvsync.ui.theme.CinderboxDarkTokens as Dark
 import com.sdvsync.ui.viewmodels.DashboardViewModel
 import com.sdvsync.ui.viewmodels.SaveEntry
@@ -59,7 +60,8 @@ fun ApprovedSavesScreen(
     onOpenSyncHistory: () -> Unit,
     onOpenAdvancedSaves: () -> Unit,
     onOpenSaveReview: (String) -> Unit = {},
-    viewModel: DashboardViewModel = koinViewModel()
+    viewModel: DashboardViewModel = koinViewModel(),
+    onOpenOperationCenter: () -> Unit = {}
 ) {
     val state by viewModel.state.collectAsState()
     var cloudSelected by rememberSaveable { mutableStateOf(false) }
@@ -73,6 +75,12 @@ fun ApprovedSavesScreen(
             start = 18.dp, end = 18.dp, top = 18.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        item {
+            CinderboxBrandTopBar(
+                subtitle = "LOCAL & CLOUD",
+                onOpenOperationCenter = onOpenOperationCenter
+            )
+        }
         item {
             Column {
                 Text("THE STORIES YOU'VE GROWN", color = Dark.Muted,

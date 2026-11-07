@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.sdvsync.mods.models.RemoteMod
+import com.sdvsync.ui.components.CinderboxBrandTopBar
 import com.sdvsync.ui.theme.CinderboxDarkTokens as Dark
 import com.sdvsync.ui.viewmodels.BrowseCategory
 import com.sdvsync.ui.viewmodels.ModBrowseViewModel
@@ -137,7 +138,8 @@ fun ApprovedModsScreen(
     onOpenQueue: () -> Unit = {},
     onOpenProfileDetail: (String) -> Unit = {},
     viewModel: ModManagerViewModel = koinViewModel(),
-    browseViewModel: ModBrowseViewModel = koinViewModel()
+    browseViewModel: ModBrowseViewModel = koinViewModel(),
+    onOpenOperationCenter: () -> Unit = {}
 ) {
     val state by viewModel.state.collectAsState()
     val browse by browseViewModel.state.collectAsState()
@@ -233,12 +235,18 @@ fun ApprovedModsScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
+            CinderboxBrandTopBar(
+                subtitle = "YOUR MOD LIBRARY",
+                onOpenOperationCenter = onOpenOperationCenter
+            )
+        }
+        item {
             Column {
                 Text("MAKE IT YOUR VALLEY", color = Dark.Muted,
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp))
                 Spacer(Modifier.height(5.dp))
-                Text("Your mods", color = Dark.Ink,
+                Text("Mods", color = Dark.Ink,
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontWeight = FontWeight.Bold, fontSize = 25.sp),
                     modifier = Modifier.semantics { heading() })
@@ -252,6 +260,15 @@ fun ApprovedModsScreen(
             }
         }
         item { ModsPaneSelector(pane) { pane = it } }
+        // Always-visible entry point, independent of Nexus listings or category.
+        item {
+            OutlinedButton(
+                onClick = onOpenAdvancedMods,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    .testTag("cinderbox.mods.advanced"),
+                shape = RoundedCornerShape(12.dp)
+            ) { Text("Manage local mods") }
+        }
         if (pane != ModsPane.DISCOVER) {
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -455,15 +472,6 @@ fun ApprovedModsScreen(
                 item {
                     OutlinedButton(onClick = onOpenAdvancedMods,
                         modifier = Modifier.fillMaxWidth()) { Text("Manage profiles") }
-                }
-            }
-        }
-        item {
-            ModsPanel("Advanced mod management",
-                "Open the existing manager for imports, profile previews and explicitly reviewed changes.") {
-                OutlinedButton(onClick = onOpenAdvancedMods,
-                    modifier = Modifier.fillMaxWidth().testTag("cinderbox.mods.advanced")) {
-                    Text("Open advanced manager")
                 }
             }
         }
