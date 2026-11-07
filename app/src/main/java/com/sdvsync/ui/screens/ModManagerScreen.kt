@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.sdvsync.R
@@ -57,7 +58,8 @@ import org.koin.androidx.compose.koinViewModel
 fun ModManagerScreen(
     onBrowseClick: () -> Unit = {},
     onModClick: (String) -> Unit = {},
-    viewModel: ModManagerViewModel = koinViewModel()
+    viewModel: ModManagerViewModel = koinViewModel(),
+    onBack: () -> Unit = {}
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
@@ -202,29 +204,15 @@ fun ModManagerScreen(
     }
 
     Scaffold(
+        modifier = Modifier.testTag("cinderbox.screen.advanced-mods"),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            StardewTopAppBar(
-                title = stringResource(R.string.mods_title),
-                actions = {
-                    TextButton(onClick = { viewModel.refreshSafetyState(); showSnapshots = true }) {
-                        Text("Backups")
-                    }
-                    PixelIconButton(
-                        pixelData = RefreshData,
-                        onClick = { viewModel.checkForUpdates() },
-                        contentDescription = stringResource(R.string.mods_check_update)
-                    )
-                    PixelIconButton(
-                        pixelData = SearchData,
-                        onClick = onBrowseClick,
-                        contentDescription = stringResource(R.string.mods_browse_title)
-                    )
-                    PixelIconButton(
-                        pixelData = FolderData,
-                        onClick = { importLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed")) },
-                        contentDescription = stringResource(R.string.mods_import)
-                    )
-                }
+            CinderboxAdvancedModsHeader(
+                onBack = onBack,
+                onBackups = { viewModel.refreshSafetyState(); showSnapshots = true },
+                onUpdates = { viewModel.checkForUpdates() },
+                onBrowse = onBrowseClick,
+                onImport = { importLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed")) }
             )
         }
     ) { padding ->
@@ -261,36 +249,16 @@ fun ModManagerScreen(
                 }
 
                 state.installedMods.isEmpty() -> {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            EmptyState(
-                                title = stringResource(R.string.mods_empty_title),
-                                subtitle = stringResource(R.string.mods_empty_subtitle)
-                            )
-                            Spacer(Modifier.height(24.dp))
-                            StardewButton(
-                                onClick = onBrowseClick,
-                                variant = StardewButtonVariant.Gold
-                            ) {
-                                Text(stringResource(R.string.mods_browse_button))
-                            }
-                            Spacer(Modifier.height(12.dp))
-                            StardewOutlinedButton(
-                                onClick = {
-                                    importLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed"))
-                                }
-                            ) {
-                                Text(stringResource(R.string.mods_import_button))
-                            }
-                            Spacer(Modifier.height(12.dp))
-                            StardewOutlinedButton(onClick = {
-                                importProfile.launch(arrayOf("application/json", "text/plain"))
-                            }) { Text("Import profile JSON") }
+                    Column(
+                        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        CinderboxAdvancedModsEmpty(
+                            onBrowse = onBrowseClick,
+                            onImportZip = { importLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed")) },
+                            onImportProfile = { importProfile.launch(arrayOf("application/json", "text/plain")) }
+                        )
                             if (state.profiles.isNotEmpty()) {
                                 Spacer(Modifier.height(12.dp))
                                 ProfileSection(
@@ -309,10 +277,8 @@ fun ModManagerScreen(
                                     onNote = { profileForNotes = it }
                                 )
                             }
-                        }
                     }
                 }
-
                 else -> {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
