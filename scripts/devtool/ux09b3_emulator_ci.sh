@@ -43,4 +43,9 @@ python3 -B scripts/devtool/ux09b3_report.py \
   --source-sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" \
   --app-sha "$(sha256sum "${app[0]}" | awk '{print $1}')" \
   --test-sha "$(sha256sum "${test_apk[0]}" | awk '{print $1}')"
+python3 -B scripts/devtool/ux09b4_visual_audit.py \
+  --evidence-dir "$out" --reference-dir design/cinderbox/01_REFERENCE/screenshots \
+  --layout-json design/cinderbox/02_CONTRACT/browser-layout-golden.json \
+  --source-sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID"
+echo UX09B4_STATUS_INSETS_AND_24_CASE_GEOMETRY_AUDITED_NOT_APPROVED
 echo UX09B3_24_CANDIDATE_SCREENSHOTS_NOT_VISUAL_ACCEPTANCE
