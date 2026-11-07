@@ -265,7 +265,7 @@ fun LoginScreen(
                     onClick = onOpenSettings,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Connection settings")
+                    Text(stringResource(R.string.settings_title))
                 }
             }
 
