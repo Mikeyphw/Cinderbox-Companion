@@ -10,6 +10,8 @@ import com.sdvsync.mods.ModFileManager
 import com.sdvsync.mods.ModMetadata
 import com.sdvsync.mods.api.NEXUS_MIN_SEARCH_QUERY_LENGTH
 import com.sdvsync.mods.api.NexusModSource
+import com.sdvsync.mods.api.NexusCatalogFilters
+import com.sdvsync.mods.api.NexusCatalogSort
 import com.sdvsync.mods.models.InstalledMod
 import com.sdvsync.mods.models.RemoteMod
 import java.util.Locale
@@ -35,6 +37,8 @@ data class ModBrowseState(
     @StringRes val apiKeyErrorRes: Int? = null,
     val category: BrowseCategory = BrowseCategory.TRENDING,
     val searchQuery: String = "",
+    val filters: NexusCatalogFilters = NexusCatalogFilters(),
+    val totalResults: Int = 0,
     val mods: List<RemoteMod> = emptyList(),
     val installedSourceIds: Set<String> = emptySet(),
     val isLoading: Boolean = false,
@@ -105,7 +109,13 @@ class ModBrowseViewModel(
     private val requestGate = BrowseRequestGate()
 
     init {
-        checkApiKey()
+        viewModelScope.launch {
+            val saved = try { dataStore.getNexusCatalogFilters() }
+                catch (e: CancellationException) { throw e }
+                catch (_: Exception) { NexusCatalogFilters() }
+            _state.update { it.copy(filters = saved) }
+            checkApiKey()
+        }
         loadInstalledSourceIds()
     }
 
@@ -113,7 +123,7 @@ class ModBrowseViewModel(
         val hasApiKey = !dataStore.getNexusApiKey().isNullOrBlank()
         _state.value = _state.value.copy(hasApiKey = hasApiKey)
         if (hasApiKey) {
-            loadCategory(BrowseCategory.TRENDING)
+            requestCatalog("", _state.value.filters, _state.value.category, debounce = false)
         }
     }
 
@@ -169,11 +179,14 @@ class ModBrowseViewModel(
         browseJob?.cancel()
         browseJob = null
         dataStore.setNexusApiKey(null)
+        viewModelScope.launch { dataStore.setNexusCatalogFilters(NexusCatalogFilters()) }
         _state.value = _state.value.copy(
             hasApiKey = false,
             isValidatingKey = false,
             apiKeyErrorRes = null,
             searchQuery = "",
+            totalResults = 0,
+            filters = NexusCatalogFilters(),
             mods = emptyList(),
             isLoading = false,
             page = 0,
@@ -186,136 +199,108 @@ class ModBrowseViewModel(
     }
 
     fun loadCategory(category: BrowseCategory) {
-        val requestGeneration = beginBrowseRequest()
-        _state.value = _state.value.copy(
-            category = category,
-            searchQuery = "",
-            isLoading = true,
-            page = 0,
-            hasMore = false,
-            isLoadingMore = false,
-            loadMoreError = null,
-            searchNeedsMoreCharacters = false,
-            error = null
-        )
-        browseJob = viewModelScope.launch {
-            try {
-                val mods = when (category) {
-                    BrowseCategory.TRENDING -> nexusSource.getTrending()
-                    BrowseCategory.LATEST -> nexusSource.getLatestAdded()
-                    BrowseCategory.RECENTLY_UPDATED -> nexusSource.getLatestUpdated()
-                }
-                updateIfCurrent(requestGeneration) { it.copy(mods = mods, isLoading = false) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Failed to load category", e)
-                updateIfCurrent(requestGeneration) {
-                    it.copy(
-                        isLoading = false,
-                        error = classifyNexusError(e, R.string.mods_error_load_failed)
-                    )
-                }
-            }
+        val current = _state.value
+        val sort = when (category) {
+            BrowseCategory.TRENDING -> NexusCatalogSort.ENDORSEMENTS
+            BrowseCategory.LATEST -> NexusCatalogSort.NEWEST
+            BrowseCategory.RECENTLY_UPDATED -> NexusCatalogSort.UPDATED
+        }
+        val updated = current.filters.copy(sort = sort)
+        requestCatalog("", updated, category, debounce = false)
+        viewModelScope.launch {
+            try { dataStore.setNexusCatalogFilters(updated) }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { AppLogger.e(TAG, "Unable to save Nexus sort", e) }
+        }
+    }
+
+    /** Every refinement creates a fresh first-page API request. Never filter a partial page. */
+    fun applyFilters(filters: NexusCatalogFilters) {
+        val current = _state.value
+        val normalized = filters.normalized()
+        requestCatalog(current.searchQuery, normalized, current.category, debounce = false)
+        viewModelScope.launch {
+            try { dataStore.setNexusCatalogFilters(normalized) }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { AppLogger.e(TAG, "Unable to save Nexus filters", e) }
         }
     }
 
     fun search(query: String) {
-        val normalizedQuery = query.trim()
-        if (normalizedQuery.isEmpty()) {
-            loadCategory(_state.value.category)
-            return
-        }
+        val current = _state.value
+        requestCatalog(query, current.filters, current.category, debounce = true)
+    }
 
-        val requestGeneration = beginBrowseRequest()
-        val needsMoreCharacters = searchNeedsMoreCharacters(query)
+    private fun requestCatalog(
+        query: String,
+        filters: NexusCatalogFilters,
+        category: BrowseCategory,
+        debounce: Boolean
+    ) {
+        val normalized = query.trim()
+        val needsMore = searchNeedsMoreCharacters(query)
+        val generation = beginBrowseRequest()
         _state.value = _state.value.copy(
-            searchQuery = query,
-            mods = emptyList(),
-            isLoading = !needsMoreCharacters,
-            page = 0,
-            hasMore = false,
-            isLoadingMore = false,
-            loadMoreError = null,
-            searchNeedsMoreCharacters = needsMoreCharacters,
-            error = null
+            category = category, filters = filters, searchQuery = query,
+            mods = emptyList(), totalResults = 0,
+            isLoading = !needsMore, page = 0, hasMore = false,
+            isLoadingMore = false, loadMoreError = null,
+            searchNeedsMoreCharacters = needsMore, error = null
         )
-        if (needsMoreCharacters) return
-
+        if (needsMore) return
         browseJob = viewModelScope.launch {
-            delay(300)
+            if (debounce && normalized.isNotEmpty()) delay(300)
             try {
-                val result = nexusSource.search(normalizedQuery)
-                updateIfCurrent(requestGeneration) {
-                    it.copy(
-                        mods = result.mods,
-                        isLoading = false,
-                        page = 1,
-                        hasMore = result.hasMore
-                    )
+                val result = nexusSource.browse(normalized, filters = filters, page = 1)
+                updateIfCurrent(generation) {
+                    it.copy(mods = result.mods, totalResults = result.totalResults,
+                        isLoading = false, page = 1, hasMore = result.hasMore)
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                AppLogger.e(TAG, "Search failed", e)
-                updateIfCurrent(requestGeneration) {
-                    it.copy(
-                        isLoading = false,
-                        error = classifyNexusError(e, R.string.mods_error_search_failed)
-                    )
+                AppLogger.e(TAG, "Nexus catalog failed", e)
+                updateIfCurrent(generation) {
+                    it.copy(isLoading = false,
+                        error = classifyNexusError(e, R.string.mods_error_search_failed))
                 }
             }
         }
     }
 
     fun loadMore() {
-        val currentState = _state.value
-        val query = currentState.searchQuery.trim()
-        if (
-            query.length < NEXUS_MIN_SEARCH_QUERY_LENGTH ||
-            currentState.isLoading ||
-            currentState.isLoadingMore ||
-            !currentState.hasMore
-        ) {
-            return
-        }
-
-        val requestGeneration = requestGate.current()
-        val nextPage = currentState.page + 1
+        val current = _state.value
+        if (current.isLoading || current.isLoadingMore || !current.hasMore ||
+            current.searchNeedsMoreCharacters) return
+        val generation = requestGate.current()
+        val nextPage = current.page + 1
+        if (nextPage > 10_000) return
         _state.update { it.copy(isLoadingMore = true, loadMoreError = null) }
         browseJob = viewModelScope.launch {
             try {
-                val result = nexusSource.search(query, page = nextPage)
-                updateIfCurrent(requestGeneration) {
-                    it.copy(
-                        mods = mergeSearchPages(it.mods, result.mods),
-                        page = nextPage,
-                        hasMore = result.hasMore,
-                        isLoadingMore = false,
-                        loadMoreError = null
-                    )
+                val result = nexusSource.browse(current.searchQuery.trim(),
+                    filters = current.filters, page = nextPage)
+                updateIfCurrent(generation) {
+                    it.copy(mods = mergeSearchPages(it.mods, result.mods),
+                        totalResults = result.totalResults,
+                        page = nextPage, hasMore = result.hasMore,
+                        isLoadingMore = false, loadMoreError = null)
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                AppLogger.e(TAG, "Failed to load more search results", e)
-                updateIfCurrent(requestGeneration) {
-                    it.copy(
-                        isLoadingMore = false,
-                        loadMoreError = classifyNexusError(e, R.string.mods_error_load_more_failed)
-                    )
+                AppLogger.e(TAG, "Failed to load more Nexus results", e)
+                updateIfCurrent(generation) {
+                    it.copy(isLoadingMore = false,
+                        loadMoreError = classifyNexusError(e, R.string.mods_error_load_more_failed))
                 }
             }
         }
     }
 
     fun retry() {
-        val currentState = _state.value
-        if (currentState.searchQuery.isNotBlank()) {
-            search(currentState.searchQuery)
-        } else {
-            loadCategory(currentState.category)
-        }
+        val current = _state.value
+        requestCatalog(current.searchQuery, current.filters, current.category, debounce = false)
     }
 
     private fun beginBrowseRequest(): Long {
