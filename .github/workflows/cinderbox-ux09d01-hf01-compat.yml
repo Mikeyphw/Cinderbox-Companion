@@ -1,0 +1,45 @@
+name: Cinderbox UX-09D01 HF01 — legacy UI contract and native image sampling
+on:
+  pull_request:
+    paths:
+      - 'scripts/devtool/ux_05_mods_gate.py'
+      - 'scripts/devtool/ux09b4_visual_audit.py'
+      - 'app/src/androidTest/java/com/sdvsync/qualification/R48RealActivityDeviceTest.kt'
+      - 'scripts/devtool/ux09d01_hf01_*'
+      - '.github/workflows/cinderbox-ux09d01-hf01-compat.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'scripts/devtool/ux_05_mods_gate.py'
+      - 'scripts/devtool/ux09b4_visual_audit.py'
+      - 'app/src/androidTest/java/com/sdvsync/qualification/R48RealActivityDeviceTest.kt'
+      - 'scripts/devtool/ux09d01_hf01_*'
+      - '.github/workflows/cinderbox-ux09d01-hf01-compat.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  legacy-and-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Exact source and UX-05/UX-09D01 compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 -B scripts/devtool/ux09d01_hf01_patch.py --repo . --post-check
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_ux09d01_hf01_source.py' -v
+          python3 -B scripts/devtool/ux_05_mods_gate.py
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_ux_05_mods.py' -v
+          python3 -B scripts/devtool/ux09d01_gate.py
+          python3 -B scripts/devtool/r48_gate.py
+      - name: Visual sampler with actual Pillow decoding
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user 'Pillow==11.3.0'
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_ux09d01_hf01_visual.py' -v

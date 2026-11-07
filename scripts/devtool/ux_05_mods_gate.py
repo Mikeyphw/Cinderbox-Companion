@@ -35,11 +35,14 @@ def check(root:Path=ROOT)->dict:
     assert 'composable("mods_browse")' in main and 'route = "installed_mod/{uniqueId}"' in main
     assert 'startDestination = "home"' in main and 'startDestination = "main"' in main
     assert 'cinderbox.screen.mods' in view and 'cinderbox.mods.sections' in view
-    for label in ('Your mods','Discover','Installed','Updates','Profiles',
+    for label in ('Mods','Discover','Installed','Updates','Profiles',
                   'Browse mod catalog','No installed mods found',
                   'Check update metadata','No actionable updates listed',
-                  'Manage profiles','Open advanced manager'):
+                  'Manage profiles','Manage local mods'):
         assert label in view,'UX05_APPROVED_COPY_MISSING:'+label
+    # UX09D01: exact visible page title, not an arbitrary occurrence of "Mods".
+    assert 'Text("Mods", color = Dark.Ink' in view, 'UX05_MODS_TITLE_MISSING'
+    assert 'Text("Manage local mods")' in view, 'UX05_MANAGER_ACTION_MISSING'
     for marker in ('ModManagerViewModel = koinViewModel()',
                    'state.installedMods', 'state.updates', 'state.profiles',
                    'state.isCheckingUpdates', 'state.updateError',
@@ -70,8 +73,8 @@ def check(root:Path=ROOT)->dict:
     assert 'fun ModManagerScreen(' in old and 'viewModel.toggleMod(' in old
     assert 'data class ModManagerState(' in vm and 'val profiles: List<ModProfile>' in vm
     assert 'val updates: Map<String, ModUpdateInfo>' in vm
-    assert 'Triple(BottomTab.MODS, "Your mods", "mods")' in r48
-    assert 'rule.onNodeWithText("Your mods").assertExists()' in r48
+    assert 'Triple(BottomTab.MODS, "Discover, organize and customize.", "mods")' in r48
+    assert 'rule.onNodeWithText("Discover, organize and customize.").assertExists()' in r48
     for flag in ('release_enabled','publication_enabled',
                  'automatic_device_install','device_qualification_complete'):
         assert policy[flag] is False,'UX05_RELEASE_SAFETY_CHANGED:'+flag
