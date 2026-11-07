@@ -41,14 +41,38 @@ class NexR1NativeFiltersTest {
         val img = checkNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
         assertTrue("Refuse unknown viewport", (img.width == 786 && img.height == 1704) ||
             (img.width == 720 && img.height == 1600))
-        val colors = HashSet<Int>()
-        for (y in 0 until img.height step 41) for (x in 0 until img.width step 41)
-            colors.add(img.getPixel(x,y) and 0x00ffffff)
-        assertTrue("Refuse blank capture", colors.size > 20)
+        // Preserve the raw screenshot even when the liveness audit fails. The
+        // hosted runner copies only this allowlisted path on failure.
         val path = "nex-r1-$stem-${img.width / 2}.png"
         ctx.openFileOutput(path, Context.MODE_PRIVATE).use { out ->
             assertTrue(img.compress(Bitmap.CompressFormat.PNG, 100, out))
         }
+        // Dense interior sampling catches blank app content without depending
+        // on the exact shade/gradient count of a normal dark-themed screen.
+        val colors = HashSet<Int>()
+        var backgroundPixels = 0
+        var foregroundPixels = 0
+        var foregroundRows = 0
+        for (y in img.height / 8 until img.height * 7 / 8 step 12) {
+            var rowHasForeground = false
+            for (x in img.width / 8 until img.width * 7 / 8 step 12) {
+                val rgb = img.getPixel(x, y) and 0x00ffffff
+                colors.add(rgb)
+                val red = (rgb shr 16) and 0xff
+                val green = (rgb shr 8) and 0xff
+                val blue = rgb and 0xff
+                val luminance = (299 * red + 587 * green + 114 * blue) / 1000
+                if (luminance < 90) backgroundPixels++
+                if (luminance > 155) {
+                    foregroundPixels++
+                    rowHasForeground = true
+                }
+            }
+            if (rowHasForeground) foregroundRows++
+        }
+        assertTrue("Refuse blank or flat-content capture",
+            colors.size >= 8 && backgroundPixels >= 64 &&
+                foregroundPixels >= 5 && foregroundRows >= 2)
         println("NEX_R1_SCREENSHOT_OK:$path")
     }
 
