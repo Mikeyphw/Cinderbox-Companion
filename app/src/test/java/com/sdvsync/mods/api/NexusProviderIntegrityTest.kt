@@ -47,6 +47,19 @@ class NexusProviderIntegrityTest {
         assertEquals("REMOVED", NexusProviderIntegrity.fileCategory("REMOVED", false))
     }
 
+    @Test fun graphqlUpdatedAtAcceptsIso8601AndRejectsBadProviderDates() {
+        assertEquals(1700000000000L,
+            NexusProviderIntegrity.graphqlUpdatedAt("2023-11-14T22:13:20Z"))
+        assertEquals(1700000000123L,
+            NexusProviderIntegrity.graphqlUpdatedAt("2023-11-14T22:13:20.123Z"))
+        for (value in listOf(null, "", "null", "1700000000", "not-a-date",
+            "1999-12-31T23:59:59Z", "2101-01-01T00:00:00Z",
+            "<script>evil()</script>", "x".repeat(500))) {
+            assertEquals("provider date must be unknown: $value", 0L,
+                NexusProviderIntegrity.graphqlUpdatedAt(value))
+        }
+    }
+
     @Test fun timestampsRequirePlausibleEpochSeconds() {
         assertEquals(1700000000000L, NexusProviderIntegrity.epochSecondsToMillis(1700000000L))
         assertEquals(0L, NexusProviderIntegrity.epochSecondsToMillis(0))

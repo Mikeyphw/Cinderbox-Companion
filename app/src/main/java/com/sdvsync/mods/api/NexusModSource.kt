@@ -130,13 +130,14 @@ class NexusModSource(private val httpClient: OkHttpClient, private val dataStore
                 author = node.optString("author", "Unknown"),
                 summary = node.optString("summary", ""),
                 version = node.optString("version", ""),
-                categoryName = node.optString("categoryName", "")
-                    .takeIf { it != "null" && it.isNotBlank() },
+                categoryName = node.optJSONObject("modCategory")?.optString("name", "")
+                    ?.takeIf { it != "null" && it.isNotBlank() },
                 pictureUrl = node.optString("pictureUrl", "")
                     .takeIf { it != "null" && it.isNotBlank() },
                 endorsements = node.optInt("endorsementCount", 0),
                 downloads = node.optInt("modDownloadCount", 0),
-                lastUpdated = 0
+                lastUpdated = NexusProviderIntegrity.graphqlUpdatedAt(
+                    node.optString("updatedAt", ""))
             )
         }
 

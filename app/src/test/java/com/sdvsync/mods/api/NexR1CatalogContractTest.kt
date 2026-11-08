@@ -25,6 +25,15 @@ class NexR1CatalogContractTest {
         assertEquals(50, op.variables["offset"])
     }
 
+    @Test fun providerQueryUsesNestedCategoryAndIsoUpdatedAt() {
+        val document = createNexusCatalogOperation("").document
+        assertTrue(document.contains("modCategory { name }"))
+        assertTrue(document.contains("updatedAt"))
+        assertFalse(document.contains("categoryName: category"))
+        assertTrue(document.contains("modDownloadCount: downloads"))
+        assertTrue(document.contains("endorsementCount: endorsements"))
+    }
+
     @Test fun serverSideFiltersCombineAndPaginate() {
         val f = NexusCatalogFilters(
             categoryName = "Gameplay Mechanics", includeTag = "SMAPI", excludeTag = "Translation",

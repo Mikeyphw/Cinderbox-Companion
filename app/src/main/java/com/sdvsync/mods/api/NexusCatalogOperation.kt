@@ -45,7 +45,8 @@ internal fun createNexusCatalogOperation(
                   endorsementCount: endorsements
                   modDownloadCount: downloads
                   version
-                  categoryName: category
+                  modCategory { name }
+                  updatedAt
                 }
                 totalCount
               }
