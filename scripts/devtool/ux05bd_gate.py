@@ -23,7 +23,7 @@ def check():
     policy=json.loads(read('docs/security/M3_RELEASE_POLICY.json'))
     for text in ('cinderbox.screen.mod-detail','cinderbox.mod-detail.cover',
                  'cinderbox.mod-detail.compatibility','At a glance','Compatibility',
-                 'Files & versions','Review files & downloads','StardewBottomBar('):
+                 'Files & versions','More file download options','StardewBottomBar('):
         assert text in screen, 'UX05BD_DETAIL_MISSING:'+text
     for text in ('ModCompatibility.atLeast(', 'RequirementVerdict.UNKNOWN',
                  'RequirementVerdict.BLOCKED','Installed SMAPI manifests',
@@ -35,7 +35,18 @@ def check():
     assert main.count('route = "mod_detail/{modId}/{source}"')==1
     assert main.count('route = "mod_detail_advanced/{modId}/{source}"')==1
     assert 'ApprovedModDetailScreen(' in main and 'ModDetailScreen(' in main
+    # NEX-R5 replaced the duplicate details/legacy download landing with a
+    # unified detail page and a deliberately named file-options fallback.
+    # Preserve review-only intent, including the explicit file callback.
+    for text in ('onReviewFiles', 'onDownloadForReview = viewModel::installFile',
+                 'onDownloadForReview(file.fileId)', 'Download for review',
+                 'More file download options', 'nex.r5.review-required'):
+        assert text in screen, 'UX05BD_NEX_R5_REVIEW_MISSING:'+text
     assert 'viewModel.installFile(file.fileId)' in old
+    assert 'Download for review' in old
+    service=read('app/src/main/java/com/sdvsync/mods/ModDownloadService.kt')
+    assert 'ModReviewQueue(filesDir).enqueue(' in service, 'UX05BD_REVIEW_QUEUE_BYPASSED'
+    assert 'state = ModDownloadState.REVIEW_REQUIRED' in service, 'UX05BD_REVIEW_STATE_BYPASSED'
     assert 'ux05bd-detail-fixture.png' in instrument
     assert "ImageChops.difference" in visual
     assert "reference.size==(args.expected_width,args.expected_height)" in visual
