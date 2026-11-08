@@ -1,0 +1,16 @@
+{
+  "data": {
+    "root": {"fields": [
+      {"name":"commentThread","args":[{"name":"commentThreadId"}]},
+      {"name":"media","args":[{"name":"filter"}]},
+      {"name":"modComments","args":[{"name":"gameId"},{"name":"modId"}]}
+    ]},
+    "mod": {"fields": [
+      {"name":"modId"},{"name":"comments"},{"name":"gallery"},{"name":"pictureUrl"}
+    ]},
+    "mediaFilter": {"inputFields": [
+      {"name":"gameId"},{"name":"owner"},{"name":"modUid"}
+    ]},
+    "commentThread": {"fields": [{"name":"comments"}]}
+  }
+}

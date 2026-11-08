@@ -12,17 +12,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.sdvsync.R
 import com.sdvsync.mods.models.ModDownloadState
 import com.sdvsync.ui.components.ArrowLeftData
@@ -31,7 +27,6 @@ import com.sdvsync.ui.components.PixelDivider
 import com.sdvsync.ui.components.PixelIcon
 import com.sdvsync.ui.components.PixelIconButton
 import com.sdvsync.ui.components.PixelLoadingSpinner
-import com.sdvsync.ui.components.PuzzleData
 import com.sdvsync.ui.components.StardewButton
 import com.sdvsync.ui.components.StardewButtonVariant
 import com.sdvsync.ui.components.StardewCard
@@ -43,12 +38,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private fun formatCount(count: Int): String {
-    if (count < 1000) return count.toString()
-    if (count < 1_000_000) return "%.1fK".format(count / 1000.0)
-    return "%.1fM".format(count / 1_000_000.0)
-}
-
 @Composable
 fun ModDetailScreen(viewModel: ModDetailViewModel, onBack: () -> Unit) {
     val state by viewModel.state.collectAsState()
@@ -57,7 +46,7 @@ fun ModDetailScreen(viewModel: ModDetailViewModel, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             StardewTopAppBar(
-                title = state.mod?.name ?: "Mod Details",
+                title = "Files & downloads",
                 navigationIcon = {
                     PixelIconButton(
                         pixelData = ArrowLeftData,
@@ -112,105 +101,16 @@ fun ModDetailScreen(viewModel: ModDetailViewModel, onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
-            // Header card
-            StardewCard {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Row {
-                        if (mod.pictureUrl != null) {
-                            AsyncImage(
-                                model = mod.pictureUrl,
-                                contentDescription = mod.name,
-                                modifier = Modifier
-                                    .size(80.dp)
-                                    .clip(RectangleShape),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            PixelIcon(
-                                pixelData = PuzzleData,
-                                palette = listOf(Color.Transparent, MaterialTheme.colorScheme.onSurfaceVariant),
-                                size = 80.dp
-                            )
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                mod.name,
-                                style = MaterialTheme.typography.titleLarge,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                stringResource(R.string.mods_author, mod.author),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                "v${mod.version}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            if (mod.categoryName != null) {
-                                Text(
-                                    mod.categoryName,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Text(
-                            stringResource(R.string.mods_downloads, formatCount(mod.downloads)),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                        Text(
-                            stringResource(R.string.mods_endorsements, formatCount(mod.endorsements)),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
-                    if (mod.lastUpdated > 0) {
-                        Text(
-                            stringResource(R.string.mods_detail_last_updated, dateFormat.format(Date(mod.lastUpdated))),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            // Description card
-            if (mod.summary.isNotBlank()) {
-                Spacer(Modifier.height(16.dp))
-                StardewCard {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            stringResource(R.string.mods_detail_description),
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        val descriptionText = mod.description ?: mod.summary
-                        val processedHtml = toHtmlIfFormatted(descriptionText)
-                        if (processedHtml != null) {
-                            HtmlText(
-                                html = processedHtml,
-                                textColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb(),
-                                linkColor = MaterialTheme.colorScheme.primary.toArgb(),
-                                textSizeSp = MaterialTheme.typography.bodySmall.fontSize.value
-                            )
-                        } else {
-                            Text(
-                                descriptionText,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
+            Text(mod.name, style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface)
+            Text("File download options", style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "Downloads are staged for review; no mod files change until approved.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(12.dp))
 
             // Download progress
             val progress = state.downloadProgress
@@ -397,7 +297,7 @@ fun ModDetailScreen(viewModel: ModDetailViewModel, onBack: () -> Unit) {
                                                 progress.state == ModDownloadState.COMPLETED ||
                                                 progress.state == ModDownloadState.ERROR
                                         ) {
-                                            Text(stringResource(R.string.mods_install))
+                                            Text("Download for review")
                                         }
                                     }
 

@@ -15,6 +15,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
@@ -28,6 +30,11 @@ import com.sdvsync.mods.ModRequirementsReport
 import com.sdvsync.mods.RequirementVerdict
 import com.sdvsync.mods.models.RemoteMod
 import com.sdvsync.mods.models.RemoteModFile
+import com.sdvsync.mods.models.ModDownloadProgress
+import com.sdvsync.mods.models.ModDownloadState
+import com.sdvsync.mods.api.NexusModPageLinks
+import com.sdvsync.ui.components.HtmlText
+import com.sdvsync.ui.components.toHtmlIfFormatted
 import com.sdvsync.mods.api.NexR2Display
 import com.sdvsync.ui.components.BottomTab
 import com.sdvsync.ui.components.StardewBottomBar
@@ -37,7 +44,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
 
-/** Approved detail route is read-only. Actual downloads remain in legacy guarded details. */
+/** Unified native details; downloads use the unchanged mandatory review queue. */
 @Composable
 fun ApprovedModDetailScreen(
     viewModel: ModDetailViewModel,
@@ -47,6 +54,7 @@ fun ApprovedModDetailScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val prefs = remember(context) {
         context.getSharedPreferences("ux05_mod_bookmarks", Context.MODE_PRIVATE)
     }
@@ -69,9 +77,7 @@ fun ApprovedModDetailScreen(
         }
         return
     }
-    ApprovedModDetailContent(mod, state.files,
-        state.requirements ?: ModRequirementsAssessor.assess(mod, null),
-        state.fileListError, saved, onBack, onReviewFiles, onSelectTab) {
+    val onToggleSaved = {
         val key = (mod.sourceId + ":" + mod.modId).lowercase(Locale.ROOT)
         val old = runCatching { JSONArray(prefs.getString("cards", "[]")) }.getOrDefault(JSONArray())
         val next = JSONArray()
@@ -87,6 +93,16 @@ fun ApprovedModDetailScreen(
             .put("picture", mod.pictureUrl.orEmpty().take(500)))
         if (prefs.edit().putString("cards", next.toString()).commit()) saved = !saved
     }
+    ApprovedModDetailContent(
+        mod, state.files, state.requirements ?: ModRequirementsAssessor.assess(mod, null),
+        state.fileListError, saved, onBack, onReviewFiles, onSelectTab, onToggleSaved,
+        onDownloadForReview = viewModel::installFile,
+        downloadProgress = state.downloadProgress,
+        requestInFlight = state.isDownloading,
+        downloadError = state.error,
+        downloadErrorUrl = state.downloadErrorUrl,
+        onOpenExternal = { url -> uriHandler.openUri(url) }
+    )
 }
 
 private fun displayDownloads(count: Int): String = when {
@@ -136,7 +152,13 @@ fun ApprovedModDetailContent(
     onBack: () -> Unit,
     onReviewFiles: () -> Unit,
     onSelectTab: (BottomTab) -> Unit,
-    onToggleSaved: () -> Unit
+    onToggleSaved: () -> Unit,
+    onDownloadForReview: (String) -> Unit = {},
+    downloadProgress: ModDownloadProgress = ModDownloadProgress(),
+    requestInFlight: Boolean = false,
+    downloadError: String? = null,
+    downloadErrorUrl: String? = null,
+    onOpenExternal: (String) -> Unit = {}
 ) {
     Column(Modifier.fillMaxSize().background(Dark.Background).testTag("cinderbox.screen.mod-detail")) {
         Row(Modifier.fillMaxWidth().height(57.dp).padding(horizontal=20.dp),
@@ -195,14 +217,14 @@ fun ApprovedModDetailContent(
                 }
             }
             item {
-                Text("Provider description", color=Dark.Muted,
-                    style=MaterialTheme.typography.labelMedium)
-                // Plain Compose text only; arbitrary Nexus HTML/scripts are not rendered.
-                val providerText = NexR2Display.text(mod.description?.takeIf { it.isNotBlank() }
-                    ?: mod.summary, 6000)
-                Text(providerText.ifBlank { "Provider description unavailable." },
-                    color=Dark.Ink,style=MaterialTheme.typography.bodyMedium,
-                    modifier=Modifier.testTag("nex.r2.detail.description"))
+                Text("Provider description", color = Dark.Muted, style = MaterialTheme.typography.labelMedium)
+                val description = mod.description?.takeIf { it.isNotBlank() } ?: mod.summary
+                if (description.isBlank()) {
+                    Text("Provider description unavailable.", color = Dark.Muted,
+                        style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    RichNexusDescription(description, Modifier.testTag("nex.r2.detail.description"))
+                }
             }
             item {
                 Text("At a glance",color=Dark.Ink,
@@ -265,55 +287,139 @@ fun ApprovedModDetailContent(
                 }
             }
             item {
-                Text("Files & versions",color=Dark.Ink,
-                    style=MaterialTheme.typography.titleMedium.copy(fontWeight=FontWeight.Bold))
-                Surface(Modifier.fillMaxWidth(),color=Dark.Paper,
-                    shape=RoundedCornerShape(18.dp),border=BorderStroke(1.dp,Dark.Line)) {
-                    Column(Modifier.padding(15.dp),verticalArrangement=Arrangement.spacedBy(9.dp)) {
-                        Text(if(files.isEmpty()) "No file list loaded" else files.size.toString() + " provider files",
-                            color=Dark.Ink,style=MaterialTheme.typography.titleSmall)
+                Text("Files & versions", color = Dark.Ink,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                Surface(Modifier.fillMaxWidth(), color = Dark.Paper,
+                    shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, Dark.Line)) {
+                    Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        Text(if (files.isEmpty()) "No file list loaded" else "${files.size} provider files",
+                            color = Dark.Ink, style = MaterialTheme.typography.titleSmall)
+                        val busy = requestInFlight ||
+                            downloadProgress.state == ModDownloadState.DOWNLOADING ||
+                            downloadProgress.state == ModDownloadState.EXTRACTING ||
+                            downloadProgress.state == ModDownloadState.INSTALLING ||
+                            downloadProgress.state == ModDownloadState.REVIEW_REQUIRED
                         NexR2Display.groupedFiles(files).forEach { group ->
-                            HorizontalDivider(color=Dark.Line)
-                            Text(group.kind.title, color=Dark.Ink,
-                                style=MaterialTheme.typography.titleSmall,
-                                modifier=Modifier.testTag("nex.r2.files.group"))
-                            group.files.take(5).forEach { file ->
-                                val fileTitle = NexR2Display.text(file.fileName, 120)
-                                Text(fileTitle, color=Dark.Ink,
-                                    style=MaterialTheme.typography.bodySmall)
-                                val version = NexR2Display.text(file.fileVersion, 35)
-                                val details = listOfNotNull(
-                                    version.takeIf { it.isNotBlank() }?.let { "v" + it },
-                                    NexR2Display.fileSize(file.fileSize),
-                                    NexR2Display.dateUtc(file.uploadedAt)?.let { it + " UTC" }
-                                )
-                                Text(details.joinToString(" · "), color=Dark.Muted,
-                                    style=MaterialTheme.typography.labelSmall)
-                                val note = NexR2Display.text(file.description, 250)
-                                if (note.isNotBlank()) Text(note, color=Dark.Muted,
-                                    style=MaterialTheme.typography.bodySmall)
-                                val changes = NexR2Display.text(file.changelogHtml, 250)
-                                if (changes.isNotBlank()) Text("Changelog: " + changes,
-                                    color=Dark.Muted, style=MaterialTheme.typography.bodySmall)
+                            HorizontalDivider(color = Dark.Line)
+                            Text(group.kind.title, color = Dark.Ink,
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.testTag("nex.r2.files.group"))
+                            group.files.forEach { file ->
+                                var expanded by remember(file.fileId) { mutableStateOf(false) }
+                                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                    Text(NexR2Display.text(file.fileName, 120),
+                                        color = Dark.Ink, style = MaterialTheme.typography.bodyMedium)
+                                    Text(listOfNotNull(
+                                        NexR2Display.text(file.fileVersion, 35).takeIf { it.isNotBlank() }
+                                            ?.let { "v$it" },
+                                        NexR2Display.fileSize(file.fileSize),
+                                        NexR2Display.dateUtc(file.uploadedAt)?.let { "$it UTC" }
+                                    ).joinToString(" · "), color = Dark.Muted,
+                                        style = MaterialTheme.typography.labelSmall)
+                                    val hasNotes = file.description.isNotBlank() || !file.changelogHtml.isNullOrBlank()
+                                    if (hasNotes) {
+                                        TextButton(onClick = { expanded = !expanded }) {
+                                            Text(if (expanded) "Hide file notes" else "Read file notes",
+                                                color = Dark.Forest)
+                                        }
+                                        if (expanded) {
+                                            if (file.description.isNotBlank())
+                                                RichNexusDescription(file.description.take(20_000))
+                                            file.changelogHtml?.takeIf { it.isNotBlank() }?.let {
+                                                Text("Changelog", color = Dark.Ink,
+                                                    style = MaterialTheme.typography.labelSmall)
+                                                RichNexusDescription(it.take(20_000))
+                                            }
+                                        }
+                                    }
+                                    OutlinedButton(
+                                        onClick = { onDownloadForReview(file.fileId) },
+                                        enabled = !busy,
+                                        modifier = Modifier.fillMaxWidth()
+                                            .testTag("nex.r5.download-for-review")
+                                    ) { Text("Download for review") }
+                                    HorizontalDivider(color = Dark.Line)
+                                }
                             }
-                            if (group.files.size > 5) Text("Review the remaining files in the guarded download route",
-                                color=Dark.Muted, style=MaterialTheme.typography.labelSmall)
                         }
-                        if(fileError != null) Text("Provider file list unavailable.",color=Dark.Warn)
-                        Text("Actual downloads and file changes require the existing review flow.",
-                            color=Dark.Muted,style=MaterialTheme.typography.bodySmall)
-                        OutlinedButton(onClick=onReviewFiles,
-                            modifier=Modifier.fillMaxWidth().testTag("cinderbox.mod-detail.files")) {
-                            Text("Review files & downloads")
+                        if (fileError != null)
+                            Text("Provider file list unavailable.", color = Dark.Warn)
+                        when (downloadProgress.state) {
+                            ModDownloadState.DOWNLOADING -> Text("Downloading archive…", color = Dark.Ink)
+                            ModDownloadState.REVIEW_REQUIRED -> Text(
+                                "Downloaded. Open Mods to review and approve file changes.",
+                                color = Dark.Forest, modifier = Modifier.testTag("nex.r5.review-required"))
+                            ModDownloadState.ERROR -> Text(
+                                downloadProgress.errorMessage ?: "Download failed.", color = Dark.Warn)
+                            else -> Unit
+                        }
+                        if (downloadError != null)
+                            Text(downloadError, color = Dark.Warn, style = MaterialTheme.typography.bodySmall)
+                        downloadErrorUrl?.let { fallback ->
+                            if (NexusModPageLinks.safeExternalHttps(fallback) != null)
+                                OutlinedButton(onClick = { onOpenExternal(fallback) },
+                                    modifier = Modifier.fillMaxWidth()) { Text("Open files on Nexus") }
+                        }
+                        Text("A download is staged for mandatory review; it never silently installs.",
+                            color = Dark.Muted, style = MaterialTheme.typography.bodySmall)
+                        OutlinedButton(onClick = onReviewFiles,
+                            modifier = Modifier.fillMaxWidth().testTag("cinderbox.mod-detail.files")) {
+                            Text("More file download options")
                         }
                     }
                 }
             }
             item {
-                Text("Additional gallery images are not supplied by the current catalog response.",
-                    color=Dark.Muted,style=MaterialTheme.typography.bodySmall)
+                Text("Media", color = Dark.Ink,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.testTag("nex.r5.media"))
+                Text("The cover is the only image returned by the verified mod-details response. " +
+                    "Additional images and videos open on Nexus; no media is invented.",
+                    color = Dark.Muted, style = MaterialTheme.typography.bodySmall)
+                NexusModPageLinks.forTab(mod.modId, "images")?.let { url ->
+                    OutlinedButton(onClick = { onOpenExternal(url) },
+                        modifier = Modifier.fillMaxWidth().testTag("nex.r5.images")) {
+                        Text("View images on Nexus")
+                    }
+                }
+                NexusModPageLinks.forTab(mod.modId, "videos")?.let { url ->
+                    TextButton(onClick = { onOpenExternal(url) },
+                        modifier = Modifier.fillMaxWidth().testTag("nex.r5.videos")) {
+                        Text("View videos on Nexus")
+                    }
+                }
+            }
+            item {
+                Text("Posts", color = Dark.Ink,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.testTag("nex.r5.posts"))
+                Text("Mod-specific Posts are not exposed by a verified API contract. " +
+                    "Read comments and replies on Nexus in your browser.",
+                    color = Dark.Muted, style = MaterialTheme.typography.bodySmall)
+                NexusModPageLinks.forTab(mod.modId, "posts")?.let { url ->
+                    OutlinedButton(onClick = { onOpenExternal(url) },
+                        modifier = Modifier.fillMaxWidth().testTag("nex.r5.open-posts")) {
+                        Text("Read posts on Nexus")
+                    }
+                }
             }
         }
         StardewBottomBar(selectedTab=BottomTab.MODS,onTabSelected=onSelectTab)
+    }
+}
+
+/** Read-only formatted provider text; URL spans are filtered to safe HTTPS destinations. */
+@Composable
+private fun RichNexusDescription(raw: String, modifier: Modifier = Modifier) {
+    val bounded = raw.take(32_000)
+    val formatted = remember(bounded) { toHtmlIfFormatted(bounded) }
+    if (formatted == null) {
+        Text(bounded, color = Dark.Ink, style = MaterialTheme.typography.bodyMedium,
+            modifier = modifier)
+    } else {
+        HtmlText(html = formatted, textColor = Dark.Ink.toArgb(),
+            linkColor = Dark.Forest.toArgb(),
+            textSizeSp = MaterialTheme.typography.bodyMedium.fontSize.value,
+            modifier = modifier)
     }
 }

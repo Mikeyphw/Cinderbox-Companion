@@ -1,0 +1,18 @@
+{
+  "data": {
+    "root": {"fields": [
+      {"name":"mod","args":[{"name":"modId"},{"name":"gameId"}]},
+      {"name":"commentThread","args":[{"name":"commentThreadId"}]},
+      {"name":"media","args":[{"name":"filter"},{"name":"offset"},{"name":"count"}]}
+    ]},
+    "mod": {"fields": [
+      {"name":"id"},{"name":"modId"},{"name":"uid"},{"name":"pictureUrl"},
+      {"name":"thumbnailLargeUrl"},{"name":"description"},{"name":"summary"}
+    ]},
+    "mediaFilter": {"inputFields": [
+      {"name":"gameId"},{"name":"owner"},{"name":"type"},
+      {"name":"generalSearch"},{"name":"adultContent"}
+    ]},
+    "commentThread": {"fields": [{"name":"id"},{"name":"comments"}]}
+  }
+}
