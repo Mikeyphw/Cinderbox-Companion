@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,6 +57,7 @@ import coil3.compose.AsyncImage
 import com.sdvsync.mods.models.RemoteMod
 import com.sdvsync.mods.api.NexusCatalogFilters
 import com.sdvsync.mods.api.NexusCatalogSort
+import com.sdvsync.mods.api.NexR2Display
 import com.sdvsync.ui.components.CinderboxBrandTopBar
 import com.sdvsync.ui.theme.CinderboxDarkTokens as Dark
 import com.sdvsync.ui.viewmodels.BrowseCategory
@@ -87,13 +89,20 @@ private data class ModCardData(
     val author: String,
     val version: String,
     val categoryName: String?,
-    val pictureUrl: String?
+    val pictureUrl: String?,
+    val summary: String = "",
+    val endorsements: Int = 0,
+    val downloads: Int = 0,
+    val lastUpdated: Long = 0
 ) {
     val id: String get() = remoteModSourceIdentifier(sourceId, modId)
 }
 
 private fun RemoteMod.asCard(): ModCardData = ModCardData(
-    sourceId, modId, name, author, version, categoryName, pictureUrl)
+    sourceId, modId, NexR2Display.text(name, 120), NexR2Display.text(author, 80),
+    NexR2Display.text(version, 32), categoryName?.let { NexR2Display.text(it, 60) },
+    NexR2Display.imageUrl(pictureUrl), NexR2Display.text(summary, 180),
+    endorsements.coerceAtLeast(0), downloads.coerceAtLeast(0), lastUpdated)
 
 /** Bounded on-device metadata only; no mod file/archive content or API keys. */
 private fun readSavedCards(raw: String?): Map<String, ModCardData> = runCatching {
@@ -107,7 +116,11 @@ private fun readSavedCards(raw: String?): Map<String, ModCardData> = runCatching
         val card = ModCardData(source, id, item.optString("name").take(120),
             item.optString("author").take(80), item.optString("version").take(32),
             item.optString("category").take(60).ifBlank { null },
-            item.optString("picture").take(500).ifBlank { null })
+            NexR2Display.imageUrl(item.optString("picture")),
+            NexR2Display.text(item.optString("summary"), 180),
+            item.optInt("endorsements", 0).coerceAtLeast(0),
+            item.optInt("downloads", 0).coerceAtLeast(0),
+            item.optLong("lastUpdated", 0L))
         found[card.id] = card
     }
     found.toMap()
@@ -122,7 +135,11 @@ private fun savedCardsJson(cards: Collection<ModCardData>): String = JSONArray()
             put("author", card.author)
             put("version", card.version)
             put("category", card.categoryName ?: "")
-            put("picture", card.pictureUrl ?: "")
+            put("picture", NexR2Display.imageUrl(card.pictureUrl) ?: "")
+            put("summary", NexR2Display.text(card.summary, 180))
+            put("endorsements", card.endorsements.coerceAtLeast(0))
+            put("downloads", card.downloads.coerceAtLeast(0))
+            put("lastUpdated", card.lastUpdated)
         })
     }
 }.toString()
@@ -269,7 +286,10 @@ fun ApprovedModsScreen(
         else -> state.installedMods.sortedBy { it.manifest.name.lowercase(java.util.Locale.ROOT) }
     }
 
+    // Retain LazyListState (including its Saver) while returning from mod details.
+    val discoverScroll = rememberLazyListState()
     LazyColumn(
+        state = discoverScroll,
         modifier = Modifier.fillMaxSize().background(Dark.Background)
             .testTag("cinderbox.screen.mods"),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
@@ -380,7 +400,11 @@ fun ApprovedModsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Browse mods", color = Dark.Ink, style = MaterialTheme.typography.titleMedium)
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(if (filter == DiscoverFilter.ALL) "${visibleBrowse.size}/${browse.totalResults} matches" else "${visibleBrowse.size} local", color = Dark.Muted,
+                            val resultsLabel = if (filter != DiscoverFilter.ALL) "${visibleBrowse.size} local"
+                                else if (browse.totalResults > 0) "${visibleBrowse.size}/${browse.totalResults} matches"
+                                else if (browse.mods.isNotEmpty()) "${visibleBrowse.size} shown · total unavailable"
+                                else "0 matches"
+                            Text(resultsLabel, color = Dark.Muted,
                                 style = MaterialTheme.typography.bodySmall)
                             TextButton(onClick = { gridMode = !gridMode },
                                 modifier = Modifier.testTag("cinderbox.mods.layout")) {
@@ -435,6 +459,7 @@ fun ApprovedModsScreen(
                                 val id = remoteModSourceIdentifier(mod.sourceId, mod.modId)
                                 RemoteModCard(mod = mod, saved = id in savedIds,
                                     isInstalled = id in browse.installedSourceIds,
+                                    compact = !gridMode,
                                     modifier = Modifier.weight(1f),
                                     onBookmark = { bookmarkToggle(mod) },
                                     onOpen = { onOpenRemoteMod(mod.modId, mod.sourceId) })
@@ -594,12 +619,14 @@ private fun ModsChoice(label: String, selected: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun RemoteModCard(mod: ModCardData, saved: Boolean, isInstalled: Boolean,
-    modifier: Modifier, onBookmark: () -> Unit, onOpen: () -> Unit) {
-    Surface(modifier = modifier.clickable(role = Role.Button, onClick = onOpen),
+    compact: Boolean, modifier: Modifier, onBookmark: () -> Unit, onOpen: () -> Unit) {
+    Surface(modifier = modifier.testTag("nex.r2.card")
+            .clickable(role = Role.Button, onClick = onOpen),
         color = Dark.Paper, shape = RoundedCornerShape(16.dp),
         border = BorderStroke(1.dp, Dark.Line)) {
         Column {
-            Box(Modifier.fillMaxWidth().height(112.dp).background(Dark.Paper3)) {
+            Box(Modifier.fillMaxWidth().height(if (compact) 76.dp else 112.dp)
+                .background(Dark.Paper3)) {
                 if (!mod.pictureUrl.isNullOrBlank()) {
                     AsyncImage(model = mod.pictureUrl, contentDescription = null,
                         modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
@@ -615,14 +642,38 @@ private fun RemoteModCard(mod: ModCardData, saved: Boolean, isInstalled: Boolean
                         style = MaterialTheme.typography.titleLarge)
                 }
             }
-            Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.fillMaxWidth().padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(mod.name, color = Dark.Ink, maxLines = 2, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                Text(mod.author, color = Dark.Muted, maxLines = 1,
+                Text("by " + mod.author, color = Dark.Muted, maxLines = 1,
                     overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-                Text(mod.version, color = Dark.Muted, maxLines = 1,
-                    style = MaterialTheme.typography.labelSmall)
-                Text(if (isInstalled) "Installed" else "View details", color = Dark.Forest,
+                if (mod.summary.isNotBlank()) {
+                    Text(mod.summary, color = Dark.Muted,
+                        maxLines = if (compact) 2 else 3, overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                if (!mod.categoryName.isNullOrBlank()) {
+                    Text(mod.categoryName, color = Dark.Forest, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
+                }
+                if (mod.version.isNotBlank()) {
+                    Text("Version " + mod.version, color = Dark.Muted, maxLines = 1,
+                        style = MaterialTheme.typography.labelSmall)
+                }
+                if (mod.downloads > 0 || mod.endorsements > 0) {
+                    Text(listOfNotNull(
+                        mod.downloads.takeIf { it > 0 }?.let { NexR2Display.compactCount(it) + " downloads" },
+                        mod.endorsements.takeIf { it > 0 }?.let { NexR2Display.compactCount(it) + " endorsements" }
+                    ).joinToString(" · "), color = Dark.Muted,
+                        style = MaterialTheme.typography.labelSmall, maxLines = 2)
+                }
+                NexR2Display.dateUtc(mod.lastUpdated)?.let { day ->
+                    Text("Updated $day UTC", color = Dark.Muted,
+                        style = MaterialTheme.typography.labelSmall)
+                }
+                Text(if (isInstalled) "Installed locally" else if (saved) "Saved locally · View details"
+                     else "View details", color = Dark.Forest,
                     style = MaterialTheme.typography.labelSmall)
             }
         }

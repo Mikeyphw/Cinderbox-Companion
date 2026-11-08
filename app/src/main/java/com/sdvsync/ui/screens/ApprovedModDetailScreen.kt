@@ -28,6 +28,7 @@ import com.sdvsync.mods.ModRequirementsReport
 import com.sdvsync.mods.RequirementVerdict
 import com.sdvsync.mods.models.RemoteMod
 import com.sdvsync.mods.models.RemoteModFile
+import com.sdvsync.mods.api.NexR2Display
 import com.sdvsync.ui.components.BottomTab
 import com.sdvsync.ui.components.StardewBottomBar
 import com.sdvsync.ui.theme.CinderboxDarkTokens as Dark
@@ -118,8 +119,9 @@ private fun ModDetailCover(mod: RemoteMod) {
             }
             drawPath(landscape,Color(0xFF548678))
         }
-        if (mod.pictureUrl.isNullOrBlank()) Text("△",fontSize=54.sp,color=Dark.Ink)
-        else AsyncImage(model=mod.pictureUrl,contentDescription="Provider image for " + mod.name,
+        val providerImage = NexR2Display.imageUrl(mod.pictureUrl)
+        if (providerImage == null) Text("△",fontSize=54.sp,color=Dark.Ink)
+        else AsyncImage(model=providerImage,contentDescription="Provider image for " + mod.name,
             modifier=Modifier.fillMaxSize())
     }
 }
@@ -188,12 +190,19 @@ fun ApprovedModDetailContent(
                         RequirementVerdict.UNKNOWN -> "Not verified"
                         RequirementVerdict.CHECKED -> "Checks complete"
                     },Dark.Warn,Dark.WarnBackground)
-                    DetailChip("v" + mod.version,Dark.Muted,Dark.Paper2)
+                    if (mod.version.isNotBlank()) DetailChip("v" + NexR2Display.text(mod.version, 40),
+                        Dark.Muted,Dark.Paper2)
                 }
             }
             item {
-                Text(mod.description?.takeIf { it.isNotBlank() } ?: mod.summary,
-                    color=Dark.Ink,style=MaterialTheme.typography.bodyMedium)
+                Text("Provider description", color=Dark.Muted,
+                    style=MaterialTheme.typography.labelMedium)
+                // Plain Compose text only; arbitrary Nexus HTML/scripts are not rendered.
+                val providerText = NexR2Display.text(mod.description?.takeIf { it.isNotBlank() }
+                    ?: mod.summary, 6000)
+                Text(providerText.ifBlank { "Provider description unavailable." },
+                    color=Dark.Ink,style=MaterialTheme.typography.bodyMedium,
+                    modifier=Modifier.testTag("nex.r2.detail.description"))
             }
             item {
                 Text("At a glance",color=Dark.Ink,
@@ -217,6 +226,15 @@ fun ApprovedModDetailContent(
                             Text("Provider category",color=Dark.Muted,style=MaterialTheme.typography.bodySmall)
                         }
                     }
+                }
+                if (mod.endorsements > 0) {
+                    Spacer(Modifier.height(7.dp))
+                    Text(NexR2Display.compactCount(mod.endorsements) + " provider endorsements",
+                        color=Dark.Muted, style=MaterialTheme.typography.bodySmall)
+                }
+                NexR2Display.dateUtc(mod.lastUpdated)?.let { day ->
+                    Text("Provider updated $day UTC", color=Dark.Muted,
+                        style=MaterialTheme.typography.bodySmall)
                 }
             }
             item {
@@ -254,9 +272,32 @@ fun ApprovedModDetailContent(
                     Column(Modifier.padding(15.dp),verticalArrangement=Arrangement.spacedBy(9.dp)) {
                         Text(if(files.isEmpty()) "No file list loaded" else files.size.toString() + " provider files",
                             color=Dark.Ink,style=MaterialTheme.typography.titleSmall)
-                        files.take(4).forEach { file ->
-                            Text(file.fileName + " · v" + file.fileVersion,color=Dark.Muted,
-                                style=MaterialTheme.typography.bodySmall)
+                        NexR2Display.groupedFiles(files).forEach { group ->
+                            HorizontalDivider(color=Dark.Line)
+                            Text(group.kind.title, color=Dark.Ink,
+                                style=MaterialTheme.typography.titleSmall,
+                                modifier=Modifier.testTag("nex.r2.files.group"))
+                            group.files.take(5).forEach { file ->
+                                val fileTitle = NexR2Display.text(file.fileName, 120)
+                                Text(fileTitle, color=Dark.Ink,
+                                    style=MaterialTheme.typography.bodySmall)
+                                val version = NexR2Display.text(file.fileVersion, 35)
+                                val details = listOfNotNull(
+                                    version.takeIf { it.isNotBlank() }?.let { "v" + it },
+                                    NexR2Display.fileSize(file.fileSize),
+                                    NexR2Display.dateUtc(file.uploadedAt)?.let { it + " UTC" }
+                                )
+                                Text(details.joinToString(" · "), color=Dark.Muted,
+                                    style=MaterialTheme.typography.labelSmall)
+                                val note = NexR2Display.text(file.description, 250)
+                                if (note.isNotBlank()) Text(note, color=Dark.Muted,
+                                    style=MaterialTheme.typography.bodySmall)
+                                val changes = NexR2Display.text(file.changelogHtml, 250)
+                                if (changes.isNotBlank()) Text("Changelog: " + changes,
+                                    color=Dark.Muted, style=MaterialTheme.typography.bodySmall)
+                            }
+                            if (group.files.size > 5) Text("Review the remaining files in the guarded download route",
+                                color=Dark.Muted, style=MaterialTheme.typography.labelSmall)
                         }
                         if(fileError != null) Text("Provider file list unavailable.",color=Dark.Warn)
                         Text("Actual downloads and file changes require the existing review flow.",
