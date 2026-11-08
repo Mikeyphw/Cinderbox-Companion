@@ -1,0 +1,12 @@
+{
+  "fixture_kind": "synthetic_schema_shaped_not_live_nexus",
+  "data": {
+    "mods": {
+      "nodes": [
+        {"modId": 12345, "name": "Synthetic Stardew Fixture", "author": "Fixture Only", "summary": "Read-only example", "endorsementCount": 21, "modDownloadCount": 200, "categoryName": "Utilities", "pictureUrl": null},
+        {"modId": null, "name": "Malformed ID must never open details", "author": "Fixture Only"}
+      ],
+      "totalCount": 52
+    }
+  }
+}
