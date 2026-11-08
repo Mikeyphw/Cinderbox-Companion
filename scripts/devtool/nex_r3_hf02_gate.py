@@ -33,6 +33,12 @@ def check(root: Path=ROOT)->list[str]:
         'realMainActivityDiscoverPagingDetailReviewAndBack','noNexusKeyKeepsLocalModsRouteAvailable',
         'assertNoDownloadRequests()', 'RuleChain.outerRule(fixture).around(compose)',
         'NEX_R3_REFUSED_NON_EPHEMERAL_DEVICE')),
+      'per-viewport ephemerality': all(x in run for x in (
+        'for width in 393 360; do', 'ro.kernel.qemu',
+        'r48_offline_gate.py', 'pm clear com.sdvsync',
+        'NEX_R3_EPHEMERAL_APP_DATA_RESET_REFUSED')) and
+        run.index('pm clear com.sdvsync') > run.index('for width in 393 360; do') >
+        run.index('r48_offline_gate.py'),
       'offline runner': all(x in run for x in ('r48_offline_gate.py','font_scale 1.0',
         'NEX_R3_HOSTED_INSTRUMENTATION_REFUSED','NEX_R3_SANITIZED_FAILURE_DIAGNOSTIC',
         'NexR3NativeJourneyTest','OK (3 tests)')),

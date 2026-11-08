@@ -24,6 +24,17 @@ for width in 393 360; do
   adb -s "$serial" shell wm density 320 >/dev/null
   adb -s "$serial" shell settings put system font_scale 1.0 >/dev/null
   [[ "$(adb -s "$serial" shell settings get system font_scale | tr -d '\r')" == 1.0 ]] || exit 1
+  # Each width is a separate fresh-install test environment. A previous
+  # instrumentation pass can persist its encrypted synthetic Nexus fixture key;
+  # keeping that state makes the next pass fail before tests start. Screenshots
+  # from the previous width have already been exported to the host artifact.
+  # NEVER attempt this on physical devices: the qemu/API36/hosted SHA gates
+  # above have all succeeded before this exact-package data reset is allowed.
+  cleared="$(adb -s "$serial" shell pm clear com.sdvsync | tr -d '\r')"
+  if [[ "$cleared" != 'Success' ]]; then
+    echo NEX_R3_EPHEMERAL_APP_DATA_RESET_REFUSED >&2
+    exit 1
+  fi
   log="$out/.instrument-$width.log"
   if ! adb -s "$serial" shell am instrument -w -r -e class \
     'com.sdvsync.ui.ux.NexR3NativeJourneyTest' \

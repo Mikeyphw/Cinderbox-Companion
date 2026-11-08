@@ -36,6 +36,15 @@ class TestHF02Source(unittest.TestCase):
  def test_missing_503_assertion(self):
   self.mutate(gate.TEST,'expectCatalogHttpFailure(503, "server-503")','textVisible("Mod catalog unavailable")',
               'NEX_R3_HF02_MISSING:all 3 scenarios')
+ def test_missing_per_viewport_reset(self):
+  self.mutate(gate.RUNNER, 'pm clear com.sdvsync', 'pm list packages com.sdvsync',
+              'NEX_R3_HF02_MISSING:per-viewport ephemerality')
+ def test_reset_is_not_an_unconditional_host_command(self):
+  self.mutate(gate.RUNNER, 'for width in 393 360; do', 'for screen in 393 360; do',
+              'NEX_R3_HF02_MISSING:per-viewport ephemerality')
+ def test_reset_refusal_is_fail_closed(self):
+  self.mutate(gate.RUNNER, 'NEX_R3_EPHEMERAL_APP_DATA_RESET_REFUSED',
+              'RESET_IGNORED', 'NEX_R3_HF02_MISSING:per-viewport ephemerality')
  def test_incomplete_runner_status(self):
   self.mutate(gate.RUNNER, 'HTTP_ERROR|HTTP_ERROR_UI', 'NO_HTTP_ERROR',
               'NEX_R3_HF02_MISSING:bounded coded diagnostics')
