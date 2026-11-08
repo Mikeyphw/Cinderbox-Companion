@@ -1,0 +1,8 @@
+{
+  "fixture_kind": "synthetic_schema_shaped_not_live_nexus",
+  "files": [
+    {"file_id": 2001, "file_name": "Synthetic main.zip", "category_name": "MAIN", "is_primary": true, "uploaded_timestamp": 1700000000},
+    {"file_id": 2002, "file_name": "Synthetic unknown.zip", "category_name": null, "is_primary": false, "uploaded_timestamp": 1700000000},
+    {"file_id": 0, "file_name": "Invalid identifier", "category_name": "MAIN", "is_primary": false}
+  ]
+}

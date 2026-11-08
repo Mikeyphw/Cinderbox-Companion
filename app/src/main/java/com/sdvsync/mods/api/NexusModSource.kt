@@ -110,14 +110,22 @@ class NexusModSource(private val httpClient: OkHttpClient, private val dataStore
                 message = "Nexus GraphQL response did not contain a total count"
             )
         }
-        val totalCount = data.optInt("totalCount", 0)
+        val totalCount = NexusProviderIntegrity.totalCount(data.opt("totalCount"))
+            ?: throw NexusApiException(NexusApiFailure.INVALID_RESPONSE,
+                message = "Nexus GraphQL total count was not a nonnegative integer")
+        if (nodes.length() > NEXUS_SEARCH_PAGE_SIZE || (totalCount == 0 && nodes.length() > 0)) {
+            throw NexusApiException(NexusApiFailure.INVALID_RESPONSE,
+                message = "Nexus GraphQL page disagrees with the declared count")
+        }
         val offset = operation.variables.getValue("offset") as Int
 
         val mods = (0 until nodes.length()).mapNotNull { i ->
             val node = nodes.optJSONObject(i) ?: return@mapNotNull null
+            val validId = NexusProviderIntegrity.positiveId(node.opt("modId"))
+                ?: return@mapNotNull null
             RemoteMod(
                 sourceId = sourceId,
-                modId = node.optInt("modId", 0).toString(),
+                modId = validId,
                 name = node.optString("name", "Unknown"),
                 author = node.optString("author", "Unknown"),
                 summary = node.optString("summary", ""),
@@ -135,7 +143,7 @@ class NexusModSource(private val httpClient: OkHttpClient, private val dataStore
         ModSearchResult(
             mods = mods,
             totalResults = totalCount,
-            hasMore = offset + nodes.length() < totalCount
+            hasMore = NexusProviderIntegrity.hasMore(offset, nodes.length(), totalCount)
         )
     }
 
@@ -157,20 +165,27 @@ class NexusModSource(private val httpClient: OkHttpClient, private val dataStore
 
     override suspend fun getModDetails(modId: String): RemoteMod = withContext(Dispatchers.IO) {
         val apiKey = getApiKey() ?: throw missingApiKeyException()
+        val safeId = NexusProviderIntegrity.positiveId(modId)
+            ?: throw NexusApiException(NexusApiFailure.INVALID_RESPONSE,
+                message = "Invalid Nexus mod identifier")
 
-        val request = nexusRequest("$BASE_URL/games/$GAME_DOMAIN/mods/$modId.json", apiKey)
+        val request = nexusRequest("$BASE_URL/games/$GAME_DOMAIN/mods/$safeId.json", apiKey)
             .get()
             .build()
 
         val json = parseJsonObject(executeRequest(request), "mod details")
 
-        parseModFromV1(json)
+        parseModFromV1(json) ?: throw NexusApiException(
+            NexusApiFailure.INVALID_RESPONSE, message = "Nexus mod details have no valid identifier")
     }
 
     override suspend fun getModFiles(modId: String): List<RemoteModFile> = withContext(Dispatchers.IO) {
         val apiKey = getApiKey() ?: throw missingApiKeyException()
+        val safeId = NexusProviderIntegrity.positiveId(modId)
+            ?: throw NexusApiException(NexusApiFailure.INVALID_RESPONSE,
+                message = "Invalid Nexus mod identifier")
 
-        val request = nexusRequest("$BASE_URL/games/$GAME_DOMAIN/mods/$modId/files.json", apiKey)
+        val request = nexusRequest("$BASE_URL/games/$GAME_DOMAIN/mods/$safeId/files.json", apiKey)
             .get()
             .build()
 
@@ -179,22 +194,18 @@ class NexusModSource(private val httpClient: OkHttpClient, private val dataStore
 
         (0 until files.length()).mapNotNull { i ->
             val file = files.optJSONObject(i) ?: return@mapNotNull null
+            val validFileId = NexusProviderIntegrity.positiveId(file.opt("file_id"))
+                ?: return@mapNotNull null
             RemoteModFile(
-                fileId = file.optInt("file_id", 0).toString(),
+                fileId = validFileId,
                 fileName = file.optString("file_name", "unknown"),
                 fileVersion = file.optString("version", "").takeIf { it != "null" }?.trim() ?: "",
                 fileSize = file.optLong("size_in_bytes", 0),
                 isPrimary = file.optBoolean("is_primary", false),
-                categoryName = file.optString("category_name", "").let {
-                    if (it == "null" ||
-                        it.isBlank()
-                    ) {
-                        "MAIN"
-                    } else {
-                        it
-                    }
-                },
-                uploadedAt = file.optLong("uploaded_timestamp", 0) * 1000,
+                categoryName = NexusProviderIntegrity.fileCategory(
+                    file.optString("category_name", ""), file.optBoolean("is_primary", false)),
+                uploadedAt = NexusProviderIntegrity.epochSecondsToMillis(
+                    file.optLong("uploaded_timestamp", 0)),
                 description = file.optString("description", "").takeIf { it != "null" } ?: "",
                 changelogHtml = file.optString("changelog_html", "").takeIf { it != "null" && it.isNotBlank() },
                 modVersion = file.optString("mod_version", "").takeIf { it != "null" && it.isNotBlank() }
@@ -249,9 +260,11 @@ class NexusModSource(private val httpClient: OkHttpClient, private val dataStore
         }
     }
 
-    private fun parseModFromV1(json: JSONObject): RemoteMod = RemoteMod(
+    private fun parseModFromV1(json: JSONObject): RemoteMod? {
+        val validId = NexusProviderIntegrity.positiveId(json.opt("mod_id")) ?: return null
+        return RemoteMod(
         sourceId = sourceId,
-        modId = json.optInt("mod_id", 0).toString(),
+        modId = validId,
         name = json.optString("name", "Unknown"),
         author = json.optString("author", "Unknown"),
         summary = json.optString("summary", ""),
@@ -261,8 +274,10 @@ class NexusModSource(private val httpClient: OkHttpClient, private val dataStore
         pictureUrl = json.optString("picture_url", "").takeIf { it != "null" && it.isNotBlank() },
         endorsements = json.optInt("endorsement_count", 0),
         downloads = json.optInt("mod_downloads", 0),
-        lastUpdated = json.optLong("updated_timestamp", 0) * 1000
-    )
+        lastUpdated = NexusProviderIntegrity.epochSecondsToMillis(
+            json.optLong("updated_timestamp", 0))
+        )
+    }
 
     private fun missingApiKeyException() = NexusApiException(
         NexusApiFailure.API_KEY_REQUIRED,
