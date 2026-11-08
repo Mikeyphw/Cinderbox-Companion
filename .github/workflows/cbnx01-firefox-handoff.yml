@@ -1,0 +1,60 @@
+name: CB-NX01 Exact Nexus File Firefox Handoff
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/sdvsync/mods/api/NxmUriPolicy.kt'
+      - 'app/src/main/java/com/sdvsync/mods/api/NexusBrowserLauncher.kt'
+      - 'app/src/main/java/com/sdvsync/mods/api/NexusBrowserHandoff.kt'
+      - 'app/src/main/java/com/sdvsync/mods/ModDownloadManager.kt'
+      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
+      - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModDetailViewModel.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModDetailScreen.kt'
+      - 'app/src/test/java/com/sdvsync/mods/api/CbNx01HandoffTest.kt'
+      - 'app/src/androidTest/java/com/sdvsync/mods/api/CbNx01IntentDeviceTest.kt'
+      - 'scripts/devtool/cbnx01_gate.py'
+      - '.github/workflows/cbnx01-firefox-handoff.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-and-jvm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - run: python3 -B scripts/devtool/cbnx01_gate.py
+      - run: python3 -B scripts/devtool/nex_r5_gate.py
+      - run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+  api36-nxm-policy:
+    needs: source-and-jvm
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - run: sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'system-images;android-36;google_apis;x86_64'
+      - uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: ./gradlew --no-daemon --max-workers=2 :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.sdvsync.mods.api.CbNx01IntentDeviceTest

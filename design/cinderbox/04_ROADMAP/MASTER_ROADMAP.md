@@ -63,3 +63,18 @@ User explicitly wants **work on the new full-app UI first**, then **qualify EVER
 ## 5. Not in scope unless separately requested
 
 No redesign of approved layout, no new mandatory onboarding, no forced Steam, no Nexus Collections, no new global tabs, no modifying real Mods folders without independent qualification, no releasing or publishing a debug build automatically, no hidden tracking. Browser UI shell should not be shipped as a WebView replacement unless the user explicitly opts for that architecture—the app should remain native Compose with visual parity.
+
+## CB-NX01 — First next deliverable (November 8, 2026)
+
+The first new feature delivery after merged NEX-R5 is the **exact-file Firefox/NXM/Cinderbox
+browser-assisted handoff**. Preserve the mod ID and the exact selected file ID from the
+approved native mod details, through a signed-in Nexus browser session and the Stardew
+Nexus Download Queue extension, to Cinderbox's guarded `nxm://` receiver. An archive
+must still be staged for **mandatory user review**; navigating or opening an NXM link
+is not evidence of download or installation. Source documentation:
+`docs/devtool/CB_NX_FIREFOX_INTEGRATION_ROADMAP.md`.
+
+CB-NX02 native persistent queue; CB-NX03 optional bidirectional pairing; CB-NX04
+mod status reconciliation; CB-NX05 full extension UX; CB-NX06 release qualification.
+These follow CB-NX01 rather than replacing its acceptance tests. The approved dark
+five-tab layout and NEX-R5 community fallbacks remain unchanged.

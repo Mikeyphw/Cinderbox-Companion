@@ -8,6 +8,7 @@ import com.sdvsync.mods.ModRequirementsReport
 import com.sdvsync.mods.ModDownloadManager
 import com.sdvsync.mods.ModFileManager
 import com.sdvsync.mods.api.NexusModSource
+import com.sdvsync.mods.api.NexusBrowserHandoff
 import com.sdvsync.mods.models.ModDownloadProgress
 import com.sdvsync.mods.models.RemoteMod
 import com.sdvsync.mods.models.RemoteModFile
@@ -114,7 +115,7 @@ class ModDetailViewModel(
                 throw cancelled
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Failed to get download URL", e)
-                val (friendlyMessage, browserUrl) = mapDownloadError(e.message)
+                val (friendlyMessage, browserUrl) = mapDownloadError(e.message, fileId)
                 _state.update { it.copy(error = friendlyMessage, downloadErrorUrl = browserUrl) }
             } finally {
                 _state.update { it.copy(isDownloading = false) }
@@ -127,17 +128,16 @@ class ModDetailViewModel(
         _state.update { it.copy(error = null, downloadErrorUrl = null) }
     }
 
-    private fun mapDownloadError(message: String?): Pair<String, String?> {
-        val nexusUrl = "https://www.nexusmods.com/stardewvalley/mods/$modId?tab=files"
+    private fun mapDownloadError(message: String?, fileId: String): Pair<String, String?> {
+        val nexusUrl = NexusBrowserHandoff.forFile(modId, fileId)
         if (message == null) return "Failed to start download" to null
         return when {
             message.contains("No File found", ignoreCase = true) ->
-                "This file is no longer available for download" to nexusUrl
+                "This file is no longer available for download" to null
             message.contains("Not Premium", ignoreCase = true) ||
                 message.contains("premium", ignoreCase = true) ||
                 message.contains("403") ->
-                "Free account: tap below to open Nexus, then tap \"Mod Manager Download\"" +
-                    " on the file you want. The download will start automatically." to nexusUrl
+                "Direct Nexus download unavailable. Open the exact selected file in Firefox and finish any required Nexus steps." to nexusUrl
             message.contains("429") ->
                 "Rate limit reached. Please try again later." to null
             else -> message to nexusUrl

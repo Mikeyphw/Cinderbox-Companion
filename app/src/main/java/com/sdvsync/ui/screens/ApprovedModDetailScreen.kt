@@ -33,6 +33,8 @@ import com.sdvsync.mods.models.RemoteModFile
 import com.sdvsync.mods.models.ModDownloadProgress
 import com.sdvsync.mods.models.ModDownloadState
 import com.sdvsync.mods.api.NexusModPageLinks
+import com.sdvsync.mods.api.NexusBrowserHandoff
+import com.sdvsync.mods.api.NexusBrowserLauncher
 import com.sdvsync.ui.components.HtmlText
 import com.sdvsync.ui.components.toHtmlIfFormatted
 import com.sdvsync.mods.api.NexR2Display
@@ -101,7 +103,8 @@ fun ApprovedModDetailScreen(
         requestInFlight = state.isDownloading,
         downloadError = state.error,
         downloadErrorUrl = state.downloadErrorUrl,
-        onOpenExternal = { url -> uriHandler.openUri(url) }
+        onOpenExternal = { url -> uriHandler.openUri(url) },
+        onBrowserHandoff = { url -> NexusBrowserLauncher.open(context, url) }
     )
 }
 
@@ -158,7 +161,8 @@ fun ApprovedModDetailContent(
     requestInFlight: Boolean = false,
     downloadError: String? = null,
     downloadErrorUrl: String? = null,
-    onOpenExternal: (String) -> Unit = {}
+    onOpenExternal: (String) -> Unit = {},
+    onBrowserHandoff: (String) -> Unit = {}
 ) {
     Column(Modifier.fillMaxSize().background(Dark.Background).testTag("cinderbox.screen.mod-detail")) {
         Row(Modifier.fillMaxWidth().height(57.dp).padding(horizontal=20.dp),
@@ -338,6 +342,14 @@ fun ApprovedModDetailContent(
                                         modifier = Modifier.fillMaxWidth()
                                             .testTag("nex.r5.download-for-review")
                                     ) { Text("Download for review") }
+                                    // Explicit browser-assisted path preserves the selected file ID.
+                                    NexusBrowserHandoff.forFile(mod.modId, file.fileId)?.let { handoff ->
+                                        OutlinedButton(
+                                            onClick = { onBrowserHandoff(handoff) },
+                                            modifier = Modifier.fillMaxWidth()
+                                                .testTag("cbnx01.browser-handoff")
+                                        ) { Text("Browser + NXM") }
+                                    }
                                     HorizontalDivider(color = Dark.Line)
                                 }
                             }
@@ -357,8 +369,8 @@ fun ApprovedModDetailContent(
                             Text(downloadError, color = Dark.Warn, style = MaterialTheme.typography.bodySmall)
                         downloadErrorUrl?.let { fallback ->
                             if (NexusModPageLinks.safeExternalHttps(fallback) != null)
-                                OutlinedButton(onClick = { onOpenExternal(fallback) },
-                                    modifier = Modifier.fillMaxWidth()) { Text("Open files on Nexus") }
+                                OutlinedButton(onClick = { onBrowserHandoff(fallback) },
+                                    modifier = Modifier.fillMaxWidth()) { Text("Open selected file in Firefox") }
                         }
                         Text("A download is staged for mandatory review; it never silently installs.",
                             color = Dark.Muted, style = MaterialTheme.typography.bodySmall)

@@ -44,6 +44,8 @@ import androidx.navigation.navArgument
 import com.sdvsync.logging.AppLogger
 import com.sdvsync.mods.ModDownloadManager
 import com.sdvsync.mods.api.NexusModSource
+import com.sdvsync.mods.api.NxmUriPolicy
+import java.util.concurrent.atomic.AtomicBoolean
 import com.sdvsync.steam.SteamAuthenticator
 import com.sdvsync.steam.SteamBackgroundService
 import com.sdvsync.steam.SteamClientManager
@@ -100,6 +102,7 @@ import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
 class MainActivity : ComponentActivity() {
+    private val nxmInFlight = AtomicBoolean(false)
 
     private val nexusSource: NexusModSource by inject()
     private val downloadManager: ModDownloadManager by inject()
@@ -171,13 +174,19 @@ class MainActivity : ComponentActivity() {
         val uri = intent?.data ?: return
         if (uri.scheme != "nxm") return
 
-        val parsed = parseNxmUrl(uri)
+        val parsed = NxmUriPolicy.parse(uri.toString())
         if (parsed == null) {
             Toast.makeText(this, getString(R.string.nxm_invalid_link), Toast.LENGTH_SHORT).show()
+            intent?.data = null
             return
         }
 
         Toast.makeText(this, getString(R.string.nxm_starting_download), Toast.LENGTH_SHORT).show()
+        if (!nxmInFlight.compareAndSet(false, true)) {
+            Toast.makeText(this, "A Nexus download request is already being processed", Toast.LENGTH_SHORT).show()
+            intent?.data = null
+            return
+        }
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -194,14 +203,16 @@ class MainActivity : ComponentActivity() {
                 }
                 downloadManager.startDownload(url, modName, parsed.modId, "nexus")
             } catch (e: Exception) {
-                AppLogger.e("MainActivity", "NXM download failed", e)
+                AppLogger.e("MainActivity", "NXM download failed (${e.javaClass.simpleName})")
                 launch(Dispatchers.Main) {
                     Toast.makeText(
                         this@MainActivity,
-                        getString(R.string.nxm_download_failed, e.message ?: "Unknown error"),
+                        getString(R.string.nxm_download_failed, "Check Nexus access and retry"),
                         Toast.LENGTH_LONG
                     ).show()
                 }
+            } finally {
+                nxmInFlight.set(false)
             }
         }
 
@@ -209,24 +220,6 @@ class MainActivity : ComponentActivity() {
         intent?.data = null
     }
 
-    /**
-     * Parse an nxm:// URL into its components.
-     * Format: nxm://stardewvalley/mods/{modId}/files/{fileId}?key={key}&expires={expires}
-     */
-    private fun parseNxmUrl(uri: Uri): NxmDownloadParams? {
-        val segments = uri.pathSegments ?: return null
-        // Expected: [mods, {modId}, files, {fileId}]
-        if (segments.size < 4 || segments[0] != "mods" || segments[2] != "files") return null
-
-        val modId = segments[1]
-        val fileId = segments[3]
-        val key = uri.getQueryParameter("key") ?: return null
-        val expires = uri.getQueryParameter("expires") ?: return null
-
-        return NxmDownloadParams(modId, fileId, key, expires)
-    }
-
-    private data class NxmDownloadParams(val modId: String, val fileId: String, val key: String, val expires: String)
 }
 
 private const val NAV_ANIM_DURATION = 300
