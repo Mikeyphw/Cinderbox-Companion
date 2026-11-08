@@ -9,13 +9,13 @@ class CbNx01HandoffTest {
     @Test fun selectedModAndFileRemainInBrowserHandoff() {
         assertEquals(
             "https://www.nexusmods.com/stardewvalley/mods/123?tab=files&cinderbox_file=456&cinderbox_mode=nxm&cinderbox_request=sample-request-0001",
-            NexusBrowserHandoff.forFile("123", "456", "sample-request-0001")
+            NexusBrowserHandoff.createUrl("123", "456", "sample-request-0001")
         )
         for (bad in listOf("", "0", "-1", "1/2", "3?tab=posts", "9999999999999")) {
-            assertNull(NexusBrowserHandoff.forFile(bad, "456"))
-            assertNull(NexusBrowserHandoff.forFile("123", bad))
+            assertNull(NexusBrowserHandoff.createUrl(bad, "456"))
+            assertNull(NexusBrowserHandoff.createUrl("123", bad))
         }
-        assertNull(NexusBrowserHandoff.forFile("123", "456", "bad&switch=1"))
+        assertNull(NexusBrowserHandoff.createUrl("123", "456", "bad&switch=1"))
     }
 
     @Test fun onlyValidNxmMayStartDownload() {

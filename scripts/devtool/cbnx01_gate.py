@@ -17,13 +17,13 @@ required_tokens('app/src/main/java/com/sdvsync/MainActivity.kt',
                 ['NxmUriPolicy.parse(uri.toString())', 'nxmInFlight.compareAndSet(false, true)',
                  'nxmInFlight.set(false)', 'downloadManager.startDownload(url, modName, parsed.modId, "nexus")'])
 required_tokens('app/src/main/java/com/sdvsync/ui/screens/ApprovedModDetailScreen.kt',
-                ['cbnx01.browser-handoff', 'NexusBrowserHandoff.forFile(mod.modId, file.fileId)',
+                ['cbnx01.browser-handoff', 'NexusBrowserHandoff.createUrl(mod.modId, file.fileId)',
                  'NexusBrowserLauncher.open(context, url)',
                  'onDownloadForReview(file.fileId)'])
 required_tokens('app/src/main/java/com/sdvsync/mods/api/NexusBrowserLauncher.kt',
                 ['org.mozilla.firefox', 'org.mozilla.firefox_beta', 'Intent.ACTION_VIEW'])
 required_tokens('app/src/main/java/com/sdvsync/ui/viewmodels/ModDetailViewModel.kt',
-                ['mapDownloadError(e.message, fileId)', 'NexusBrowserHandoff.forFile(modId, fileId)'])
+                ['mapDownloadError(e.message, fileId)', 'NexusBrowserHandoff.createUrl(modId, fileId)'])
 required_tokens('app/src/main/java/com/sdvsync/mods/ModDownloadManager.kt',
                 ['@Synchronized', 'ModDownloadState.DOWNLOADING', 'ModDownloadService.start('])
 required_tokens('app/src/main/java/com/sdvsync/mods/ModDownloadService.kt',

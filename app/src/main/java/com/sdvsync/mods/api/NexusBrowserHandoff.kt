@@ -7,7 +7,7 @@ object NexusBrowserHandoff {
     private val positiveId = Regex("[1-9][0-9]{0,11}")
     private val safeRequestId = Regex("[A-Za-z0-9-]{8,64}")
 
-    fun forFile(modId: String, fileId: String, requestId: String = UUID.randomUUID().toString()): String? {
+    fun createUrl(modId: String, fileId: String, requestId: String = UUID.randomUUID().toString()): String? {
         if (!positiveId.matches(modId) || !positiveId.matches(fileId) ||
             !safeRequestId.matches(requestId)) return null
         return "https://www.nexusmods.com/stardewvalley/mods/$modId" +

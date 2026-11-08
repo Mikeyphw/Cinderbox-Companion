@@ -343,7 +343,7 @@ fun ApprovedModDetailContent(
                                             .testTag("nex.r5.download-for-review")
                                     ) { Text("Download for review") }
                                     // Explicit browser-assisted path preserves the selected file ID.
-                                    NexusBrowserHandoff.forFile(mod.modId, file.fileId)?.let { handoff ->
+                                    NexusBrowserHandoff.createUrl(mod.modId, file.fileId)?.let { handoff ->
                                         OutlinedButton(
                                             onClick = { onBrowserHandoff(handoff) },
                                             modifier = Modifier.fillMaxWidth()

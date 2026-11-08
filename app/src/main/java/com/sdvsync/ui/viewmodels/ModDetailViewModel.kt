@@ -129,7 +129,7 @@ class ModDetailViewModel(
     }
 
     private fun mapDownloadError(message: String?, fileId: String): Pair<String, String?> {
-        val nexusUrl = NexusBrowserHandoff.forFile(modId, fileId)
+        val nexusUrl = NexusBrowserHandoff.createUrl(modId, fileId)
         if (message == null) return "Failed to start download" to null
         return when {
             message.contains("No File found", ignoreCase = true) ->
