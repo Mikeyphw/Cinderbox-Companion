@@ -11,6 +11,8 @@ import com.sdvsync.mods.api.NexusModSource
 import com.sdvsync.mods.models.ModDownloadProgress
 import com.sdvsync.mods.models.RemoteMod
 import com.sdvsync.mods.models.RemoteModFile
+import kotlinx.coroutines.CancellationException
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,6 +45,7 @@ class ModDetailViewModel(
         private const val TAG = "ModDetailVM"
     }
 
+    private val downloadLinkRequest = AtomicBoolean(false)
     private val _state = MutableStateFlow(ModDetailState())
     val state: StateFlow<ModDetailState> = _state.asStateFlow()
 
@@ -98,22 +101,24 @@ class ModDetailViewModel(
     }
 
     fun installFile(fileId: String) {
+        // A tap must not start multiple concurrent URL lookups or enqueue the same archive twice.
+        if (fileId.isBlank() || !downloadLinkRequest.compareAndSet(false, true)) return
+        _state.update { it.copy(isDownloading = true, error = null, downloadErrorUrl = null) }
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                _state.update { it.copy(isDownloading = true, error = null, downloadErrorUrl = null) }
                 val url = nexusSource.getDownloadUrl(modId, fileId)
                 val modName = _state.value.mod?.name ?: "Unknown"
+                // Service stages archives for mandatory review; it never installs directly.
                 downloadManager.startDownload(url, modName, modId, source)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Failed to get download URL", e)
                 val (friendlyMessage, browserUrl) = mapDownloadError(e.message)
-                _state.update {
-                    it.copy(
-                        isDownloading = false,
-                        error = friendlyMessage,
-                        downloadErrorUrl = browserUrl
-                    )
-                }
+                _state.update { it.copy(error = friendlyMessage, downloadErrorUrl = browserUrl) }
+            } finally {
+                _state.update { it.copy(isDownloading = false) }
+                downloadLinkRequest.set(false)
             }
         }
     }

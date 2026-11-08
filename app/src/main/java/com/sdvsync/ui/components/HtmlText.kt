@@ -1,11 +1,15 @@
 package com.sdvsync.ui.components
 
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.URLSpan
 import android.text.method.LinkMovementMethod
 import android.widget.TextView
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.text.HtmlCompat
+import com.sdvsync.mods.api.NexusModPageLinks
 
 fun markdownToHtml(md: String): String {
     var html = md
@@ -40,12 +44,20 @@ fun bbCodeToHtml(bbcode: String): String {
     // [url=X]Y[/url] -> <a href="X">Y</a>
     html = html.replace(
         Regex("\\[url=([^\\]]+)](.*?)\\[/url]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-    ) { "<a href=\"${it.groupValues[1]}\">${it.groupValues[2]}</a>" }
+    ) {
+        val safeUrl = NexusModPageLinks.safeExternalHttps(it.groupValues[1])
+        if (safeUrl == null) it.groupValues[2]
+        else "<a href=\"${safeUrl.replace("&", "&amp;")}\">${it.groupValues[2]}</a>"
+    }
 
     // [url]X[/url] -> <a href="X">X</a>
     html = html.replace(
         Regex("\\[url](.*?)\\[/url]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-    ) { "<a href=\"${it.groupValues[1]}\">${it.groupValues[1]}</a>" }
+    ) {
+        val safeUrl = NexusModPageLinks.safeExternalHttps(it.groupValues[1])
+        if (safeUrl == null) it.groupValues[1]
+        else "<a href=\"${safeUrl.replace("&", "&amp;")}\">${it.groupValues[1]}</a>"
+    }
 
     // [img]X[/img] -> strip (can't render in TextView)
     html = html.replace(Regex("\\[img](.*?)\\[/img]", RegexOption.IGNORE_CASE), "")
@@ -101,6 +113,32 @@ fun toHtmlIfFormatted(text: String): String? = when {
     else -> null
 }
 
+private val unsafeBlocks = Regex(
+    """(?is)<\s*(script|style|iframe|object|embed|form|svg|video|audio)\b[^>]*>.*?<\s*/\s*\1\s*>"""
+)
+private val unsafeElements = Regex("""(?is)<\s*/?\s*(img|input|iframe|object|embed|meta|link)\b[^>]*>""")
+
+/**
+ * Safe rich text is rendered inside a TextView, never a browser/WebView.
+ * Remove executable markup and rebuild all URLSpan objects with HTTPS validation.
+ */
+fun safeNexusSpanned(html: String): CharSequence {
+    val bounded = html.take(32_000)
+    val clean = unsafeElements.replace(unsafeBlocks.replace(bounded, " "), " ")
+    val parsed = HtmlCompat.fromHtml(clean, HtmlCompat.FROM_HTML_MODE_COMPACT)
+    val result = SpannableStringBuilder(parsed)
+    for (span in result.getSpans(0, result.length, URLSpan::class.java)) {
+        val start = result.getSpanStart(span)
+        val end = result.getSpanEnd(span)
+        result.removeSpan(span)
+        val approved = NexusModPageLinks.safeExternalHttps(span.url)
+        if (approved != null && start >= 0 && end > start) {
+            result.setSpan(URLSpan(approved), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+    }
+    return result
+}
+
 @Composable
 fun HtmlText(html: String, textColor: Int, linkColor: Int, textSizeSp: Float, modifier: Modifier = Modifier) {
     AndroidView(
@@ -114,7 +152,7 @@ fun HtmlText(html: String, textColor: Int, linkColor: Int, textSizeSp: Float, mo
             }
         },
         update = { tv ->
-            tv.text = HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_COMPACT)
+            tv.text = safeNexusSpanned(html)
         }
     )
 }

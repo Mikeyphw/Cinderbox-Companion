@@ -15,8 +15,12 @@ tests=(app/build/outputs/apk/androidTest/debug/*.apk)
 out="$RUNNER_TEMP/ux05bd-visual"
 mkdir -p "$out"
 printf '%s\n' '{"status":"NOT_RUN","hosted_emulator_only":true,"physical_device_qualified":false,"release_qualified":false}' > "$out/STATUS.json"
-adb -s "$SERIAL" shell svc wifi disable >/dev/null
-adb -s "$SERIAL" shell svc data disable >/dev/null
+# R48A independently checks API36/emulator identity, airplane-mode state, Wi-Fi,
+# and absence of an active default network. The former `svc data disable`
+# requires TelephonyService and fails on emulator images without a modem.
+# Never assume that disabling cellular data equals offline isolation.
+python3 -B scripts/devtool/r48_offline_gate.py --serial "$SERIAL"
+echo UX05BD_R48_AIRPLANE_ISOLATION_VERIFIED
 adb -s "$SERIAL" install -r -t "${app[0]}" >/dev/null
 adb -s "$SERIAL" install -r -t "${tests[0]}" >/dev/null
 local_hash="$(sha256sum "${app[0]}" | cut -d' ' -f1)"

@@ -1,0 +1,128 @@
+name: NEX-R5 Unified Native Details + Secure Posts/Media Browser Fallback
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModDetailScreen.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ModDetailScreen.kt'
+      - 'app/src/main/java/com/sdvsync/ui/components/HtmlText.kt'
+      - 'app/src/main/java/com/sdvsync/mods/api/NexusModPageLinks.kt'
+      - 'app/src/test/java/com/sdvsync/mods/api/NexusModPageLinksTest.kt'
+      - 'app/src/androidTest/java/com/sdvsync/ui/ux/NexR5UnifiedDetailTest.kt'
+      - 'scripts/devtool/nex_r5_*'
+      - 'scripts/devtool/test_nex_r5_*'
+      - 'scripts/devtool/ux05bd_gate.py'
+      - 'scripts/devtool/ux05bd_emulator_ci.sh'
+      - 'scripts/devtool/fixtures/nex_r5_community/**'
+      - '.github/workflows/nex-r5-unified-details.yml'
+      - 'docs/devtool/NEX_R5_UNIFIED_DETAILS.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nex-r5-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Validate NEX-R5 and all previous Nexus release/source gates
+        run: |
+          set -euo pipefail
+          python3 -B scripts/devtool/ux05bd_gate.py
+          python3 -B scripts/devtool/ux_05_mods_gate.py
+          python3 -B scripts/devtool/nex_r5_gate.py
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_nex_r5_gate.py' -v
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_nex_r5_community_probe.py' -v
+          python3 -B scripts/devtool/nex_r5_community_probe.py --fixture scripts/devtool/fixtures/nex_r5_community/documented_v2_schema.json
+          python3 -B scripts/devtool/nex_r4_gate.py
+          python3 -B scripts/devtool/nex_r3_gate.py
+          python3 -B scripts/devtool/nex_r3_hf02_gate.py
+          python3 -B scripts/devtool/nex_r3_hf01_gate.py
+          python3 -B scripts/devtool/nex_r2c_gate.py
+          python3 -B scripts/devtool/nex_r2b_gate.py
+          python3 -B scripts/devtool/nex_r2_gate.py
+          python3 -B scripts/devtool/nex_r1_gate.py
+          bash -n scripts/devtool/nex_r5_emulator_ci.sh
+          bash -n scripts/devtool/ux05bd_emulator_ci.sh
+          python3 -B scripts/devtool/r48_offline_gate.py --help >/dev/null
+          python3 -B - <<'PYTHON'
+          from pathlib import Path
+          script = Path('scripts/devtool/ux05bd_emulator_ci.sh').read_text()
+          assert 'python3 -B scripts/devtool/r48_offline_gate.py --serial "$SERIAL"' in script
+          assert 'shell svc data disable' not in script
+          print('NEX_R5_HF05_UX05BD_OFFLINE_GATE_SOURCE_PASS')
+          PYTHON
+  api36-unified-details:
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - run: sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Compile app + androidTest and run JVM tests (hosted only)
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Verify hosted KVM/disk and provision x86_64 API36 image
+        run: |
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          avd_root="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
+          mkdir -p "$avd_root"
+          test "$(df -Pk "$avd_root" | awk 'END {print $4}')" -ge 4194304
+          sdkmanager --install 'system-images;android-36;google_apis;x86_64'
+      - name: Real hosted Android 36 native Compose fixture journeys (360dp + 393dp)
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          disk-size: 3072M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash scripts/devtool/nex_r5_emulator_ci.sh
+      - name: Upload sanitized, source-bound synthetic screenshot receipts
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: nex-r5-unified-details-synthetic-api36
+          path: ${{ runner.temp }}/nex-r5-synthetic-private/
+          if-no-files-found: warn
+          retention-days: 14
+
+  community-schema-probe:
+    # Deliberately uses NO GitHub secrets on PR code; status may be INCONCLUSIVE if
+    # anonymous schema introspection is denied. Never certifies a native gallery.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Probe official GraphQL schema metadata (no credentials or content)
+        run: |
+          set -euo pipefail
+          python3 -B scripts/devtool/nex_r5_community_probe.py --live --mod-id 7001 \
+            --output "${RUNNER_TEMP}/nex-r5-community-schema.json"
+      - name: Upload sanitized read-only API capability receipt
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: nex-r5-community-schema-receipt
+          path: ${{ runner.temp }}/nex-r5-community-schema.json
+          if-no-files-found: warn
+          retention-days: 7
