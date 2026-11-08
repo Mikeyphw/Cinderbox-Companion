@@ -30,9 +30,11 @@ adb -s "$SERIAL" shell settings put system font_scale 1.6 >/dev/null
 [[ "$(adb -s "$SERIAL" shell settings get system font_scale | tr -d '\r')" == 1.6 ]] || {
     echo R48_FONT_SCALE_NOT_APPLIED >&2; exit 1;
 }
-# This fixture has no Steam account and no real files. Disable available radios.
-adb -s "$SERIAL" shell svc wifi disable >/dev/null
-adb -s "$SERIAL" shell svc data disable >/dev/null
+# This fixture has no Steam account and no real files. Prove offline state.
+# The API36 x86_64 emulator may lack the phone binder service. The gate
+# skips cellular shutdown ONLY when absence is explicitly verified; Wi-Fi
+# must be disabled and no active default network may remain.
+python3 -B scripts/devtool/r48_offline_gate.py --serial "$SERIAL"
 shopt -s nullglob
 app=(app/build/outputs/apk/debug/*.apk)
 test_apk=(app/build/outputs/apk/androidTest/debug/*.apk)

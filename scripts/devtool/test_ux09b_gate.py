@@ -31,6 +31,33 @@ class UX09BSourceTest(unittest.TestCase):
             with self.assertRaisesRegex(AssertionError,'UNSAFE_TEST'):
                 gate.check(root)
 
+    def test_reintroducing_direct_data_shutdown_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=self.fixture(tmp)
+            file=root/'scripts/devtool/ux09b_emulator_ci.sh'
+            file.write_text(file.read_text()+'\nadb -s "$serial" shell svc data disable\n')
+            with self.assertRaisesRegex(AssertionError,'UX09B_UNSAFE_RADIO_SETUP'):
+                gate.check(root)
+
+    def test_removing_shared_airplane_gate_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=self.fixture(tmp)
+            file=root/'scripts/devtool/ux09b_emulator_ci.sh'
+            file.write_text(file.read_text().replace(
+                'python3 -B scripts/devtool/r48_offline_gate.py --serial "$serial"',
+                '# offline gate was removed'))
+            with self.assertRaisesRegex(AssertionError,'UX09B_OFFLINE_GATE_MISSING'):
+                gate.check(root)
+
+    def test_weakened_shared_connectivity_gate_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=self.fixture(tmp)
+            file=root/'scripts/devtool/r48_offline_gate.py'
+            file.write_text(file.read_text().replace('ACTIVE_DEFAULT_NETWORK_REFUSED',
+                                                     'IGNORE_ACTIVE_DEFAULT_NETWORK'))
+            with self.assertRaisesRegex(AssertionError,'UX09B_OFFLINE_CONTRACT_MISSING'):
+                gate.check(root)
+
     def test_release_flag_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=self.fixture(tmp)

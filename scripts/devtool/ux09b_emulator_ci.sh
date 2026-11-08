@@ -16,8 +16,11 @@ test_apk=(app/build/outputs/apk/androidTest/debug/*.apk)
 [[ ${#app[@]} == 1 && ${#test_apk[@]} == 1 ]] || { echo UX09B_APK_PAIR_MISSING >&2; exit 1; }
 app_sha="$(sha256sum "${app[0]}" | awk '{print $1}')"
 test_sha="$(sha256sum "${test_apk[0]}" | awk '{print $1}')"
-adb -s "$serial" shell svc wifi disable >/dev/null
-adb -s "$serial" shell svc data disable >/dev/null
+# Reuse the qualified R48A API36 offline gate. It verifies airplane mode,
+# Wi-Fi shutdown, and no active default network without requiring a phone
+# binder service (which this hosted Google APIs emulator does not provide).
+# Its serial and API36 checks are fail-closed; never bypass on failure.
+python3 -B scripts/devtool/r48_offline_gate.py --serial "$serial"
 adb -s "$serial" install -t "${app[0]}" >/dev/null
 adb -s "$serial" install -t "${test_apk[0]}" >/dev/null
 for width in 393 360; do

@@ -54,6 +54,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.sdvsync.mods.models.RemoteMod
+import com.sdvsync.mods.api.NexusCatalogFilters
+import com.sdvsync.mods.api.NexusCatalogSort
 import com.sdvsync.ui.components.CinderboxBrandTopBar
 import com.sdvsync.ui.theme.CinderboxDarkTokens as Dark
 import com.sdvsync.ui.viewmodels.BrowseCategory
@@ -76,9 +78,6 @@ private enum class ModsPane(val label: String) {
 }
 private enum class DiscoverFilter(val label: String) {
     ALL("All"), INSTALLED("Installed"), SAVED("Saved")
-}
-private enum class DiscoverSort(val label: String) {
-    PROVIDER("Provider order"), NAME("Name"), AUTHOR("Author")
 }
 
 private data class ModCardData(
@@ -158,10 +157,8 @@ fun ApprovedModsScreen(
     val savedIds = savedCards.keys
     var pane by rememberSaveable { mutableStateOf(ModsPane.DISCOVER) }
     var filter by rememberSaveable { mutableStateOf(DiscoverFilter.ALL) }
-    var sort by rememberSaveable { mutableStateOf(DiscoverSort.PROVIDER) }
     var gridMode by rememberSaveable { mutableStateOf(true) }
     var filterOpen by rememberSaveable { mutableStateOf(false) }
-    var categoryName by rememberSaveable { mutableStateOf("") }
     var installedOrder by rememberSaveable { mutableStateOf(0) }
     val bookmarkToggle: (ModCardData) -> Unit = { mod ->
         val next = if (mod.id in savedIds) savedCards - mod.id
@@ -171,34 +168,85 @@ fun ApprovedModsScreen(
         savedCards = next
     }
 
+    // Local-only selections are explicit; all provider refinements are sent to Nexus.
+    var draftCategory by rememberSaveable { mutableStateOf("") }
+    var draftIncludeTag by rememberSaveable { mutableStateOf("") }
+    var draftExcludeTag by rememberSaveable { mutableStateOf("") }
+    var draftDays by rememberSaveable { mutableStateOf(0) }
+    var draftDownloads by rememberSaveable { mutableStateOf(0) }
+    var draftEndorsements by rememberSaveable { mutableStateOf(0) }
+    var draftSort by rememberSaveable { mutableStateOf(NexusCatalogSort.ENDORSEMENTS.name) }
+
     if (filterOpen) {
         ModalBottomSheet(onDismissRequest = { filterOpen = false },
             containerColor = Dark.Paper, contentColor = Dark.Ink) {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+            Column(Modifier.fillMaxWidth().testTag("nex.r1.filter.sheet")
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp).padding(bottom = 25.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Refine discovery", style = MaterialTheme.typography.titleLarge)
-                Text("Filter", color = Dark.Muted)
+                Text("Nexus catalog filters · all matching mods", color = Dark.Muted)
+                Text("Sort by", color = Dark.Muted)
+                NexusCatalogSort.entries.forEach { option ->
+                    ModsChoice(option.label, draftSort == option.name) { draftSort = option.name }
+                }
+                OutlinedTextField(value = draftCategory, onValueChange = { draftCategory = it.take(64) },
+                    label = { Text("Category (exact Nexus name)") },
+                    modifier = Modifier.fillMaxWidth().testTag("nex.r1.filter.category"), singleLine = true)
+                val suggestedCategories = browse.mods.mapNotNull { it.categoryName?.takeIf(String::isNotBlank) }
+                    .distinct().sorted().take(8)
+                if (suggestedCategories.isNotEmpty()) {
+                    Text("Suggestions from loaded cards, not the full category list", color = Dark.Muted,
+                        style = MaterialTheme.typography.bodySmall)
+                    suggestedCategories.forEach { suggestion ->
+                        ModsChoice(suggestion, draftCategory == suggestion) { draftCategory = suggestion }
+                    }
+                }
+                OutlinedTextField(value = draftIncludeTag,
+                    onValueChange = { draftIncludeTag = it.take(64) },
+                    label = { Text("Include tag") }, modifier = Modifier.fillMaxWidth()
+                        .testTag("nex.r1.filter.include-tag"), singleLine = true)
+                OutlinedTextField(value = draftExcludeTag,
+                    onValueChange = { draftExcludeTag = it.take(64) },
+                    label = { Text("Exclude tag (e.g. Translation)") },
+                    modifier = Modifier.fillMaxWidth().testTag("nex.r1.filter.exclude-tag"),
+                    singleLine = true)
+                Text("Updated within", color = Dark.Muted)
+                listOf(0 to "Any time", 7 to "7 days", 30 to "30 days", 365 to "1 year").forEach { (days, label) ->
+                    ModsChoice(label, draftDays == days) { draftDays = days }
+                }
+                Text("Minimum downloads", color = Dark.Muted)
+                listOf(0, 100, 1000, 10000).forEach { count ->
+                    ModsChoice(if (count == 0) "Any" else "$count+", draftDownloads == count) {
+                        draftDownloads = count
+                    }
+                }
+                Text("Minimum endorsements", color = Dark.Muted)
+                listOf(0, 10, 100, 1000).forEach { count ->
+                    ModsChoice(if (count == 0) "Any" else "$count+", draftEndorsements == count) {
+                        draftEndorsements = count
+                    }
+                }
+                Text("Only on loaded results", color = Dark.Muted)
                 DiscoverFilter.entries.forEach { option ->
-                    ModsChoice(option.label, filter == option) {
-                        filter = option
-                    }
+                    ModsChoice(option.label, filter == option) { filter = option }
                 }
-                Text("Sort current provider results", color = Dark.Muted)
-                DiscoverSort.entries.forEach { option ->
-                    ModsChoice(option.label, sort == option) { sort = option }
+                OutlinedButton(onClick = {
+                    draftCategory = ""; draftIncludeTag = ""; draftExcludeTag = ""
+                    draftDays = 0; draftDownloads = 0; draftEndorsements = 0
+                    draftSort = NexusCatalogSort.ENDORSEMENTS.name
+                }, modifier = Modifier.fillMaxWidth().testTag("nex.r1.filter.clear")) {
+                    Text("Clear provider filters")
                 }
-                val categories = browse.mods.mapNotNull { it.categoryName?.takeIf(String::isNotBlank) }
-                    .distinct().sorted().take(25)
-                if (categories.isNotEmpty()) {
-                    Text("Category · from Nexus results", color = Dark.Muted)
-                    ModsChoice("All categories", categoryName.isEmpty()) { categoryName = "" }
-                    categories.forEach { candidate ->
-                        ModsChoice(candidate, categoryName == candidate) { categoryName = candidate }
-                    }
-                }
-                Button(onClick = { filterOpen = false }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Show results")
+                Button(onClick = {
+                    browseViewModel.applyFilters(NexusCatalogFilters(
+                        categoryName = draftCategory, includeTag = draftIncludeTag,
+                        excludeTag = draftExcludeTag, updatedWithinDays = draftDays,
+                        minDownloads = draftDownloads, minEndorsements = draftEndorsements,
+                        sort = NexusCatalogSort.valueOf(draftSort)))
+                    filterOpen = false
+                }, modifier = Modifier.fillMaxWidth().testTag("nex.r1.filter.apply")) {
+                    Text("Apply filters to Nexus")
                 }
             }
         }
@@ -209,16 +257,10 @@ fun ApprovedModsScreen(
     val browseCandidates = if (filter == DiscoverFilter.SAVED)
         savedCards.values.toList() else cardsFromProvider
     val visibleBrowse = browseCandidates.filter { mod ->
-        (categoryName.isEmpty() || categoryName == mod.categoryName) && when (filter) {
+        when (filter) {
             DiscoverFilter.ALL -> true
             DiscoverFilter.INSTALLED -> mod.id in browse.installedSourceIds
             DiscoverFilter.SAVED -> mod.id in savedIds
-        }
-    }.let { mods ->
-        when (sort) {
-            DiscoverSort.PROVIDER -> mods
-            DiscoverSort.NAME -> mods.sortedBy { it.name.lowercase(java.util.Locale.ROOT) }
-            DiscoverSort.AUTHOR -> mods.sortedBy { it.author.lowercase(java.util.Locale.ROOT) }
         }
     }
     val installedMods = when (installedOrder) {
@@ -285,7 +327,7 @@ fun ApprovedModsScreen(
                         verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(
                             value = browse.searchQuery,
-                            onValueChange = { browseViewModel.search(it); categoryName = "" },
+                            onValueChange = { browseViewModel.search(it) },
                             enabled = browse.hasApiKey,
                             modifier = Modifier.weight(1f).testTag("cinderbox.mods.search"),
                             placeholder = { Text("Search mods or authors…") },
@@ -295,7 +337,17 @@ fun ApprovedModsScreen(
                                 { Text("Enter more characters to search") }
                             } else null
                         )
-                        OutlinedButton(onClick = { filterOpen = true },
+                        OutlinedButton(onClick = {
+                            val f = browse.filters
+                            draftCategory = f.categoryName
+                            draftIncludeTag = f.includeTag
+                            draftExcludeTag = f.excludeTag
+                            draftDays = f.updatedWithinDays
+                            draftDownloads = f.minDownloads
+                            draftEndorsements = f.minEndorsements
+                            draftSort = f.sort.name
+                            filterOpen = true
+                        },
                             modifier = Modifier.heightIn(min = 48.dp).testTag("cinderbox.mods.filter")) {
                             Text("Refine")
                         }
@@ -308,13 +360,11 @@ fun ApprovedModsScreen(
                             BrowseCategory.RECENTLY_UPDATED to "Updated").forEach { (category,label) ->
                             ModsSmallChip(label, browse.category == category && browse.searchQuery.isBlank()) {
                                 browseViewModel.loadCategory(category)
-                                categoryName = ""
                                 filter = DiscoverFilter.ALL
                             }
                         }
                         ModsSmallChip("Saved", filter == DiscoverFilter.SAVED) {
                             filter = if (filter == DiscoverFilter.SAVED) DiscoverFilter.ALL else DiscoverFilter.SAVED
-                            categoryName = ""
                         }
                     }
                 }
@@ -330,11 +380,23 @@ fun ApprovedModsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Browse mods", color = Dark.Ink, style = MaterialTheme.typography.titleMedium)
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("${visibleBrowse.size} shown", color = Dark.Muted,
+                            Text(if (filter == DiscoverFilter.ALL) "${visibleBrowse.size}/${browse.totalResults} matches" else "${visibleBrowse.size} local", color = Dark.Muted,
                                 style = MaterialTheme.typography.bodySmall)
                             TextButton(onClick = { gridMode = !gridMode },
                                 modifier = Modifier.testTag("cinderbox.mods.layout")) {
                                 Text(if (gridMode) "List" else "Grid")
+                            }
+                        }
+                    }
+                }
+                if (browse.filters.hasRefinements && filter != DiscoverFilter.SAVED) {
+                    item {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Server filters active", color = Dark.Muted, modifier = Modifier.weight(1f))
+                            TextButton(onClick = {
+                                browseViewModel.applyFilters(NexusCatalogFilters())
+                            }, modifier = Modifier.testTag("nex.r1.filters.clear-active")) {
+                                Text("Clear all")
                             }
                         }
                     }

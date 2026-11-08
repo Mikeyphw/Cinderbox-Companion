@@ -152,7 +152,7 @@ class UxReferenceParityTest {
         selectTab(BottomTab.MODS, "cinderbox.screen.mods")
         rule.onNodeWithTag("cinderbox.mods.filter").performScrollTo().performClick()
         rule.onNodeWithText("Refine discovery").assertExists()
-        rule.onNodeWithText("Show results").performScrollTo().performClick()
+        rule.onNodeWithTag("nex.r1.filter.apply").performScrollTo().performClick()
         rule.onNodeWithText("Refine discovery").assertDoesNotExist()
         selectTab(BottomTab.SETTINGS, "cinderbox.screen.more")
         rule.onNodeWithTag("cinderbox.more.help").performScrollTo().performClick()

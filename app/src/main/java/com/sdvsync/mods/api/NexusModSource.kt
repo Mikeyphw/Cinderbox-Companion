@@ -57,14 +57,22 @@ class NexusModSource(private val httpClient: OkHttpClient, private val dataStore
         }
     }
 
-    override suspend fun search(query: String, page: Int): ModSearchResult = withContext(Dispatchers.IO) {
+    override suspend fun search(query: String, page: Int): ModSearchResult =
+        browse(query, NexusCatalogFilters(), page)
+
+    /** Full catalog with server-side filters and pagination. No local post-filter approximation. */
+    suspend fun browse(
+        query: String,
+        filters: NexusCatalogFilters = NexusCatalogFilters(),
+        page: Int = 1
+    ): ModSearchResult = withContext(Dispatchers.IO) {
         val apiKey = getApiKey() ?: throw missingApiKeyException()
 
         val normalizedQuery = query.trim()
-        require(normalizedQuery.length >= NEXUS_MIN_SEARCH_QUERY_LENGTH) {
+        require(normalizedQuery.isEmpty() || normalizedQuery.length >= NEXUS_MIN_SEARCH_QUERY_LENGTH) {
             "Nexus search requires at least $NEXUS_MIN_SEARCH_QUERY_LENGTH characters"
         }
-        val operation = createNexusSearchOperation(normalizedQuery, page)
+        val operation = createNexusCatalogOperation(normalizedQuery, filters, page)
         val variables = JSONObject(operation.variables)
 
         val body = JSONObject().apply {

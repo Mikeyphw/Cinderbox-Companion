@@ -8,6 +8,8 @@ import androidx.datastore.preferences.preferencesDataStore
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.sdvsync.logging.AppLogger
+import com.sdvsync.mods.api.NexusCatalogFilters
+import com.sdvsync.mods.api.NexusCatalogSort
 import com.sdvsync.mods.models.AssociatedMod
 import com.sdvsync.mods.models.ModProfile
 import com.sdvsync.mods.profile.PortableProfileCodec
@@ -35,6 +37,7 @@ class ModDataStore(private val context: Context) {
         private val IGNORED_UPDATE_VERSIONS_KEY = stringPreferencesKey("ignored_update_versions")
         private val MOD_METADATA_KEY = stringPreferencesKey("mod_metadata")
         private val PROFILES_KEY = stringPreferencesKey("mod_profiles")
+        private val NEX_R1_FILTERS_KEY = stringPreferencesKey("nex_r1_catalog_filters")
         private val SAVE_MOD_ASSOCIATIONS_KEY = stringPreferencesKey("save_mod_associations")
 
         private const val ENCRYPTED_PREFS_NAME = "mod_encrypted_prefs"
@@ -72,6 +75,34 @@ class ModDataStore(private val context: Context) {
             }
             apply()
         }
+    }
+
+    /** Non-sensitive catalog preferences only; API secrets remain encrypted elsewhere. */
+    suspend fun getNexusCatalogFilters(): NexusCatalogFilters = context.modDataStore.data
+        .map { prefs ->
+            runCatching {
+                val obj = JSONObject(prefs[NEX_R1_FILTERS_KEY] ?: "{}")
+                NexusCatalogFilters(
+                    categoryName = obj.optString("category", ""),
+                    includeTag = obj.optString("include_tag", ""),
+                    excludeTag = obj.optString("exclude_tag", ""),
+                    updatedWithinDays = obj.optInt("updated_days", 0),
+                    minDownloads = obj.optInt("min_downloads", 0),
+                    minEndorsements = obj.optInt("min_endorsements", 0),
+                    sort = NexusCatalogSort.entries.firstOrNull { it.name == obj.optString("sort") }
+                        ?: NexusCatalogSort.ENDORSEMENTS
+                ).normalized()
+            }.getOrDefault(NexusCatalogFilters())
+        }.first()
+
+    suspend fun setNexusCatalogFilters(filters: NexusCatalogFilters) {
+        val f = filters.normalized()
+        val raw = JSONObject()
+            .put("category", f.categoryName).put("include_tag", f.includeTag)
+            .put("exclude_tag", f.excludeTag).put("updated_days", f.updatedWithinDays)
+            .put("min_downloads", f.minDownloads).put("min_endorsements", f.minEndorsements)
+            .put("sort", f.sort.name).toString()
+        context.modDataStore.edit { prefs -> prefs[NEX_R1_FILTERS_KEY] = raw }
     }
 
     // ── Update Cache ────────────────────────────────────────────────────
