@@ -41,6 +41,28 @@ class SourceDiagnosticsTest(unittest.TestCase):
         self.tamper(gate.TEST,'private val methodName = TestName()',
                     'private val methodName = "missing"',
                     'NEX_R3_HF01_MISSING:no-key prelaunch rule isolation')
+    def test_no_key_lazy_panel_requires_scroll(self):
+        self.tamper(gate.TEST,
+                    'performScrollToNode(androidx.compose.ui.test.hasText("Nexus connection required"))',
+                    'performScrollToNode(androidx.compose.ui.test.hasText("Unrelated"))',
+                    'NEX_R3_HF01_MISSING:no-key LazyColumn panel requires actual scroll')
+    def test_no_key_lazy_panel_cannot_skip_display_assertion(self):
+        self.tamper(gate.TEST,'textVisible("Nexus connection required")',
+                    'textVisible("Unrelated")',
+                    'NEX_R3_HF01_MISSING:no-key LazyColumn panel requires actual scroll')
+    def test_no_key_scroll_must_precede_assertion(self):
+        with tempfile.TemporaryDirectory() as t:
+            target=self.fixture(t)/gate.TEST
+            data=target.read_text()
+            scroll='performScrollToNode(androidx.compose.ui.test.hasText("Nexus connection required"))'
+            assertion='textVisible("Nexus connection required")'
+            self.assertIn(scroll,data)
+            self.assertIn(assertion,data)
+            source='            .performScrollToNode(androidx.compose.ui.test.hasText("Nexus connection required"))\n        textVisible("Nexus connection required")'
+            swapped='            .performScrollToNode(androidx.compose.ui.test.hasText("Nexus connection required"))'
+            self.assertIn(source,data)
+            target.write_text(data.replace(source,'        textVisible("Nexus connection required")\n'+swapped,1))
+            self.assertIn('NEX_R3_HF01_MISSING:no-key LazyColumn panel requires actual scroll',gate.check(Path(t)))
     def test_missing_timeout_diagnostic_refused(self):
         self.tamper(gate.TEST,'NEX_R3_TEXT_TIMEOUT:','removed:', 'NEX_R3_HF01_MISSING:named text wait')
     def test_missing_tag_stage_refused(self):

@@ -39,6 +39,12 @@ def check(root: Path = ROOT) -> list[str]:
             test.index('if (methodName.methodName != "noNexusKeyKeepsLocalModsRouteAvailable") {') <
             test.index('dataStore.setNexusApiKey(FIXTURE_KEY)') <
             test.index('loadKoinModules(overrideModule)'),
+        'no-key LazyColumn panel requires actual scroll':
+            'performScrollToNode(androidx.compose.ui.test.hasText("Nexus connection required"))' in test and
+            'textVisible("Nexus connection required")' in test and
+            test.index('performScrollToNode(androidx.compose.ui.test.hasText("Nexus connection required"))') <
+            test.index('textVisible("Nexus connection required")') and
+            'NEX_R3_NO_KEY_PRELAUNCH_REQUIRED' in test,
         'sanitized diagnostics': all(t in runner for t in (
             'diagnostic-$width.txt', 'NEX_R3_SANITIZED_FAILURE_DIAGNOSTIC',
             'INSTRUMENTATION_STATUS: (class|test|current|numtests)',

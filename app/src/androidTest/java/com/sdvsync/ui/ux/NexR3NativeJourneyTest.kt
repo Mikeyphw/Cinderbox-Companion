@@ -383,6 +383,11 @@ class NexR3NativeJourneyTest {
         assertEquals("NEX_R3_NO_KEY_PRELAUNCH_REQUIRED", null, store?.getNexusApiKey())
         store?.setNexusApiKey(null)
         openMods()
+        // The Nexus access panel is below the top cards. At 360dp, Compose's
+        // LazyColumn does not materialize the text until the list is scrolled.
+        // This is still the real no-key UI: no API key or provider response is used.
+        compose.onNodeWithTag("cinderbox.screen.mods")
+            .performScrollToNode(androidx.compose.ui.test.hasText("Nexus connection required"))
         textVisible("Nexus connection required")
         capture("no-key")
         assertTrue("No provider request permitted without key", transport.paths.isEmpty())
