@@ -26,6 +26,8 @@ jobs:
           python3 -B scripts/devtool/nex_r3_gate.py
           python3 -B scripts/devtool/nex_r3_hf01_gate.py
           python3 -B -m unittest discover -s scripts/devtool -p 'test_nex_r3_hf01_gate.py' -v
+          python3 -B scripts/devtool/nex_r3_hf02_gate.py
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_nex_r3_hf02_gate.py' -v
           python3 -B -m unittest discover -s scripts/devtool -p 'test_nex_r3_gate.py' -v
           python3 -B -m unittest discover -s scripts/devtool -p 'test_nex_r3_evidence.py' -v
           python3 -B scripts/devtool/nex_r2c_gate.py

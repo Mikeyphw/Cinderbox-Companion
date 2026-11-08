@@ -41,7 +41,7 @@ allowed=(
     re.compile(r'^INSTRUMENTATION_STATUS_CODE: '),
     re.compile(r'^INSTRUMENTATION_CODE: '),
     re.compile(r'^FAILURES!!!'),
-    re.compile(r'NEX_R3_(?:TEXT|TAG|OFFSET)_TIMEOUT:[a-z0-9_:-]+'),
+    re.compile(r'NEX_R3_(?:TEXT|TAG|OFFSET|HTTP_ERROR|HTTP_ERROR_UI)_TIMEOUT:[a-z0-9_:=\-]+'),
     re.compile(r'ComposeTimeoutException'),
     re.compile(r'NexR3NativeJourneyTest\.kt:[0-9]+'),
 )
@@ -50,7 +50,7 @@ for line in lines:
     if not any(rule.search(line) for rule in allowed): continue
     # Refuse logging arbitrary Android messages, URLs, keys or provider bodies.
     if 'NEX_R3_' in line:
-        tokens=re.findall(r'NEX_R3_(?:TEXT|TAG|OFFSET)_TIMEOUT:[a-z0-9_:-]+',line)
+        tokens=re.findall(r'NEX_R3_(?:TEXT|TAG|OFFSET|HTTP_ERROR|HTTP_ERROR_UI)_TIMEOUT:[a-z0-9_:=\-]+',line)
         selected.extend(tokens)
     elif 'NexR3NativeJourneyTest.kt:' in line:
         selected.extend(re.findall(r'NexR3NativeJourneyTest\.kt:[0-9]+',line))

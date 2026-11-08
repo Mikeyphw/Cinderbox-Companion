@@ -63,6 +63,7 @@ class NexR3NativeJourneyTest {
     private class OfflineNexusTransport : Interceptor {
         val mode = AtomicReference(Mode.SUCCESS)
         val offsets = Collections.synchronizedList(mutableListOf<Int>())
+        val responseCodes = Collections.synchronizedList(mutableListOf<Int>())
         val paths = Collections.synchronizedList(mutableListOf<String>())
 
         override fun intercept(chain: Interceptor.Chain): Response {
@@ -142,10 +143,13 @@ class NexR3NativeJourneyTest {
             }
         }
 
-        private fun result(request: okhttp3.Request, code: Int, json: String): Response =
-            Response.Builder().request(request).protocol(Protocol.HTTP_1_1)
+        private fun result(request: okhttp3.Request, code: Int, json: String): Response {
+            // Record only the synthetic HTTP status, never headers or body metadata.
+            responseCodes.add(code)
+            return Response.Builder().request(request).protocol(Protocol.HTTP_1_1)
                 .code(code).message("Synthetic fixture only")
                 .body(json.toResponseBody("application/json".toMediaType())).build()
+        }
     }
 
     private val transport = OfflineNexusTransport()
@@ -220,6 +224,38 @@ class NexR3NativeJourneyTest {
                 ":nexus_requests=" + transport.paths.size +
                 ":page_offsets=" + transport.offsets.size, failure)
         }
+    }
+
+    /**
+     * A 429/503 response is not proof that its error panel is on screen: LazyColumn
+     * virtualizes off-screen items, and changing a sort resets the old error state.
+     * Wait for the matching intercepted HTTP response, then scroll and assert the
+     * actual rendered failure panel. No network or credential access is involved.
+     */
+    private fun expectCatalogHttpFailure(status: Int, stage: String) {
+        require(status in listOf(401, 429, 503))
+        try {
+            compose.waitUntil(35000L) { transport.responseCodes.contains(status) }
+        } catch (failure: Throwable) {
+            throw AssertionError("NEX_R3_HTTP_ERROR_TIMEOUT:" + stage +
+                ":status=" + status + ":nexus_requests=" + transport.paths.size, failure)
+        }
+        val end = SystemClock.uptimeMillis() + 35000L
+        var last: Throwable? = null
+        do {
+            compose.waitForIdle()
+            try {
+                compose.onNodeWithTag("cinderbox.screen.mods")
+                    .performScrollToNode(androidx.compose.ui.test.hasText("Mod catalog unavailable"))
+                compose.onNodeWithText("Mod catalog unavailable").assertIsDisplayed()
+                return
+            } catch (failure: AssertionError) {
+                last = failure
+                SystemClock.sleep(150)
+            }
+        } while (SystemClock.uptimeMillis() < end)
+        throw AssertionError("NEX_R3_HTTP_ERROR_UI_TIMEOUT:" + stage +
+            ":status=" + status + ":nexus_requests=" + transport.paths.size, last)
     }
 
     private fun waitForPageOffset50() {
@@ -309,7 +345,7 @@ class NexR3NativeJourneyTest {
     @Test fun authRateLimitAndServiceFailuresStayReadOnly() {
         transport.mode.set(Mode.AUTH_401)
         openMods()
-        textVisible("Mod catalog unavailable")
+        expectCatalogHttpFailure(401, "auth-401")
         capture("auth-401")
         assertNoDownloadRequests()
 
@@ -317,14 +353,14 @@ class NexR3NativeJourneyTest {
         compose.onNodeWithTag("cinderbox.screen.mods")
             .performScrollToNode(androidx.compose.ui.test.hasText("New"))
         compose.onNodeWithText("New").performClick()
-        textVisible("Mod catalog unavailable")
+        expectCatalogHttpFailure(429, "rate-429")
         capture("rate-429")
 
         transport.mode.set(Mode.SERVER_503)
         compose.onNodeWithTag("cinderbox.screen.mods")
             .performScrollToNode(androidx.compose.ui.test.hasText("Updated"))
         compose.onNodeWithText("Updated").performClick()
-        textVisible("Mod catalog unavailable")
+        expectCatalogHttpFailure(503, "server-503")
         capture("server-503")
         assertNoDownloadRequests()
         assertTrue(transport.paths.count { it == "POST /v2/graphql" } >= 3)
