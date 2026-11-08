@@ -12,7 +12,8 @@ FILES=(
  'design/cinderbox/02_CONTRACT/ux-contract.json',
  'docs/security/M3_RELEASE_POLICY.json',
  'app/src/main/java/com/sdvsync/mods/GameSessionSafety.kt',
- 'app/src/main/java/com/sdvsync/download/R43BUpdateCoordinator.kt'
+ 'app/src/main/java/com/sdvsync/download/R43BUpdateCoordinator.kt',
+ 'scripts/devtool/r48_offline_gate.py'
 )
 
 # Only observations are allowed. Never silently bless a golden via this lane.
@@ -49,6 +50,15 @@ def check(root:Path=ROOT)->dict:
     assert "'native_pixel_parity_verified':False" in capture
     assert "'full_24_case_parity_verified':False" in capture
     assert 'UX09B_REFERENCE_LAYOUT_COUNT_CHANGED' in capture
+    # UX09B must reuse the independently qualified API36 offline gate. A raw
+    # svc data call fails with exit 20 on telephony-less Google APIs images.
+    assert 'python3 -B scripts/devtool/r48_offline_gate.py --serial "$serial"' in runner, 'UX09B_OFFLINE_GATE_MISSING'
+    assert 'svc data disable' not in runner and 'svc wifi disable' not in runner, 'UX09B_UNSAFE_RADIO_SETUP'
+    offline=source(root,'scripts/devtool/r48_offline_gate.py')
+    for requirement in ("'ro.kernel.qemu'", "'ro.build.version.sdk'", "'airplane-mode', 'enable'",
+                        "'wifi', 'disable'", "'airplane_mode_on'", "'wifi_on'",
+                        "'dumpsys', 'connectivity'", 'ACTIVE_DEFAULT_NETWORK_REFUSED'):
+        assert requirement in offline, 'UX09B_OFFLINE_CONTRACT_MISSING:' + requirement
     assert 'UX09B_PHYSICAL_DEVICE_REFUSED' in runner
     assert 'com.sdvsync.ui.ux.UxNativeFidelityCaptureTest' in runner
     assert 'wm density 320' in runner and 'for width in 393 360' in runner
