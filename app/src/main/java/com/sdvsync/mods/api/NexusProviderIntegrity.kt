@@ -44,6 +44,16 @@ internal object NexusProviderIntegrity {
         return cleaned.uppercase(Locale.ROOT)
     }
 
+    /** GraphQL updatedAt is an ISO-8601 UTC date, not an epoch integer. */
+    fun graphqlUpdatedAt(raw: String?): Long {
+        if (raw.isNullOrBlank() || raw.length > 64) return 0L
+        return try {
+            val instant = java.time.Instant.parse(raw.trim())
+            if (instant.epochSecond !in 946684800L..4102444799L) 0L
+            else instant.toEpochMilli()
+        } catch (_: java.time.DateTimeException) { 0L }
+    }
+
     /** Modern calendar range and overflow guard, normalized to milliseconds for UI. */
     fun epochSecondsToMillis(seconds: Long): Long =
         if (seconds in 946684800L..4102444799L) seconds * 1000L else 0L

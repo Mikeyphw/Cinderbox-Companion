@@ -1,0 +1,73 @@
+name: NEX-R2C Provider Schema Mapping and Optional Live Read-Only Qualification
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/sdvsync/mods/api/NexusCatalogOperation.kt'
+      - 'app/src/main/java/com/sdvsync/mods/api/NexusModSource.kt'
+      - 'app/src/main/java/com/sdvsync/mods/api/NexusProviderIntegrity.kt'
+      - 'app/src/test/java/com/sdvsync/mods/api/NexR1CatalogContractTest.kt'
+      - 'app/src/test/java/com/sdvsync/mods/api/NexusProviderIntegrityTest.kt'
+      - 'scripts/devtool/nex_r2c_*'
+      - 'scripts/devtool/test_nex_r2c_*'
+      - '.github/workflows/nex-r2c-provider-qualification.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nex-r2c-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Query fields, secrets, release safety, negative synthetic tests
+        run: |
+          set -euo pipefail
+          python3 -B scripts/devtool/nex_r2c_gate.py
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_nex_r2c_gate.py' -v
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_nex_r2c_live_probe.py' -v
+          python3 -B scripts/devtool/nex_r2b_gate.py
+          python3 -B scripts/devtool/nex_r2_gate.py
+          python3 -B scripts/devtool/nex_r1_gate.py
+  hosted-jvm:
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Provider catalog contract and timestamps, no local Gradle
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:testDebugUnitTest --tests 'com.sdvsync.mods.api.NexR1CatalogContractTest' --tests 'com.sdvsync.mods.api.NexusProviderIntegrityTest'
+  live-provider-qualification:
+    if: github.event_name == 'workflow_dispatch'
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Source-bound HTTPS Nexus probe (credential required, no raw responses)
+        env:
+          CINDERBOX_NEXUS_API_KEY: ${{ secrets.CINDERBOX_NEXUS_API_KEY }}
+        run: |
+          set -euo pipefail
+          python3 -B scripts/devtool/nex_r2c_live_probe.py --receipt "$RUNNER_TEMP/nex-r2c-live-receipt.json"
+      - name: Publish safe Boolean-only qualification receipt
+        if: success()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: nex-r2c-live-provider-schema-receipt
+          path: ${{ runner.temp }}/nex-r2c-live-receipt.json
+          if-no-files-found: error
+          retention-days: 7
