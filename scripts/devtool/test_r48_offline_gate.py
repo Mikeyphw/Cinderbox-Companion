@@ -74,6 +74,29 @@ class OfflineGateTests(unittest.TestCase):
         self.assertNotIn(['adb','-s',gate.SERIAL,'shell','service','check','phone'],fake.calls)
         self.assertIn(['adb','-s',gate.SERIAL,'shell','settings','get','global','mobile_data'],fake.calls)
 
+    def test_successful_noop_data_command_requires_explicit_absent_phone(self):
+        # API36 hosted emulator: svc data succeeds but mobile_data stays 1.
+        fake = FakeADB(data_ok=True, cellular_setting='1', phone='Service phone: not found')
+        self.assertEqual('TELEPHONY_ABSENT', self.qualify(fake))
+        self.assertIn(['adb', '-s', gate.SERIAL, 'shell', 'service', 'check', 'phone'], fake.calls)
+        self.assertIn(['adb', '-s', gate.SERIAL, 'shell', 'dumpsys', 'connectivity'], fake.calls)
+
+    def test_successful_data_command_with_live_phone_and_stale_setting_refuses(self):
+        self.refuse(FakeADB(data_ok=True, cellular_setting='1',
+                            phone='Service phone: found'), 'CELLULAR_NOT_DISABLED')
+
+    def test_successful_data_command_with_unknown_phone_identity_refuses(self):
+        self.refuse(FakeADB(data_ok=True, cellular_setting='null',
+                            phone='Service phone: unavailable'), 'CELLULAR_NOT_DISABLED')
+
+    def test_noop_data_with_no_phone_but_active_default_network_refuses(self):
+        self.refuse(FakeADB(data_ok=True, cellular_setting='1', default='101'),
+                    'ACTIVE_DEFAULT_NETWORK_REFUSED')
+
+    def test_noop_data_with_no_phone_but_wifi_still_on_refuses(self):
+        self.refuse(FakeADB(data_ok=True, cellular_setting='1', wifi='1'),
+                    'WIFI_NOT_DISABLED')
+
     def test_cellular_shutdown_fails_when_phone_service_exists(self):
         self.refuse(FakeADB(phone='Service phone: found'), 'CELLULAR_SHUTDOWN_REFUSED')
 
@@ -87,7 +110,8 @@ class OfflineGateTests(unittest.TestCase):
         self.refuse(FakeADB(wifi='1'), 'WIFI_NOT_DISABLED')
 
     def test_cellular_setting_must_be_off_if_service_available(self):
-        self.refuse(FakeADB(data_ok=True, cellular_setting='1'), 'CELLULAR_NOT_DISABLED')
+        self.refuse(FakeADB(data_ok=True, cellular_setting='1', phone='Service phone: found'),
+                    'CELLULAR_NOT_DISABLED')
 
     def test_active_default_network_is_never_qualified(self):
         self.refuse(FakeADB(default='101'), 'ACTIVE_DEFAULT_NETWORK_REFUSED')

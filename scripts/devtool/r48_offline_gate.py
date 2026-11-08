@@ -61,7 +61,15 @@ def ensure_offline(serial: str = SERIAL, *, polls: int = 12) -> str:
     if cellular == 'CELLULAR_DISABLED':
         mobile_setting = checked(serial, 'shell', 'settings', 'get', 'global', 'mobile_data')
         if mobile_setting != '0':
-            raise OfflineRefusal('CELLULAR_NOT_DISABLED')
+            # On some API36 system images ``svc data disable`` exits 0 even
+            # though no phone service exists; the global setting can remain
+            # stale. Require independent, exact service absence, then still
+            # prove there is no active default network below.
+            phone = run_adb(serial, 'shell', 'service', 'check', 'phone')
+            response = (phone.stdout + b'\n' + phone.stderr).decode('utf-8', 'replace').strip()
+            if phone.returncode != 0 or response != 'Service phone: not found':
+                raise OfflineRefusal('CELLULAR_NOT_DISABLED')
+            cellular = 'TELEPHONY_ABSENT'
     # AOSP ConnectivityService reports 'Active default network: none' when
     # getDefaultNetwork() is null; no direct internet requests or private data.
     # Poll briefly for framework teardown after disabling the radios. Unknown
