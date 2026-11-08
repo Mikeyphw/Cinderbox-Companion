@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Fail-closed, account-free network gate for disposable GitHub API36 emulators.
+"""Fail-closed offline setup for disposable GitHub API36 Android emulators.
 
-Telephony-less emulator images may omit the ``phone`` binder service; that is
-not a failure to shut down an available cellular radio. A default network or
-unknown radio/connectivity state still refuses hosted acceptance.
+Use ConnectivityService's airplane-mode command, not ``mobile_data`` (a
+persisted preference which may remain enabled when the modem/radio is off).
+Both framework-level airplane-mode state and the absence of a default network
+must be proved. Wi-Fi is independently disabled and verified, since Android
+permits Wi-Fi to be enabled while airplane mode is on.
 """
 from __future__ import annotations
 import argparse
@@ -42,47 +44,40 @@ def ensure_offline(serial: str = SERIAL, *, polls: int = 12) -> str:
         raise OfflineRefusal('PHYSICAL_DEVICE_REFUSED')
     if checked(serial, 'shell', 'getprop', 'ro.build.version.sdk') != '36':
         raise OfflineRefusal('ANDROID_API36_REQUIRED')
-    # Never ignore Wi-Fi shutdown errors.
+
+    # AOSP ConnectivityService owns the setting AND the radio-change
+    # broadcast. Writing settings.global.airplane_mode_on alone is not enough.
+    # If the command is missing or unauthorized, fail without qualifying CI.
+    if run_adb(serial, 'shell', 'cmd', 'connectivity', 'airplane-mode', 'enable').returncode != 0:
+        raise OfflineRefusal('AIRPLANE_ENABLE_REFUSED')
+
+    # Airplane mode intentionally allows optional Wi-Fi on Android, so ensure
+    # Wi-Fi is disabled independently and refuse any shutdown error.
     if run_adb(serial, 'shell', 'svc', 'wifi', 'disable').returncode != 0:
         raise OfflineRefusal('WIFI_SHUTDOWN_REFUSED')
-    # Prefer attempting mobile shutdown. Only a specifically absent phone
-    # service on the verified emulator permits skipping cellular shutdown.
-    data = run_adb(serial, 'shell', 'svc', 'data', 'disable')
-    if data.returncode == 0:
-        cellular = 'CELLULAR_DISABLED'
-    else:
-        phone = run_adb(serial, 'shell', 'service', 'check', 'phone')
-        response = (phone.stdout + b'\n' + phone.stderr).decode('utf-8', 'replace').strip()
-        if phone.returncode != 0 or response != 'Service phone: not found':
-            raise OfflineRefusal('CELLULAR_SHUTDOWN_REFUSED')
-        cellular = 'TELEPHONY_ABSENT'
+
+    # Read back two independent views of airplane mode, not just the command's
+    # return code; unknown or contradictory output must refuse qualification.
+    if checked(serial, 'shell', 'cmd', 'connectivity', 'airplane-mode') != 'enabled':
+        raise OfflineRefusal('AIRPLANE_NOT_ENABLED')
+    if checked(serial, 'shell', 'settings', 'get', 'global', 'airplane_mode_on') != '1':
+        raise OfflineRefusal('AIRPLANE_SETTING_NOT_ENABLED')
     if checked(serial, 'shell', 'settings', 'get', 'global', 'wifi_on') != '0':
         raise OfflineRefusal('WIFI_NOT_DISABLED')
-    if cellular == 'CELLULAR_DISABLED':
-        mobile_setting = checked(serial, 'shell', 'settings', 'get', 'global', 'mobile_data')
-        if mobile_setting != '0':
-            # On some API36 system images ``svc data disable`` exits 0 even
-            # though no phone service exists; the global setting can remain
-            # stale. Require independent, exact service absence, then still
-            # prove there is no active default network below.
-            phone = run_adb(serial, 'shell', 'service', 'check', 'phone')
-            response = (phone.stdout + b'\n' + phone.stderr).decode('utf-8', 'replace').strip()
-            if phone.returncode != 0 or response != 'Service phone: not found':
-                raise OfflineRefusal('CELLULAR_NOT_DISABLED')
-            cellular = 'TELEPHONY_ABSENT'
-    # AOSP ConnectivityService reports 'Active default network: none' when
-    # getDefaultNetwork() is null; no direct internet requests or private data.
-    # Poll briefly for framework teardown after disabling the radios. Unknown
-    # output must NEVER be treated as equivalent to an offline network.
-    for attempt in range(max(1, min(int(polls), 20))):
+
+    # No internet probe, packet generation, or private device data. Require
+    # ConnectivityService to have no default network after teardown. An
+    # unknown dumpsys shape fails rather than being mistaken for offline.
+    attempts = max(1, min(int(polls), 20))
+    for attempt in range(attempts):
         dump = checked(serial, 'shell', 'dumpsys', 'connectivity')
         match = DEFAULT.search(dump)
         if match is None:
             raise OfflineRefusal('DEFAULT_NETWORK_UNVERIFIABLE')
         if match.group(1).lower() in {'none', 'null'}:
-            print('R48_OFFLINE_NETWORK_VERIFIED:' + cellular)
-            return cellular
-        if attempt < polls - 1:
+            print('R48_OFFLINE_NETWORK_VERIFIED:AIRPLANE_MODE')
+            return 'AIRPLANE_MODE'
+        if attempt < attempts - 1:
             time.sleep(1)
     raise OfflineRefusal('ACTIVE_DEFAULT_NETWORK_REFUSED')
 

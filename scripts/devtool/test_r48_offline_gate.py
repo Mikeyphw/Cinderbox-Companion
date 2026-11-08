@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic negative and positive fixtures for R48A network qualification."""
+"""Deterministic success, failure and state-fidelity tests for R48A offline CI."""
 from __future__ import annotations
 import subprocess
 import sys
@@ -12,148 +12,173 @@ import r48_offline_gate as gate
 
 
 class FakeADB:
-    def __init__(self, *, data_ok=False, phone='Service phone: not found', wifi='0',
-                 default='none', wifi_command_ok=True, cellular_setting='0',
-                 sdk='36', qemu='1', dumpsys_ok=True, shutdown_rc=20):
-        self.data_ok = data_ok
-        self.phone = phone
-        self.wifi = wifi
-        self.default = default
+    def __init__(self, *, airplane_command_ok=True, airplane_query='enabled',
+                 airplane_setting='1', wifi_command_ok=True, wifi_setting='0',
+                 default='none', sdk='36', qemu='1', dumpsys_ok=True,
+                 airplane_query_ok=True, settings_ok=True, mobile_setting='1'):
+        self.airplane_command_ok = airplane_command_ok
+        self.airplane_query = airplane_query
+        self.airplane_query_ok = airplane_query_ok
+        self.airplane_setting = airplane_setting
         self.wifi_command_ok = wifi_command_ok
-        self.cellular_setting = cellular_setting
+        self.wifi_setting = wifi_setting
+        self.default = default
         self.sdk = sdk
         self.qemu = qemu
         self.dumpsys_ok = dumpsys_ok
-        self.shutdown_rc = shutdown_rc
+        self.settings_ok = settings_ok
+        # Deliberately stale on actual API36 emulators; should never be queried.
+        self.mobile_setting = mobile_setting
         self.calls = []
 
     def __call__(self, command, **_kwargs):
         self.calls.append(command)
         key = tuple(command[3:])
-        rc, stdout = 0, b''
+        rc, stdout, stderr = 0, b'', b''
         if key == ('shell', 'getprop', 'ro.kernel.qemu'):
             stdout = self.qemu.encode()
         elif key == ('shell', 'getprop', 'ro.build.version.sdk'):
             stdout = self.sdk.encode()
+        elif key == ('shell', 'cmd', 'connectivity', 'airplane-mode', 'enable'):
+            rc = 0 if self.airplane_command_ok else 20
+            if rc: stderr = b'cmd: ConnectivityService unavailable'
+        elif key == ('shell', 'cmd', 'connectivity', 'airplane-mode'):
+            rc = 0 if self.airplane_query_ok else 20
+            stdout = self.airplane_query.encode()
         elif key == ('shell', 'svc', 'wifi', 'disable'):
             rc = 0 if self.wifi_command_ok else 1
-        elif key == ('shell', 'svc', 'data', 'disable'):
-            rc = 0 if self.data_ok else self.shutdown_rc
-        elif key == ('shell', 'service', 'check', 'phone'):
-            stdout = self.phone.encode()
+        elif key == ('shell', 'settings', 'get', 'global', 'airplane_mode_on'):
+            rc = 0 if self.settings_ok else 1
+            stdout = self.airplane_setting.encode()
         elif key == ('shell', 'settings', 'get', 'global', 'wifi_on'):
-            stdout = self.wifi.encode()
-        elif key == ('shell', 'settings', 'get', 'global', 'mobile_data'):
-            stdout = self.cellular_setting.encode()
+            rc = 0 if self.settings_ok else 1
+            stdout = self.wifi_setting.encode()
         elif key == ('shell', 'dumpsys', 'connectivity'):
             rc = 0 if self.dumpsys_ok else 1
-            stdout = ('NetworkProviders for:\nActive default network: ' + self.default + '\nCurrent Networks:\n').encode()
+            stdout = ('NetworkProviders for:\nActive default network: ' + self.default +
+                      '\nCurrent Networks:\n').encode()
         else:
             raise AssertionError(f'unexpected ADB call: {key}')
-        return subprocess.CompletedProcess(command, rc, stdout, b'')
+        return subprocess.CompletedProcess(command, rc, stdout, stderr)
 
 
 class OfflineGateTests(unittest.TestCase):
-    def qualify(self, fake, serial=gate.SERIAL, polls=1):
+    def qualify(self, fake, *, serial=gate.SERIAL, polls=1):
         with patch.object(gate.subprocess, 'run', side_effect=fake), patch.object(gate.time, 'sleep'):
             return gate.ensure_offline(serial, polls=polls)
 
-    def refuse(self, fake, reason, serial=gate.SERIAL):
+    def refuse(self, fake, reason, *, serial=gate.SERIAL):
         with self.assertRaisesRegex(gate.OfflineRefusal, reason):
-            self.qualify(fake, serial)
+            self.qualify(fake, serial=serial)
 
-    def test_no_phone_service_emulator_succeeds_after_wifi_and_network_verified(self):
-        fake=FakeADB()
-        self.assertEqual('TELEPHONY_ABSENT', self.qualify(fake))
-        self.assertIn(['adb','-s',gate.SERIAL,'shell','service','check','phone'], fake.calls)
-        self.assertIn(['adb','-s',gate.SERIAL,'shell','dumpsys','connectivity'], fake.calls)
+    def test_real_api36_stale_mobile_preference_is_not_a_radio_status(self):
+        fake = FakeADB(mobile_setting='1')
+        self.assertEqual('AIRPLANE_MODE', self.qualify(fake))
+        self.assertFalse(any('mobile_data' in str(c) for c in fake.calls))
 
-    def test_valid_telephony_radio_shuts_down_normally(self):
-        fake=FakeADB(data_ok=True)
-        self.assertEqual('CELLULAR_DISABLED', self.qualify(fake))
-        self.assertNotIn(['adb','-s',gate.SERIAL,'shell','service','check','phone'],fake.calls)
-        self.assertIn(['adb','-s',gate.SERIAL,'shell','settings','get','global','mobile_data'],fake.calls)
+    def test_correct_airplane_mode_wifi_and_default_network_are_all_checked(self):
+        fake = FakeADB()
+        self.assertEqual('AIRPLANE_MODE', self.qualify(fake))
+        self.assertEqual([('cmd', 'connectivity', 'airplane-mode', 'enable'),
+                          ('svc', 'wifi', 'disable'),
+                          ('cmd', 'connectivity', 'airplane-mode'),
+                          ('settings', 'get', 'global', 'airplane_mode_on'),
+                          ('settings', 'get', 'global', 'wifi_on'),
+                          ('dumpsys', 'connectivity')],
+                         [tuple(c[4:]) for c in fake.calls[2:]])
 
-    def test_successful_noop_data_command_requires_explicit_absent_phone(self):
-        # API36 hosted emulator: svc data succeeds but mobile_data stays 1.
-        fake = FakeADB(data_ok=True, cellular_setting='1', phone='Service phone: not found')
-        self.assertEqual('TELEPHONY_ABSENT', self.qualify(fake))
-        self.assertIn(['adb', '-s', gate.SERIAL, 'shell', 'service', 'check', 'phone'], fake.calls)
-        self.assertIn(['adb', '-s', gate.SERIAL, 'shell', 'dumpsys', 'connectivity'], fake.calls)
+    def test_command_failure_is_not_ignored(self):
+        self.refuse(FakeADB(airplane_command_ok=False), 'AIRPLANE_ENABLE_REFUSED')
 
-    def test_successful_data_command_with_live_phone_and_stale_setting_refuses(self):
-        self.refuse(FakeADB(data_ok=True, cellular_setting='1',
-                            phone='Service phone: found'), 'CELLULAR_NOT_DISABLED')
+    def test_command_failure_prevents_wifi_or_any_later_actions(self):
+        fake = FakeADB(airplane_command_ok=False)
+        self.refuse(fake, 'AIRPLANE_ENABLE_REFUSED')
+        self.assertEqual(3, len(fake.calls))
 
-    def test_successful_data_command_with_unknown_phone_identity_refuses(self):
-        self.refuse(FakeADB(data_ok=True, cellular_setting='null',
-                            phone='Service phone: unavailable'), 'CELLULAR_NOT_DISABLED')
+    def test_readback_disabled_is_refused(self):
+        self.refuse(FakeADB(airplane_query='disabled'), 'AIRPLANE_NOT_ENABLED')
 
-    def test_noop_data_with_no_phone_but_active_default_network_refuses(self):
-        self.refuse(FakeADB(data_ok=True, cellular_setting='1', default='101'),
-                    'ACTIVE_DEFAULT_NETWORK_REFUSED')
+    def test_readback_unknown_is_refused(self):
+        self.refuse(FakeADB(airplane_query='unavailable'), 'AIRPLANE_NOT_ENABLED')
 
-    def test_noop_data_with_no_phone_but_wifi_still_on_refuses(self):
-        self.refuse(FakeADB(data_ok=True, cellular_setting='1', wifi='1'),
-                    'WIFI_NOT_DISABLED')
+    def test_readback_error_is_refused(self):
+        self.refuse(FakeADB(airplane_query_ok=False), 'ADB_COMMAND_REFUSED')
 
-    def test_cellular_shutdown_fails_when_phone_service_exists(self):
-        self.refuse(FakeADB(phone='Service phone: found'), 'CELLULAR_SHUTDOWN_REFUSED')
+    def test_airplane_setting_zero_refused(self):
+        self.refuse(FakeADB(airplane_setting='0'), 'AIRPLANE_SETTING_NOT_ENABLED')
 
-    def test_unknown_telephony_failure_is_not_skipped(self):
-        self.refuse(FakeADB(phone='Service phone: unavailable'), 'CELLULAR_SHUTDOWN_REFUSED')
+    def test_airplane_setting_unknown_refused(self):
+        self.refuse(FakeADB(airplane_setting='null'), 'AIRPLANE_SETTING_NOT_ENABLED')
 
-    def test_failed_wifi_shutdown_is_fatal(self):
+    def test_airplane_setting_read_failure_refused(self):
+        self.refuse(FakeADB(settings_ok=False), 'ADB_COMMAND_REFUSED')
+
+    def test_wifi_shutdown_failure_refused(self):
         self.refuse(FakeADB(wifi_command_ok=False), 'WIFI_SHUTDOWN_REFUSED')
 
-    def test_wifi_must_really_be_off(self):
-        self.refuse(FakeADB(wifi='1'), 'WIFI_NOT_DISABLED')
+    def test_wifi_still_on_even_in_airplane_mode_refused(self):
+        self.refuse(FakeADB(wifi_setting='1'), 'WIFI_NOT_DISABLED')
 
-    def test_cellular_setting_must_be_off_if_service_available(self):
-        self.refuse(FakeADB(data_ok=True, cellular_setting='1', phone='Service phone: found'),
-                    'CELLULAR_NOT_DISABLED')
+    def test_wifi_setting_unknown_refused(self):
+        self.refuse(FakeADB(wifi_setting='null'), 'WIFI_NOT_DISABLED')
 
-    def test_active_default_network_is_never_qualified(self):
-        self.refuse(FakeADB(default='101'), 'ACTIVE_DEFAULT_NETWORK_REFUSED')
+    def test_active_default_network_even_in_airplane_mode_refused(self):
+        self.refuse(FakeADB(default='102'), 'ACTIVE_DEFAULT_NETWORK_REFUSED')
 
-    def test_unknown_connectivity_output_refused(self):
+    def test_unknown_default_network_refused(self):
         self.refuse(FakeADB(default=''), 'DEFAULT_NETWORK_UNVERIFIABLE')
 
     def test_unreadable_connectivity_refused(self):
         self.refuse(FakeADB(dumpsys_ok=False), 'ADB_COMMAND_REFUSED')
 
-    def test_physical_device_identity_refused(self):
+    def test_no_default_network_reported_as_null_accepted(self):
+        self.assertEqual('AIRPLANE_MODE', self.qualify(FakeADB(default='null')))
+
+    def test_no_default_network_reported_as_none_accepted(self):
+        self.assertEqual('AIRPLANE_MODE', self.qualify(FakeADB(default='none')))
+
+    def test_physical_device_refused(self):
         self.refuse(FakeADB(qemu=''), 'PHYSICAL_DEVICE_REFUSED')
 
-    def test_non_api36_refused(self):
+    def test_old_android_api_refused(self):
         self.refuse(FakeADB(sdk='35'), 'ANDROID_API36_REQUIRED')
 
-    def test_other_serial_refused_before_any_adb_call(self):
-        fake=FakeADB()
-        self.refuse(fake, 'EMULATOR_SERIAL_REFUSED', 'localhost:5555')
-        self.assertEqual([],fake.calls)
+    def test_wrong_serial_refused_before_any_adb(self):
+        fake = FakeADB()
+        self.refuse(fake, 'EMULATOR_SERIAL_REFUSED', serial='localhost:5555')
+        self.assertFalse(fake.calls)
 
-    def test_null_default_network_accepted_if_other_gates_pass(self):
-        self.assertEqual('TELEPHONY_ABSENT', self.qualify(FakeADB(default='null')))
-
-    def test_network_tear_down_may_be_polled(self):
-        fake=FakeADB()
-        count=[0]
+    def test_network_teardown_is_polled(self):
+        fake = FakeADB()
+        counter = [0]
         def run(sequence, **kwargs):
             if sequence[-2:] == ['dumpsys', 'connectivity']:
-                count[0]+=1
-                fake.default = '102' if count[0] < 3 else 'none'
-            return fake(sequence,**kwargs)
-        with patch.object(gate.subprocess,'run',side_effect=run),patch.object(gate.time,'sleep') as sleep:
-            self.assertEqual('TELEPHONY_ABSENT',gate.ensure_offline(polls=3))
-            self.assertEqual(2,sleep.call_count)
+                counter[0] += 1
+                fake.default = '101' if counter[0] < 3 else 'none'
+            return fake(sequence, **kwargs)
+        with patch.object(gate.subprocess, 'run', side_effect=run), patch.object(gate.time, 'sleep') as sleep:
+            self.assertEqual('AIRPLANE_MODE', gate.ensure_offline(polls=3))
+            self.assertEqual(2, sleep.call_count)
 
-    def test_never_performs_network_probes_or_service_changes_outside_radio_controls(self):
-        fake=FakeADB()
+    def test_zero_polls_still_checks_once(self):
+        fake = FakeADB(default='101')
+        self.refuse(fake, 'ACTIVE_DEFAULT_NETWORK_REFUSED')
+        with patch.object(gate.subprocess, 'run', side_effect=fake), patch.object(gate.time, 'sleep') as sleep:
+            with self.assertRaises(gate.OfflineRefusal): gate.ensure_offline(polls=0)
+            sleep.assert_not_called()
+
+    def test_no_network_probes_or_unauthorized_radio_mutations(self):
+        fake = FakeADB()
         self.qualify(fake)
-        args=' '.join(' '.join(x) for x in fake.calls)
-        for forbidden in ('curl','ping','http://','https://','install','pm clear','/sdcard','connect Steam'):
-            self.assertNotIn(forbidden,args)
+        args = ' '.join(' '.join(c) for c in fake.calls)
+        for forbidden in ('curl', 'ping', 'http://', 'https://', 'pm clear', 'install',
+                          '/sdcard', 'svc data', 'mobile_data', 'service check phone'):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, args)
+
+    def test_main_prints_bounded_error_code_not_adb_output(self):
+        with patch('sys.argv', ['r48_offline_gate.py', '--serial', 'wrong']):
+            self.assertEqual(1, gate.main())
 
 
 if __name__ == '__main__':
