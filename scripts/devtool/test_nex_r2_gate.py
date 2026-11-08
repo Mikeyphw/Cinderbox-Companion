@@ -50,6 +50,18 @@ class NexR2SourceGateTests(unittest.TestCase):
             path.write_text(contents.replace('synthetic UI fixtures', 'SYNTHETIC UI FIXTURES'), encoding='utf-8')
             self.assertEqual([], gate.check(root))
 
+    def test_obsolete_top_level_compose_assert_exists_import_is_rejected(self):
+        # assertExists() is a SemanticsNodeInteraction member, not a top-level import.
+        self.audit_changed(FILES[3], 'import androidx.compose.ui.test.assertIsDisplayed',
+                           'import androidx.compose.ui.test.assertExists\nimport androidx.compose.ui.test.assertIsDisplayed',
+                           'NEX_R2_INVALID_COMPOSE_IMPORT:assertExists')
+
+    def test_semantics_node_member_assert_exists_calls_remain_untouched(self):
+        test = (gate.ROOT / FILES[3]).read_text(encoding='utf-8')
+        self.assertNotIn('import androidx.compose.ui.test.assertExists', test)
+        self.assertGreaterEqual(test.count('.assertExists()'), 5)
+        self.assertEqual([], gate.check())
+
     def test_missing_synthetic_disclosure_is_rejected(self):
         self.audit_changed(FILES[3], 'synthetic UI fixtures', 'live verified Nexus results',
                            'NEX_R2_MISSING:synthetic fixture honesty')

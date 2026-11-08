@@ -34,6 +34,8 @@ def check(root: Path = ROOT) -> list[str]:
     for name in ('release_enabled','publication_enabled','automatic_device_install','device_qualification_complete'):
         if policy.get(name) is not False: errors.append('NEX_R2_RELEASE_GATE:' + name)
     if 'svc data disable' in runner: errors.append('NEX_R2_OBSOLETE_CELLULAR_SHUTDOWN')
+    if 'import androidx.compose.ui.test.assertExists' in ui_test:
+        errors.append('NEX_R2_INVALID_COMPOSE_IMPORT:assertExists')
     # Do not allow a new browser engine, silent install, or privilege escalation in NEX-R2.
     for file in (display, ui_test):
         for token in ('WebView(', 'startDownload(', 'installPackage(', 'requestShizukuPermission(',

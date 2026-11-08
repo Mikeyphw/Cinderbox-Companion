@@ -2,7 +2,6 @@ package com.sdvsync.ui.ux
 
 import android.content.Context
 import android.graphics.Bitmap
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollToNode
