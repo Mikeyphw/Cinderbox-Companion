@@ -1,0 +1,82 @@
+name: NEX-R3 Real MainActivity Journey — Offline Provider Acceptance
+on:
+  pull_request:
+    paths:
+      - 'app/src/androidTest/java/com/sdvsync/ui/ux/NexR3NativeJourneyTest.kt'
+      - 'scripts/devtool/nex_r3_*'
+      - 'scripts/devtool/test_nex_r3_*'
+      - '.github/workflows/nex-r3-real-native-journey.yml'
+      - 'docs/devtool/NEX_R3_FINAL_ACCEPTANCE.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nex-r3-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Fail-closed source, release and emulator contract tests
+        run: |
+          set -euo pipefail
+          python3 -B scripts/devtool/nex_r3_gate.py
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_nex_r3_gate.py' -v
+          python3 -B -m unittest discover -s scripts/devtool -p 'test_nex_r3_evidence.py' -v
+          python3 -B scripts/devtool/nex_r2c_gate.py
+          python3 -B scripts/devtool/nex_r2b_gate.py
+          python3 -B scripts/devtool/nex_r2_gate.py
+          python3 -B scripts/devtool/nex_r1_gate.py
+  api36-main-activity:
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - run: sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Hosted JVM tests and compile actual debug plus androidTest APKs
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Require KVM and available AVD disk
+        run: |
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          avd_root="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
+          mkdir -p "$avd_root"
+          free_kb="$(df -Pk "$avd_root" | awk 'END {print $4}')"
+          test "$free_kb" -ge 4194304
+      - run: sdkmanager --install 'system-images;android-36;google_apis;x86_64'
+      - name: Hosted MainActivity synthetic provider journey at 360dp and 393dp
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          disk-size: 3072M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash scripts/devtool/nex_r3_emulator_ci.sh
+      - name: Upload source-pinned screenshots and receipt, even if failed
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: nex-r3-main-activity-synthetic-provider-api36
+          path: ${{ runner.temp }}/nex-r3-private-evidence/
+          if-no-files-found: warn
+          retention-days: 14
