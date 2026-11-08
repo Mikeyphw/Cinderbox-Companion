@@ -11,6 +11,7 @@ on:
       - 'scripts/devtool/nex_r5_*'
       - 'scripts/devtool/test_nex_r5_*'
       - 'scripts/devtool/ux05bd_gate.py'
+      - 'scripts/devtool/ux05bd_emulator_ci.sh'
       - 'scripts/devtool/fixtures/nex_r5_community/**'
       - '.github/workflows/nex-r5-unified-details.yml'
       - 'docs/devtool/NEX_R5_UNIFIED_DETAILS.md'
@@ -45,6 +46,15 @@ jobs:
           python3 -B scripts/devtool/nex_r2_gate.py
           python3 -B scripts/devtool/nex_r1_gate.py
           bash -n scripts/devtool/nex_r5_emulator_ci.sh
+          bash -n scripts/devtool/ux05bd_emulator_ci.sh
+          python3 -B scripts/devtool/r48_offline_gate.py --help >/dev/null
+          python3 -B - <<'PYTHON'
+          from pathlib import Path
+          script = Path('scripts/devtool/ux05bd_emulator_ci.sh').read_text()
+          assert 'python3 -B scripts/devtool/r48_offline_gate.py --serial "$SERIAL"' in script
+          assert 'shell svc data disable' not in script
+          print('NEX_R5_HF05_UX05BD_OFFLINE_GATE_SOURCE_PASS')
+          PYTHON
   api36-unified-details:
     needs: source-contract
     runs-on: ubuntu-24.04
