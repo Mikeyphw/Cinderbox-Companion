@@ -34,7 +34,10 @@ def check(root: Path = ROOT) -> list[str]:
 
     required = {
         'real activity and prelaunch injection': all(s in test for s in (
-            'createAndroidComposeRule<MainActivity>()', 'RuleChain.outerRule(fixture).around(compose)',
+            'createAndroidComposeRule<MainActivity>()',
+            'RuleChain.outerRule(methodName).around(fixture).around(compose)',
+            'private val methodName = TestName()',
+            'if (methodName.methodName != "noNexusKeyKeepsLocalModsRouteAvailable") {',
             'loadKoinModules(overrideModule)', 'unloadKoinModules(overrideModule)',
             'loadKoinModules(restoreModule)')),
         'synthetic-only credential and cleanup': all(s in test for s in (

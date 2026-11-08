@@ -28,7 +28,17 @@ def check(root: Path = ROOT) -> list[str]:
             'realMainActivityDiscoverPagingDetailReviewAndBack',
             'authRateLimitAndServiceFailuresStayReadOnly',
             'noNexusKeyKeepsLocalModsRouteAvailable',
-            'assertNoDownloadRequests()', 'RuleChain.outerRule(fixture).around(compose)')),
+            'assertNoDownloadRequests()',
+            'RuleChain.outerRule(methodName).around(fixture).around(compose)')),
+        'no-key prelaunch rule isolation': all(t in test for t in (
+            'private val methodName = TestName()',
+            'RuleChain.outerRule(methodName).around(fixture).around(compose)',
+            'if (methodName.methodName != "noNexusKeyKeepsLocalModsRouteAvailable") {',
+            'NEX_R3_NO_KEY_MUST_PRECEDE_ACTIVITY',
+            'NEX_R3_NO_KEY_PRELAUNCH_REQUIRED')) and
+            test.index('if (methodName.methodName != "noNexusKeyKeepsLocalModsRouteAvailable") {') <
+            test.index('dataStore.setNexusApiKey(FIXTURE_KEY)') <
+            test.index('loadKoinModules(overrideModule)'),
         'sanitized diagnostics': all(t in runner for t in (
             'diagnostic-$width.txt', 'NEX_R3_SANITIZED_FAILURE_DIAGNOSTIC',
             'INSTRUMENTATION_STATUS: (class|test|current|numtests)',

@@ -23,6 +23,24 @@ class SourceDiagnosticsTest(unittest.TestCase):
             p.write_text(data.replace(old,new,1))
             self.assertIn(expected,gate.check(root))
     def test_real_postimage_passes(self): self.assertEqual([],gate.check())
+    def test_old_fixture_only_rule_is_rejected(self):
+        self.tamper(gate.TEST,
+                    'RuleChain.outerRule(methodName).around(fixture).around(compose)',
+                    'RuleChain.outerRule(fixture).around(compose)',
+                    'NEX_R3_HF01_MISSING:real tests retained')
+    def test_no_key_selector_must_run_before_activity(self):
+        self.tamper(gate.TEST,
+                    'if (methodName.methodName != "noNexusKeyKeepsLocalModsRouteAvailable") {',
+                    'if (true) {',
+                    'NEX_R3_HF01_MISSING:no-key prelaunch rule isolation')
+    def test_no_key_prelaunch_assertion_cannot_disappear(self):
+        self.tamper(gate.TEST,'NEX_R3_NO_KEY_MUST_PRECEDE_ACTIVITY',
+                    'NO_KEY_LATE_ONLY',
+                    'NEX_R3_HF01_MISSING:no-key prelaunch rule isolation')
+    def test_testname_rule_is_required(self):
+        self.tamper(gate.TEST,'private val methodName = TestName()',
+                    'private val methodName = "missing"',
+                    'NEX_R3_HF01_MISSING:no-key prelaunch rule isolation')
     def test_missing_timeout_diagnostic_refused(self):
         self.tamper(gate.TEST,'NEX_R3_TEXT_TIMEOUT:','removed:', 'NEX_R3_HF01_MISSING:named text wait')
     def test_missing_tag_stage_refused(self):

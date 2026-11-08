@@ -31,8 +31,17 @@ def check(root: Path=ROOT)->list[str]:
         'capture("auth-401")','capture("rate-429")','capture("server-503")')),
       'real journey and no-key unaffected': all(x in test for x in (
         'realMainActivityDiscoverPagingDetailReviewAndBack','noNexusKeyKeepsLocalModsRouteAvailable',
-        'assertNoDownloadRequests()', 'RuleChain.outerRule(fixture).around(compose)',
+        'assertNoDownloadRequests()', 'RuleChain.outerRule(methodName).around(fixture).around(compose)',
         'NEX_R3_REFUSED_NON_EPHEMERAL_DEVICE')),
+      'real no-key prelaunch': all(x in test for x in (
+        'private val methodName = TestName()',
+        'RuleChain.outerRule(methodName).around(fixture).around(compose)',
+        'if (methodName.methodName != "noNexusKeyKeepsLocalModsRouteAvailable") {',
+        'NEX_R3_NO_KEY_MUST_PRECEDE_ACTIVITY',
+        'NEX_R3_NO_KEY_PRELAUNCH_REQUIRED')) and
+        test.index('if (methodName.methodName != "noNexusKeyKeepsLocalModsRouteAvailable") {') <
+        test.index('dataStore.setNexusApiKey(FIXTURE_KEY)') <
+        test.index('loadKoinModules(overrideModule)'),
       'per-viewport ephemerality': all(x in run for x in (
         'for width in 393 360; do', 'ro.kernel.qemu',
         'r48_offline_gate.py', 'pm clear com.sdvsync',

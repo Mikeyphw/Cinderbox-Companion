@@ -48,8 +48,17 @@ class NexR3GateTest(unittest.TestCase):
                     'NEX_R3_MISSING:no network fixture')
 
     def test_missing_prelaunch_injection_rejected(self):
-        self.mutate(gate.ANDROID, 'RuleChain.outerRule(fixture).around(compose)',
+        self.mutate(gate.ANDROID, 'RuleChain.outerRule(methodName).around(fixture).around(compose)',
                     'RuleChain.outerRule(compose).around(fixture)',
+                    'NEX_R3_MISSING:real activity and prelaunch injection')
+
+    def test_no_key_fixture_must_be_prelaunch(self):
+        self.mutate(gate.ANDROID, 'if (methodName.methodName != "noNexusKeyKeepsLocalModsRouteAvailable") {',
+                    'if (true) {', 'NEX_R3_MISSING:real activity and prelaunch injection')
+
+    def test_no_method_name_before_fixture(self):
+        self.mutate(gate.ANDROID, 'RuleChain.outerRule(methodName).around(fixture).around(compose)',
+                    'RuleChain.outerRule(fixture).around(compose)',
                     'NEX_R3_MISSING:real activity and prelaunch injection')
 
     def test_missing_teardown_rejected(self):

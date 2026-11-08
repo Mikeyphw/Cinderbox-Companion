@@ -38,6 +38,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.ExternalResource
+import org.junit.rules.TestName
 import org.junit.rules.RuleChain
 import org.junit.runner.RunWith
 import org.junit.rules.TestRule
@@ -157,6 +158,8 @@ class NexR3NativeJourneyTest {
     private val overrideModule = module { single { NexusModSource(offlineClient, get()) } }
     // Restore just the original Nexus source definition between test methods.
     private val restoreModule = module { single { NexusModSource(get(), get()) } }
+    // JUnit publishes the test name before our fixture and before MainActivity launch.
+    private val methodName = TestName()
     private val compose = createAndroidComposeRule<MainActivity>()
     private var store: ModDataStore? = null
     private var wasLoaded = false
@@ -168,8 +171,15 @@ class NexR3NativeJourneyTest {
             // This lane is only for a fresh hosted emulator, never real user accounts.
             assertEquals("NEX_R3_REFUSED_NON_EPHEMERAL_DEVICE", null, dataStore.getNexusApiKey())
             store = dataStore
-            dataStore.setNexusApiKey(FIXTURE_KEY)
-            assertEquals(FIXTURE_KEY, dataStore.getNexusApiKey())
+            // The no-key scenario must start BEFORE the actual Activity or its
+            // browse ViewModel reads the encrypted store. Removing the key inside
+            // the test body is too late and races ViewModel initialization.
+            if (methodName.methodName != "noNexusKeyKeepsLocalModsRouteAvailable") {
+                dataStore.setNexusApiKey(FIXTURE_KEY)
+                assertEquals(FIXTURE_KEY, dataStore.getNexusApiKey())
+            } else {
+                assertEquals("NEX_R3_NO_KEY_MUST_PRECEDE_ACTIVITY", null, dataStore.getNexusApiKey())
+            }
             loadKoinModules(overrideModule)
             wasLoaded = true
         }
@@ -188,7 +198,8 @@ class NexR3NativeJourneyTest {
         }
     }
 
-    @get:Rule val rules: TestRule = RuleChain.outerRule(fixture).around(compose)
+    @get:Rule val rules: TestRule =
+        RuleChain.outerRule(methodName).around(fixture).around(compose)
 
     private fun visible(tag: String) {
         val end = SystemClock.uptimeMillis() + 35000L
@@ -368,6 +379,8 @@ class NexR3NativeJourneyTest {
     }
 
     @Test fun noNexusKeyKeepsLocalModsRouteAvailable() {
+        // Never synthesize a late key removal as a no-key startup test.
+        assertEquals("NEX_R3_NO_KEY_PRELAUNCH_REQUIRED", null, store?.getNexusApiKey())
         store?.setNexusApiKey(null)
         openMods()
         textVisible("Nexus connection required")

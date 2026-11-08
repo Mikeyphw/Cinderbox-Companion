@@ -36,6 +36,16 @@ class TestHF02Source(unittest.TestCase):
  def test_missing_503_assertion(self):
   self.mutate(gate.TEST,'expectCatalogHttpFailure(503, "server-503")','textVisible("Mod catalog unavailable")',
               'NEX_R3_HF02_MISSING:all 3 scenarios')
+ def test_late_key_clear_is_not_accepted_as_prelaunch_isolation(self):
+  self.mutate(gate.TEST, 'if (methodName.methodName != "noNexusKeyKeepsLocalModsRouteAvailable") {',
+              'if (true) {', 'NEX_R3_HF02_MISSING:real no-key prelaunch')
+ def test_missing_method_name_ordering(self):
+  self.mutate(gate.TEST, 'RuleChain.outerRule(methodName).around(fixture).around(compose)',
+              'RuleChain.outerRule(fixture).around(compose)',
+              'NEX_R3_HF02_MISSING:real no-key prelaunch')
+ def test_no_key_removed_before_prelaunch(self):
+  self.mutate(gate.TEST, 'NEX_R3_NO_KEY_MUST_PRECEDE_ACTIVITY',
+              'ALLOW_LATE_KEY_REMOVAL', 'NEX_R3_HF02_MISSING:real no-key prelaunch')
  def test_missing_per_viewport_reset(self):
   self.mutate(gate.RUNNER, 'pm clear com.sdvsync', 'pm list packages com.sdvsync',
               'NEX_R3_HF02_MISSING:per-viewport ephemerality')
