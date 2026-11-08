@@ -176,6 +176,8 @@ fun ApprovedModsScreen(
     var filter by rememberSaveable { mutableStateOf(DiscoverFilter.ALL) }
     var gridMode by rememberSaveable { mutableStateOf(true) }
     var filterOpen by rememberSaveable { mutableStateOf(false) }
+    // Source-bound local bookmark identity only; no remote mod route when offline.
+    var offlineSavedId by rememberSaveable { mutableStateOf<String?>(null) }
     var installedOrder by rememberSaveable { mutableStateOf(0) }
     val bookmarkToggle: (ModCardData) -> Unit = { mod ->
         val next = if (mod.id in savedIds) savedCards - mod.id
@@ -183,6 +185,44 @@ fun ApprovedModsScreen(
                        .associate { it.key to it.value }
         bookmarks.edit().putString("cards", savedCardsJson(next.values)).apply()
         savedCards = next
+    }
+
+    // A saved card must be inspectable even without credentials. This sheet
+    // shows ONLY bounded local bookmark metadata, never file/install claims.
+    val offlineSavedCard = offlineSavedId?.let { savedCards[it] }
+    if (offlineSavedCard != null && !browse.hasApiKey) {
+        ModalBottomSheet(
+            onDismissRequest = { offlineSavedId = null },
+            containerColor = Dark.Paper, contentColor = Dark.Ink
+        ) {
+            Column(Modifier.fillMaxWidth().testTag("nex.r4.offline-saved-detail")
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp).padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Saved mod · offline", style = MaterialTheme.typography.titleMedium)
+                Text(offlineSavedCard.name, color = Dark.Ink,
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.testTag("nex.r4.offline-title"))
+                Text("by " + offlineSavedCard.author, color = Dark.Muted)
+                offlineSavedCard.categoryName?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, color = Dark.Forest)
+                }
+                if (offlineSavedCard.version.isNotBlank()) {
+                    Text("Version " + offlineSavedCard.version, color = Dark.Muted)
+                }
+                if (offlineSavedCard.summary.isNotBlank()) {
+                    Text(offlineSavedCard.summary, color = Dark.Ink)
+                }
+                Text("Saved metadata only. Live details, files and downloads require Nexus access.",
+                    color = Dark.Muted, style = MaterialTheme.typography.bodySmall)
+                Button(onClick = onBrowseMods, modifier = Modifier.fillMaxWidth()
+                    .testTag("nex.r4.configure-nexus")) { Text("Configure Nexus access") }
+                OutlinedButton(onClick = { offlineSavedId = null },
+                    modifier = Modifier.fillMaxWidth().testTag("nex.r4.offline-close")) {
+                    Text("Close")
+                }
+            }
+        }
     }
 
     // Local-only selections are explicit; all provider refinements are sent to Nexus.
@@ -460,9 +500,14 @@ fun ApprovedModsScreen(
                                 RemoteModCard(mod = mod, saved = id in savedIds,
                                     isInstalled = id in browse.installedSourceIds,
                                     compact = !gridMode,
+                                    offlineMetadataOnly = filter == DiscoverFilter.SAVED && !browse.hasApiKey,
                                     modifier = Modifier.weight(1f),
                                     onBookmark = { bookmarkToggle(mod) },
-                                    onOpen = { onOpenRemoteMod(mod.modId, mod.sourceId) })
+                                    onOpen = {
+                                        if (filter == DiscoverFilter.SAVED && !browse.hasApiKey)
+                                            offlineSavedId = id
+                                        else onOpenRemoteMod(mod.modId, mod.sourceId)
+                                    })
                             }
                             if (rows[rowIndex].size == 1 && gridMode) {
                                 Spacer(Modifier.weight(1f))
@@ -619,7 +664,8 @@ private fun ModsChoice(label: String, selected: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun RemoteModCard(mod: ModCardData, saved: Boolean, isInstalled: Boolean,
-    compact: Boolean, modifier: Modifier, onBookmark: () -> Unit, onOpen: () -> Unit) {
+    compact: Boolean, offlineMetadataOnly: Boolean, modifier: Modifier,
+    onBookmark: () -> Unit, onOpen: () -> Unit) {
     Surface(modifier = modifier.testTag("nex.r2.card")
             .clickable(role = Role.Button, onClick = onOpen),
         color = Dark.Paper, shape = RoundedCornerShape(16.dp),
@@ -627,7 +673,8 @@ private fun RemoteModCard(mod: ModCardData, saved: Boolean, isInstalled: Boolean
         Column {
             Box(Modifier.fillMaxWidth().height(if (compact) 76.dp else 112.dp)
                 .background(Dark.Paper3)) {
-                if (!mod.pictureUrl.isNullOrBlank()) {
+                // Never fetch provider images for a locally saved offline card.
+                if (!offlineMetadataOnly && !mod.pictureUrl.isNullOrBlank()) {
                     AsyncImage(model = mod.pictureUrl, contentDescription = null,
                         modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 } else {
@@ -672,7 +719,9 @@ private fun RemoteModCard(mod: ModCardData, saved: Boolean, isInstalled: Boolean
                     Text("Updated $day UTC", color = Dark.Muted,
                         style = MaterialTheme.typography.labelSmall)
                 }
-                Text(if (isInstalled) "Installed locally" else if (saved) "Saved locally · View details"
+                Text(if (offlineMetadataOnly) "Saved metadata · Available offline"
+                     else if (isInstalled) "Installed locally"
+                     else if (saved) "Saved locally · View details"
                      else "View details", color = Dark.Forest,
                     style = MaterialTheme.typography.labelSmall)
             }
