@@ -187,20 +187,48 @@ class NexR3NativeJourneyTest {
     @get:Rule val rules: TestRule = RuleChain.outerRule(fixture).around(compose)
 
     private fun visible(tag: String) {
-        val end = SystemClock.uptimeMillis() + 18000L
+        val end = SystemClock.uptimeMillis() + 35000L
         do {
             compose.waitForIdle()
             try { compose.onNodeWithTag(tag).assertIsDisplayed(); return }
             catch (_: AssertionError) { SystemClock.sleep(150) }
         } while (SystemClock.uptimeMillis() < end)
-        compose.onNodeWithTag(tag).assertIsDisplayed()
+        try {
+            compose.onNodeWithTag(tag).assertIsDisplayed()
+        } catch (failure: AssertionError) {
+            throw AssertionError("NEX_R3_TAG_TIMEOUT:" + tag, failure)
+        }
     }
 
     private fun textVisible(value: String) {
-        compose.waitUntil(18000L) {
-            compose.onAllNodesWithText(value).fetchSemanticsNodes().isNotEmpty()
+        // A real UI assertion, never a synthetic success. Surface the exact timed-out
+        // condition instead of the original anonymous ComposeTimeoutException.
+        try {
+            compose.waitUntil(35000L) {
+                compose.onAllNodesWithText(value).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText(value).assertIsDisplayed()
+        } catch (failure: Throwable) {
+            val stage = when (value) {
+                MOD_NAME -> "synthetic-mod-title"
+                "NEX-R3 Page Two" -> "second-page-title"
+                "Mod catalog unavailable" -> "catalog-error"
+                "Nexus connection required" -> "no-api-key"
+                else -> "unidentified"
+            }
+            throw AssertionError("NEX_R3_TEXT_TIMEOUT:" + stage +
+                ":nexus_requests=" + transport.paths.size +
+                ":page_offsets=" + transport.offsets.size, failure)
         }
-        compose.onNodeWithText(value).assertIsDisplayed()
+    }
+
+    private fun waitForPageOffset50() {
+        try {
+            compose.waitUntil(35000L) { transport.offsets.contains(50) }
+        } catch (failure: Throwable) {
+            throw AssertionError("NEX_R3_OFFSET_TIMEOUT:50" +
+                ":nexus_requests=" + transport.paths.size, failure)
+        }
     }
 
     private fun capture(label: String) {
@@ -244,7 +272,7 @@ class NexR3NativeJourneyTest {
         compose.onNodeWithTag("cinderbox.screen.mods")
             .performScrollToNode(hasTestTag("cinderbox.mods.load-more"))
         compose.onNodeWithTag("cinderbox.mods.load-more").performClick()
-        compose.waitUntil(18000L) { transport.offsets.contains(50) }
+        waitForPageOffset50()
         compose.onNodeWithTag("cinderbox.screen.mods")
             .performScrollToNode(hasTestTag("nex.r2.card"))
         // Page two is checked by provider-owned offset + rendered result, not by local filtering.

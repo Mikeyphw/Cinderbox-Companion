@@ -30,8 +30,48 @@ for width in 393 360; do
     com.sdvsync.test/androidx.test.runner.AndroidJUnitRunner >"$log" 2>&1 || \
     ! grep -Fx 'OK (3 tests)' "$log" >/dev/null || \
     ! grep -Fx 'INSTRUMENTATION_CODE: -1' "$log" >/dev/null; then
-    grep -E 'Assertion|Exception|FAILURES!!!|INSTRUMENTATION_CODE|NEX_R3_' "$log" | tail -45 >&2 || :
+    # The original runner discarded the only log naming the failing test/condition.
+    # Emit a bounded, allowlisted, synthetic-only diagnostic instead of raw logs.
+    python3 -B - "$log" "$out/diagnostic-$width.txt" <<'PY_DIAGNOSTIC'
+import re,sys
+from pathlib import Path
+lines=Path(sys.argv[1]).read_text(encoding='utf-8',errors='replace').splitlines()
+allowed=(
+    re.compile(r'^INSTRUMENTATION_STATUS: (class|test|current|numtests)='),
+    re.compile(r'^INSTRUMENTATION_STATUS_CODE: '),
+    re.compile(r'^INSTRUMENTATION_CODE: '),
+    re.compile(r'^FAILURES!!!'),
+    re.compile(r'NEX_R3_(?:TEXT|TAG|OFFSET)_TIMEOUT:[a-z0-9_:-]+'),
+    re.compile(r'ComposeTimeoutException'),
+    re.compile(r'NexR3NativeJourneyTest\.kt:[0-9]+'),
+)
+selected=[]
+for line in lines:
+    if not any(rule.search(line) for rule in allowed): continue
+    # Refuse logging arbitrary Android messages, URLs, keys or provider bodies.
+    if 'NEX_R3_' in line:
+        tokens=re.findall(r'NEX_R3_(?:TEXT|TAG|OFFSET)_TIMEOUT:[a-z0-9_:-]+',line)
+        selected.extend(tokens)
+    elif 'NexR3NativeJourneyTest.kt:' in line:
+        selected.extend(re.findall(r'NexR3NativeJourneyTest\.kt:[0-9]+',line))
+    elif 'ComposeTimeoutException' in line:
+        selected.append('COMPOSE_TIMEOUT_EXCEPTION')
+    elif re.match(r'^INSTRUMENTATION_STATUS: (class|test|current|numtests)=',line):
+        selected.append(line.split('Z ',1)[-1][-250:] if 'Z ' in line else line[:250])
+    elif line.startswith(('INSTRUMENTATION_STATUS_CODE:', 'INSTRUMENTATION_CODE:', 'FAILURES!!!')):
+        selected.append(line[:160])
+selected=selected[-90:]
+Path(sys.argv[2]).write_text('NEX_R3_SANITIZED_FAILURE_DIAGNOSTIC\n'+'\n'.join(selected)+'\n')
+print('\n'.join(selected))
+PY_DIAGNOSTIC
     rm -f -- "$log"
+    # Preserve only screenshots taken before failure; no secrets or raw HTTP data.
+    for stage in discover page-two detail file-review returned auth-401 rate-429 server-503 no-key; do
+      img="$out/$stage-$width.png"
+      if ! adb -s "$serial" exec-out run-as com.sdvsync cat "files/nex-r3-$stage-$width.png" > "$img" 2>/dev/null; then
+        rm -f -- "$img"
+      fi
+    done
     echo NEX_R3_HOSTED_INSTRUMENTATION_REFUSED >&2
     exit 1
   fi
