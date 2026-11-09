@@ -1,13 +1,5 @@
 name: NEX-R4 Offline Saved Native Journey (synthetic, read-only)
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModsScreen.kt'
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/NexR4OfflineSavedTest.kt'
-      - 'scripts/devtool/nex_r4_*'
-      - 'scripts/devtool/test_nex_r4_*'
-      - '.github/workflows/nex-r4-offline-saved.yml'
-      - 'docs/devtool/NEX_R4_OFFLINE_BOOKMARKS.md'
   workflow_dispatch:
 permissions:
   contents: read

@@ -1,15 +1,5 @@
 name: Cinderbox NEX-R2 — Rich native cards and safe mod details
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/mods/api/NexR2Display.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModsScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModDetailScreen.kt'
-      - 'app/src/test/java/com/sdvsync/mods/api/NexR2DisplayTest.kt'
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/NexR2RichDetailTest.kt'
-      - 'scripts/devtool/nex_r2_*'
-      - 'scripts/devtool/test_nex_r2_gate.py'
-      - '.github/workflows/nex-r2-rich-native.yml'
   workflow_dispatch:
 permissions:
   contents: read

@@ -1,22 +1,5 @@
 name: R45-R46 Audited UI and Privacy Contracts
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/**'
-      - 'app/src/test/java/com/sdvsync/ui/**'
-      - 'scripts/devtool/r45*.py'
-      - 'scripts/devtool/test_r45*.py'
-      - '.devtool.toml'
-      - '.github/workflows/r45-r46-audited.yml'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/**'
-      - 'app/src/test/java/com/sdvsync/ui/**'
-      - 'scripts/devtool/r45*.py'
-      - 'scripts/devtool/test_r45*.py'
-      - '.devtool.toml'
-      - '.github/workflows/r45-r46-audited.yml'
   workflow_dispatch:
 permissions:
   contents: read

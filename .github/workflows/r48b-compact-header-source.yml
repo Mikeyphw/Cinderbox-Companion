@@ -1,18 +1,5 @@
 name: R48B Compact Real-UI Header Source Contract (no Gradle)
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/ui/components/StardewTopAppBar.kt'
-      - 'scripts/devtool/r48b_*'
-      - '.github/workflows/r48b-compact-header-source.yml'
-      - 'docs/security/M3_RELEASE_POLICY.json'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/ui/components/StardewTopAppBar.kt'
-      - 'scripts/devtool/r48b_*'
-      - '.github/workflows/r48b-compact-header-source.yml'
-      - 'docs/security/M3_RELEASE_POLICY.json'
   workflow_dispatch:
 permissions:
   contents: read

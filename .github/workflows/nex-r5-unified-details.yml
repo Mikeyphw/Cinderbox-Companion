@@ -1,20 +1,5 @@
 name: NEX-R5 Unified Native Details + Secure Posts/Media Browser Fallback
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModDetailScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ModDetailScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/components/HtmlText.kt'
-      - 'app/src/main/java/com/sdvsync/mods/api/NexusModPageLinks.kt'
-      - 'app/src/test/java/com/sdvsync/mods/api/NexusModPageLinksTest.kt'
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/NexR5UnifiedDetailTest.kt'
-      - 'scripts/devtool/nex_r5_*'
-      - 'scripts/devtool/test_nex_r5_*'
-      - 'scripts/devtool/ux05bd_gate.py'
-      - 'scripts/devtool/ux05bd_emulator_ci.sh'
-      - 'scripts/devtool/fixtures/nex_r5_community/**'
-      - '.github/workflows/nex-r5-unified-details.yml'
-      - 'docs/devtool/NEX_R5_UNIFIED_DETAILS.md'
   workflow_dispatch:
 permissions:
   contents: read

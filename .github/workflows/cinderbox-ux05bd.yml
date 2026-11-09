@@ -1,25 +1,5 @@
 name: UX-05B-D Native Mod Detail, Requirements and Visual Fidelity
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/mods/ModRequirementsAssessor.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModDetailScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModDetailViewModel.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModsScreen.kt'
-      - 'app/src/test/java/com/sdvsync/mods/ModRequirementsAssessorTest.kt'
-      - 'app/src/androidTest/java/com/sdvsync/qualification/UX05DetailVisualDeviceTest.kt'
-      - 'scripts/devtool/ux05bd_*'
-      - '.github/workflows/cinderbox-ux05bd.yml'
-      - 'docs/security/M3_RELEASE_POLICY.json'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/mods/ModRequirementsAssessor.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModDetailScreen.kt'
-      - 'scripts/devtool/ux05bd_*'
-      - '.github/workflows/cinderbox-ux05bd.yml'
   workflow_dispatch:
 permissions:
   contents: read

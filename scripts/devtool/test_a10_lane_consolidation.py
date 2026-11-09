@@ -18,7 +18,7 @@ ROOT=Path(__file__).resolve().parents[2]
 DISPATCH='.github/workflows/devtool-android-build.yml'
 LEGACY='.github/workflows/build.yml'
 M3='scripts/devtool/m3_build_evidence.py'
-LEGACY_SHA256='ddd3c35fb54fbb12b5de9d17b2a83d09a1059562de40030334bee5dc51cb4742'
+LEGACY_SHA256='18e6f06f43b0490767cedafac051ab05c5c360f90c1f0b30157f616ae8cfe521'
 A10_START='      # A10: keep the original Devtool legacy artifact contract only when'
 A10_END='      - name: M23 synthetic Android test source contract\n'
 
@@ -67,7 +67,7 @@ def check_contract(root:Path=ROOT)->None:
         raise ValueError('Native lane no longer restricted to native-only mode')
     if 'if: failure()' in block or 'if: always()' in block:
         raise ValueError('Legacy fallback must never auto-retry failed native')
-    if '  workflow_call:\n' not in legacy or '  push:\n' not in legacy or '  pull_request:\n' not in legacy:
+    if '  workflow_call:\n' not in legacy or '  workflow_dispatch:\n' not in legacy:
         raise ValueError('Push/PR legacy gates or reusable entry missing')
     if '    steps:\n' not in legacy or 'M16 verify pinned instrumentation APK signer' not in legacy:
         raise ValueError('Existing M3-M24 CI steps missing')

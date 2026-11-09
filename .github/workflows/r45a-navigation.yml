@@ -1,26 +1,5 @@
 name: R45A Five-Tab Navigation and Home Source Contracts
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/**'
-      - 'app/src/main/res/values/strings.xml'
-      - 'app/src/test/java/com/sdvsync/ui/**'
-      - 'scripts/devtool/r45a_*.py'
-      - 'scripts/devtool/test_r45a_gate.py'
-      - '.devtool.toml'
-      - '.github/workflows/r45a-navigation.yml'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/**'
-      - 'app/src/main/res/values/strings.xml'
-      - 'app/src/test/java/com/sdvsync/ui/**'
-      - 'scripts/devtool/r45a_*.py'
-      - 'scripts/devtool/test_r45a_gate.py'
-      - '.devtool.toml'
-      - '.github/workflows/r45a-navigation.yml'
   workflow_dispatch:
 permissions:
   contents: read

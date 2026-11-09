@@ -1,25 +1,5 @@
 name: Cinderbox UX-09A — native parity foundation
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/ui/screens/HomeScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedSavesScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModsScreen.kt'
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/**'
-      - 'design/cinderbox/02_CONTRACT/**'
-      - 'scripts/devtool/ux09a_*'
-      - 'scripts/devtool/test_ux09a_gate.py'
-      - '.github/workflows/cinderbox-ux09a-native-parity.yml'
-      - 'docs/security/M3_RELEASE_POLICY.json'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/ui/screens/HomeScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedSavesScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModsScreen.kt'
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/**'
-      - 'scripts/devtool/ux09a_*'
-      - '.github/workflows/cinderbox-ux09a-native-parity.yml'
   workflow_dispatch:
 permissions:
   contents: read

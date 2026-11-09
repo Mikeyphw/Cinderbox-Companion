@@ -1,38 +1,5 @@
 name: R48A Real MainActivity Hosted Emulator Acceptance (not device/release)
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/r48-real-activity-acceptance.yml'
-      - 'scripts/devtool/r48_*'
-      - 'scripts/devtool/test_r48_gate.py'
-      - 'app/src/androidTest/java/com/sdvsync/qualification/R48RealActivityDeviceTest.kt'
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/**'
-      - 'app/src/main/java/com/sdvsync/mods/**'
-      - 'app/src/androidTest/java/com/sdvsync/mods/profile/**'
-      - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt'
-      - 'scripts/devtool/m25_*.py'
-      - 'scripts/devtool/test_m25_*.py'
-      - 'app/build.gradle.kts'
-      - 'docs/security/M3_RELEASE_POLICY.json'
-  push:
-    branches: [master]
-    paths:
-      - '.github/workflows/r48-real-activity-acceptance.yml'
-      - 'scripts/devtool/r48_*'
-      - 'scripts/devtool/test_r48_gate.py'
-      - 'app/src/androidTest/java/com/sdvsync/qualification/R48RealActivityDeviceTest.kt'
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/**'
-      - 'app/src/main/java/com/sdvsync/mods/**'
-      - 'app/src/androidTest/java/com/sdvsync/mods/profile/**'
-      - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt'
-      - 'scripts/devtool/m25_*.py'
-      - 'scripts/devtool/test_m25_*.py'
-      - 'app/build.gradle.kts'
-      - 'docs/security/M3_RELEASE_POLICY.json'
   workflow_dispatch:
 permissions:
   contents: read

@@ -1,21 +1,5 @@
 name: NEX-R2B Provider Integrity and JVM Mapping
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/mods/api/NexusModSource.kt'
-      - 'app/src/main/java/com/sdvsync/mods/api/NexusProviderIntegrity.kt'
-      - 'app/src/test/java/com/sdvsync/mods/api/NexusProviderIntegrityTest.kt'
-      - 'scripts/devtool/nex_r2b_*'
-      - 'scripts/devtool/test_nex_r2b_gate.py'
-      - 'scripts/devtool/fixtures/nex_r2b/**'
-      - '.github/workflows/nex-r2b-provider-integrity.yml'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/mods/api/NexusModSource.kt'
-      - 'app/src/main/java/com/sdvsync/mods/api/NexusProviderIntegrity.kt'
-      - 'app/src/test/java/com/sdvsync/mods/api/NexusProviderIntegrityTest.kt'
-      - 'scripts/devtool/nex_r2b_*'
   workflow_dispatch:
 permissions:
   contents: read

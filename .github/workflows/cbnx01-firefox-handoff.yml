@@ -1,19 +1,5 @@
 name: CB-NX01 Exact Nexus File Firefox Handoff
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/mods/api/NxmUriPolicy.kt'
-      - 'app/src/main/java/com/sdvsync/mods/api/NexusBrowserLauncher.kt'
-      - 'app/src/main/java/com/sdvsync/mods/api/NexusBrowserHandoff.kt'
-      - 'app/src/main/java/com/sdvsync/mods/ModDownloadManager.kt'
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModDetailViewModel.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModDetailScreen.kt'
-      - 'app/src/test/java/com/sdvsync/mods/api/CbNx01HandoffTest.kt'
-      - 'app/src/androidTest/java/com/sdvsync/mods/api/CbNx01IntentDeviceTest.kt'
-      - 'scripts/devtool/cbnx01_*'
-      - 'scripts/devtool/test_cbnx01_*'
-      - '.github/workflows/cbnx01-firefox-handoff.yml'
   workflow_dispatch:
 permissions:
   contents: read

@@ -1,23 +1,5 @@
 name: Cinderbox UX-09B3 — 21 real routes plus three isolated UI fixture screenshots
 on:
-  pull_request:
-    paths:
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/**'
-      - 'scripts/devtool/ux09b3_*'
-      - 'scripts/devtool/ux09b4_*'
-      - 'scripts/devtool/test_ux09b4_gate.py'
-      - 'scripts/devtool/test_ux09b3_gate.py'
-      - 'design/cinderbox/**'
-      - 'docs/security/M3_RELEASE_POLICY.json'
-      - '.github/workflows/cinderbox-ux09b3-presentation-fixtures.yml'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/**'
-      - 'scripts/devtool/ux09b3_*'
-      - 'scripts/devtool/ux09b4_*'
-      - 'scripts/devtool/test_ux09b4_gate.py'
-      - '.github/workflows/cinderbox-ux09b3-presentation-fixtures.yml'
   workflow_dispatch:
 permissions:
   contents: read

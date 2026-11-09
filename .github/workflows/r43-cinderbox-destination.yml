@@ -1,27 +1,6 @@
 name: R43 Cinderbox-only destination source contracts
 
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/cinderbox/**'
-      - 'app/src/main/java/com/sdvsync/download/**'
-      - 'app/src/main/java/com/sdvsync/local/**'
-      - 'app/src/main/java/com/sdvsync/ui/**'
-      - 'app/src/test/java/com/sdvsync/local/CinderboxDownloadDestinationTest.kt'
-      - 'scripts/devtool/r43_*.py'
-      - '.devtool.toml'
-      - '.github/workflows/r43-cinderbox-destination.yml'
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/cinderbox/**'
-      - 'app/src/main/java/com/sdvsync/download/**'
-      - 'app/src/main/java/com/sdvsync/local/**'
-      - 'app/src/main/java/com/sdvsync/ui/**'
-      - 'app/src/test/java/com/sdvsync/local/CinderboxDownloadDestinationTest.kt'
-      - 'scripts/devtool/r43_*.py'
-      - '.devtool.toml'
-      - '.github/workflows/r43-cinderbox-destination.yml'
   workflow_dispatch:
 
 permissions:

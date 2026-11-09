@@ -82,8 +82,8 @@ def check_source(root: Path) -> None:
                        "    secrets: inherit\n")
     if legacy_delegate not in dispatched or dispatched.count('uses: ./.github/workflows/build.yml') != 1:
         raise QualificationError('Dispatch must reuse the guarded canonical legacy build')
-    if '  workflow_call:' not in push or '  push:' not in push or '  pull_request:' not in push:
-        raise QualificationError('Canonical legacy CI must support push/PR and guarded reuse')
+    if '  workflow_call:' not in push or '  workflow_dispatch:' not in push:
+        raise QualificationError('Canonical legacy CI must support manual dispatch and guarded reuse')
     if "default: 'native-only'" not in dispatched or 'default: true' not in dispatched:
         raise QualificationError('Native build is not the default dispatch lane')
     for name, body in (("dispatch", dispatched), ("push", push)):

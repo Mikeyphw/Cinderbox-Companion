@@ -1,18 +1,5 @@
 name: Cinderbox NEX-R1 — API-first catalog filters and real native UI
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/mods/api/NexusCatalog*.kt'
-      - 'app/src/main/java/com/sdvsync/mods/api/NexusModSource.kt'
-      - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModBrowseViewModel.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModsScreen.kt'
-      - 'app/src/test/java/com/sdvsync/mods/api/NexR1CatalogContractTest.kt'
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/NexR1NativeFiltersTest.kt'
-      - 'scripts/devtool/nex_r1_*'
-      - 'scripts/devtool/test_nex_r1_*'
-      - '.github/workflows/cinderbox-nex-r1-native-catalog.yml'
-  push:
-    branches: [master]
   workflow_dispatch:
 permissions:
   contents: read

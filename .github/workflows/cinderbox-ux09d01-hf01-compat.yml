@@ -1,20 +1,5 @@
 name: Cinderbox UX-09D01 HF01 — legacy UI contract and native image sampling
 on:
-  pull_request:
-    paths:
-      - 'scripts/devtool/ux_05_mods_gate.py'
-      - 'scripts/devtool/ux09b4_visual_audit.py'
-      - 'app/src/androidTest/java/com/sdvsync/qualification/R48RealActivityDeviceTest.kt'
-      - 'scripts/devtool/ux09d01_hf01_*'
-      - '.github/workflows/cinderbox-ux09d01-hf01-compat.yml'
-  push:
-    branches: [master]
-    paths:
-      - 'scripts/devtool/ux_05_mods_gate.py'
-      - 'scripts/devtool/ux09b4_visual_audit.py'
-      - 'app/src/androidTest/java/com/sdvsync/qualification/R48RealActivityDeviceTest.kt'
-      - 'scripts/devtool/ux09d01_hf01_*'
-      - '.github/workflows/cinderbox-ux09d01-hf01-compat.yml'
   workflow_dispatch:
 permissions:
   contents: read

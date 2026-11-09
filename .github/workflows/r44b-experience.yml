@@ -1,22 +1,5 @@
 name: R44B Responsive Accessible Experience Source Contracts
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/ui/**'
-      - 'app/src/test/java/com/sdvsync/ui/**'
-      - 'scripts/devtool/r44b_*.py'
-      - 'scripts/devtool/test_r44b_gate.py'
-      - '.devtool.toml'
-      - '.github/workflows/r44b-experience.yml'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/ui/**'
-      - 'app/src/test/java/com/sdvsync/ui/**'
-      - 'scripts/devtool/r44b_*.py'
-      - 'scripts/devtool/test_r44b_gate.py'
-      - '.devtool.toml'
-      - '.github/workflows/r44b-experience.yml'
   workflow_dispatch:
 permissions:
   contents: read

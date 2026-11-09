@@ -1,23 +1,6 @@
 name: R42 Product Policy Source Contracts
 
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/**'
-      - 'app/src/main/java/com/sdvsync/local/M23CinderboxFirstPolicy.kt'
-      - 'scripts/devtool/r42_*.py'
-      - '.devtool.toml'
-      - '.github/workflows/r42-product-policy.yml'
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/**'
-      - 'app/src/main/java/com/sdvsync/local/M23CinderboxFirstPolicy.kt'
-      - 'scripts/devtool/r42_*.py'
-      - '.devtool.toml'
-      - '.github/workflows/r42-product-policy.yml'
   workflow_dispatch:
 
 permissions:

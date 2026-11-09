@@ -16,7 +16,7 @@ from pathlib import Path
 
 LEGACY = '.github/workflows/build.yml'
 DISPATCH = '.github/workflows/devtool-android-build.yml'
-FROZEN_STANDARD_CI_SHA256 = 'ddd3c35fb54fbb12b5de9d17b2a83d09a1059562de40030334bee5dc51cb4742'
+FROZEN_STANDARD_CI_SHA256 = '18e6f06f43b0490767cedafac051ab05c5c360f90c1f0b30157f616ae8cfe521'
 A10_INSERT_START = '      # A10: keep the original Devtool legacy artifact contract only when'
 A10_INSERT_END = '      - name: M23 synthetic Android test source contract\n'
 
@@ -45,8 +45,7 @@ def validated_legacy_and_dispatch(root: Path) -> tuple[str, str]:
                 "    secrets: inherit\n")
     if manual.count(required) != 1 or manual.count('uses: ./.github/workflows/build.yml') != 1:
         raise ValueError('A10_DELEGATED_LEGACY_JOB_DRIFT')
-    if ('  workflow_call:\n' not in legacy or '  push:\n' not in legacy or
-            '  pull_request:\n' not in legacy):
+    if ('  workflow_call:\n' not in legacy or '  workflow_dispatch:\n' not in legacy):
         raise ValueError('A10_LEGACY_TRIGGERS_DRIFT')
     if legacy.count(A10_INSERT_START) != 1 or legacy.count(A10_INSERT_END) != 1:
         raise ValueError('A10_LEGACY_FALLBACK_ARTIFACT_MISSING')

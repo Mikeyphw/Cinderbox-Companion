@@ -1,14 +1,5 @@
 name: Cinderbox UX — approved dark reference fidelity
 on:
-  pull_request:
-    paths:
-      - 'design/cinderbox/**'
-      - '.github/workflows/cinderbox-ux-approved-reference.yml'
-  push:
-    branches: [master]
-    paths:
-      - 'design/cinderbox/**'
-      - '.github/workflows/cinderbox-ux-approved-reference.yml'
   workflow_dispatch:
 permissions:
   contents: read

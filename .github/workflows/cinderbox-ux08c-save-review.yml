@@ -1,23 +1,5 @@
 name: Cinderbox UX-08C — native save and backup review
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedSavesScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedSaveDeepScreen.kt'
-      - 'app/src/androidTest/java/com/sdvsync/qualification/UX08CSaveReviewDeviceTest.kt'
-      - 'scripts/devtool/ux08c_*'
-      - 'scripts/devtool/test_ux08c_gate.py'
-      - '.github/workflows/cinderbox-ux08c-save-review.yml'
-      - 'docs/security/M3_RELEASE_POLICY.json'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedSaveDeepScreen.kt'
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedSavesScreen.kt'
-      - 'scripts/devtool/ux08c_*'
-      - '.github/workflows/cinderbox-ux08c-save-review.yml'
   workflow_dispatch:
 permissions:
   contents: read

@@ -1,27 +1,5 @@
 name: M25-03 R2E Fail-closed Game Monitor and Read-only Device Diagnostics
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/autosync/GameProcessMonitor.kt'
-      - 'app/src/main/java/com/sdvsync/autosync/GameSessionTransitionPolicy.kt'
-      - 'app/src/test/java/com/sdvsync/autosync/GameSessionTransitionPolicyTest.kt'
-      - 'app/src/androidTest/java/com/sdvsync/mods/GameSessionDeviceProbeTest.kt'
-      - 'scripts/devtool/m25_bulk_r2e_gate.py'
-      - 'scripts/devtool/m25_r2e_emulator.sh'
-      - 'scripts/devtool/m25_r2e_device_acceptance.zsh'
-      - '.github/workflows/m25-bulk-r2e.yml'
-      - 'docs/devtool/M25_03_R2E_DEVICE_AND_AUTOSYNC_SAFETY.md'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/autosync/GameProcessMonitor.kt'
-      - 'app/src/main/java/com/sdvsync/autosync/GameSessionTransitionPolicy.kt'
-      - 'app/src/test/java/com/sdvsync/autosync/GameSessionTransitionPolicyTest.kt'
-      - 'app/src/androidTest/java/com/sdvsync/mods/GameSessionDeviceProbeTest.kt'
-      - 'scripts/devtool/m25_bulk_r2e_gate.py'
-      - 'scripts/devtool/m25_r2e_emulator.sh'
-      - 'scripts/devtool/m25_r2e_device_acceptance.zsh'
-      - '.github/workflows/m25-bulk-r2e.yml'
   workflow_dispatch:
 permissions:
   contents: read

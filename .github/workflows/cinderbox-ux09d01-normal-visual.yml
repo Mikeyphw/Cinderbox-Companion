@@ -1,29 +1,5 @@
 name: Cinderbox UX-09D01 — normal-size chrome, navigation and status-bar fidelity
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/OperationCenterScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/components/CinderboxBrandTopBar.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModsScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedSavesScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedMoreScreen.kt'
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/UxNormalChromeTest.kt'
-      - 'scripts/devtool/ux09d01_*'
-      - 'scripts/devtool/test_ux09d01_gate.py'
-      - '.github/workflows/cinderbox-ux09d01-normal-visual.yml'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/OperationCenterScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/components/CinderboxBrandTopBar.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModsScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedSavesScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedMoreScreen.kt'
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/UxNormalChromeTest.kt'
-      - 'scripts/devtool/ux09d01_*'
-      - '.github/workflows/cinderbox-ux09d01-normal-visual.yml'
   workflow_dispatch:
 permissions:
   contents: read

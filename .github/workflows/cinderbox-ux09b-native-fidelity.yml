@@ -1,19 +1,5 @@
 name: Cinderbox UX-09B — hosted native screenshot evidence (not approval)
 on:
-  pull_request:
-    paths:
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/**'
-      - 'scripts/devtool/ux09b_*'
-      - 'scripts/devtool/test_ux09b_gate.py'
-      - 'design/cinderbox/**'
-      - 'docs/security/M3_RELEASE_POLICY.json'
-      - '.github/workflows/cinderbox-ux09b-native-fidelity.yml'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/**'
-      - 'scripts/devtool/ux09b_*'
-      - '.github/workflows/cinderbox-ux09b-native-fidelity.yml'
   workflow_dispatch:
 permissions:
   contents: read

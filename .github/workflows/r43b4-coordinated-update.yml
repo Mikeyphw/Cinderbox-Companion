@@ -1,28 +1,5 @@
 name: R43B4 Consolidated Protected Update Candidate
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/download/R43B*.kt'
-      - 'app/src/main/java/com/sdvsync/download/GameDownload*.kt'
-      - 'app/src/main/java/com/sdvsync/download/GameFileIntegrity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/GameDownloadScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/viewmodels/GameDownloadViewModel.kt'
-      - 'app/src/test/java/com/sdvsync/download/R43B*.kt'
-      - 'scripts/devtool/r43b4_*.py'
-      - 'scripts/devtool/test_r43b4_gate.py'
-      - '.devtool.toml'
-      - '.github/workflows/r43b4-coordinated-update.yml'
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/download/**'
-      - 'app/src/main/java/com/sdvsync/ui/screens/GameDownloadScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/viewmodels/GameDownloadViewModel.kt'
-      - 'app/src/test/java/com/sdvsync/download/**'
-      - 'scripts/devtool/r43b4_*.py'
-      - 'scripts/devtool/test_r43b4_gate.py'
-      - '.devtool.toml'
-      - '.github/workflows/r43b4-coordinated-update.yml'
   workflow_dispatch:
 permissions:
   contents: read

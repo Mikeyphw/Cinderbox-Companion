@@ -1,27 +1,5 @@
 name: M25-03 R2B Read-only Witness Preview and Emulator Fixtures
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/m25-bulk-r2b.yml'
-      - 'app/src/main/java/com/sdvsync/mods/ModFileManager.kt'
-      - 'app/src/main/java/com/sdvsync/mods/ModSelectionPolicy.kt'
-      - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt'
-      - 'app/src/androidTest/java/com/sdvsync/mods/ModBulkReadOnlyDeviceTest.kt'
-      - 'scripts/devtool/m25_bulk_r2b_gate.py'
-      - 'scripts/devtool/m25_r2b_emulator.sh'
-      - 'docs/devtool/M25_03_R2B_READ_ONLY_FILESYSTEM_WITNESS.md'
-  push:
-    branches: [master]
-    paths:
-      - '.github/workflows/m25-bulk-r2b.yml'
-      - 'app/src/main/java/com/sdvsync/mods/ModFileManager.kt'
-      - 'app/src/main/java/com/sdvsync/mods/ModSelectionPolicy.kt'
-      - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt'
-      - 'app/src/androidTest/java/com/sdvsync/mods/ModBulkReadOnlyDeviceTest.kt'
-      - 'scripts/devtool/m25_bulk_r2b_gate.py'
-      - 'scripts/devtool/m25_r2b_emulator.sh'
   workflow_dispatch:
 permissions:
   contents: read

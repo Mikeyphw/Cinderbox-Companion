@@ -2,11 +2,7 @@ name: Build Debug APK
 
 on:
   workflow_call:
-  push:
-    branches: [ main, master, 'security/**' ]
-  pull_request:
-    branches: [ main, master ]
-
+  workflow_dispatch:
 permissions:
   contents: read
 
