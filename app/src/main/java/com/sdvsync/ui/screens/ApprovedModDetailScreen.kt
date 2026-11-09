@@ -169,6 +169,7 @@ fun ApprovedModDetailContent(
     onBrowserHandoff: (String) -> Unit = {},
     requestedFileId: String? = null
 ) {
+    val context = LocalContext.current
     var fileIdQuery by rememberSaveable(mod.modId, requestedFileId) {
         mutableStateOf(requestedFileId.orEmpty())
     }

@@ -1,6 +1,9 @@
 package com.sdvsync.mods
 
 import android.content.Context
+import com.sdvsync.cinderbox.CinderboxPaths
+import com.sdvsync.local.StoragePreflight
+import java.io.File
 import com.sdvsync.mods.models.ModDownloadProgress
 import com.sdvsync.mods.models.ModDownloadState
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,11 +26,15 @@ class ModDownloadManager(private val context: Context) {
         }) return
         val jobId = journal.create(modName, source, modId, fileId)
         try {
+            // M4: check writable target and cache before scheduling work.
+            // The service rechecks when the queued job actually executes.
+            StoragePreflight.requireWritable(File(CinderboxPaths.MODS_DIR))
+            StoragePreflight.requireWritable(context.cacheDir)
             ModDownloadService.start(context, url, modName, modId, source, fileId, jobId)
         } catch (_: Exception) {
-            journal.update(jobId, "FAILED", detail = "Android could not start the download service")
+            journal.update(jobId, "FAILED", detail = "Storage unavailable or Android could not start the download service")
             _progress.value = ModDownloadProgress(state = ModDownloadState.ERROR,
-                modName = modName, errorMessage = "Could not start the download service")
+                modName = modName, errorMessage = "Cannot start download; check storage access")
         }
     }
 
