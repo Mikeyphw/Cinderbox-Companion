@@ -58,6 +58,7 @@ import com.sdvsync.mods.models.RemoteMod
 import com.sdvsync.mods.api.NexusCatalogFilters
 import com.sdvsync.mods.api.NexusCatalogSort
 import com.sdvsync.mods.api.NexR2Display
+import com.sdvsync.mods.api.NexusIdJumpPolicy
 import com.sdvsync.ui.components.CinderboxBrandTopBar
 import com.sdvsync.ui.theme.CinderboxDarkTokens as Dark
 import com.sdvsync.ui.viewmodels.BrowseCategory
@@ -155,7 +156,8 @@ fun ApprovedModsScreen(
     onOpenProfileDetail: (String) -> Unit = {},
     viewModel: ModManagerViewModel = koinViewModel(),
     browseViewModel: ModBrowseViewModel = koinViewModel(),
-    onOpenOperationCenter: () -> Unit = {}
+    onOpenOperationCenter: () -> Unit = {},
+    onOpenExactNexusSelection: (String, String) -> Unit = { _, _ -> }
 ) {
     val state by viewModel.state.collectAsState()
     val browse by browseViewModel.state.collectAsState()
@@ -172,6 +174,48 @@ fun ApprovedModsScreen(
         onPauseOrDispose {}
     }
     val savedIds = savedCards.keys
+    // Always available from Mods: no catalogue search or numeric-result guessing.
+    var idLookupOpen by rememberSaveable { mutableStateOf(false) }
+    var idLookupMod by rememberSaveable { mutableStateOf("") }
+    var idLookupFile by rememberSaveable { mutableStateOf("") }
+    val idLookupTarget = NexusIdJumpPolicy.parse(idLookupMod, idLookupFile)
+    if (idLookupOpen) {
+        ModalBottomSheet(onDismissRequest = { idLookupOpen = false },
+            containerColor = Dark.Paper, contentColor = Dark.Ink) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp).padding(bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Open by Nexus ID", style = MaterialTheme.typography.titleLarge)
+                Text("Jump straight to a Stardew Valley mod and optionally one exact file.",
+                    color = Dark.Muted, style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(value = idLookupMod,
+                    onValueChange = { idLookupMod = it.take(24) },
+                    label = { Text("Mod ID") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("cbnx01.id-lookup.mod"))
+                OutlinedTextField(value = idLookupFile,
+                    onValueChange = { idLookupFile = it.take(24) },
+                    label = { Text("File ID (optional)") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("cbnx01.id-lookup.file"))
+                if (idLookupTarget == null && (idLookupMod.isNotBlank() || idLookupFile.isNotBlank())) {
+                    Text("Use positive decimal IDs of at most 12 digits; no leading zeros.",
+                        color = Dark.Warn, style = MaterialTheme.typography.bodySmall)
+                }
+                if (!browse.hasApiKey) Text("Nexus access is needed to load live mod and file data.",
+                    color = Dark.Muted, style = MaterialTheme.typography.bodySmall)
+                Button(enabled = idLookupTarget != null,
+                    modifier = Modifier.fillMaxWidth().testTag("cbnx01.id-lookup.open"),
+                    onClick = {
+                        idLookupTarget?.let { target ->
+                            idLookupOpen = false
+                            if (target.fileId == null) onOpenRemoteMod(target.modId, "nexus")
+                            else onOpenExactNexusSelection(target.modId, target.fileId)
+                        }
+                    }) { Text("Open exact selection") }
+                Text("Opening details never starts a download or installs a mod.",
+                    color = Dark.Muted, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
     var pane by rememberSaveable { mutableStateOf(ModsPane.DISCOVER) }
     var filter by rememberSaveable { mutableStateOf(DiscoverFilter.ALL) }
     var gridMode by rememberSaveable { mutableStateOf(true) }
@@ -362,6 +406,13 @@ fun ApprovedModsScreen(
             }
         }
         item { ModsPaneSelector(pane) { pane = it } }
+        // Fast source-ID entry is independent of catalogue sorting and loaded pages.
+        item {
+            OutlinedButton(onClick = { idLookupOpen = true },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    .testTag("cbnx01.mods.open-by-id"),
+                shape = RoundedCornerShape(12.dp)) { Text("Open by Nexus ID") }
+        }
         // Always-visible entry point, independent of Nexus listings or category.
         item {
             OutlinedButton(

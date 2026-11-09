@@ -38,4 +38,10 @@ class CbNx01HandoffTest {
             "$good#trailing"
         )) assertNull(bad, NxmUriPolicy.parse(bad, now))
     }
+    @Test fun iceravenIsExplicitPreferredBrowserCandidate() {
+        assertEquals("io.github.forkmaintainers.iceraven",
+            NexusBrowserLauncher.compatibleBrowserPackages.first())
+        assertEquals(true,
+            NexusBrowserLauncher.compatibleBrowserPackages.contains("org.mozilla.firefox"))
+    }
 }

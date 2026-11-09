@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,7 +53,8 @@ fun ApprovedModDetailScreen(
     viewModel: ModDetailViewModel,
     onBack: () -> Unit,
     onReviewFiles: () -> Unit,
-    onSelectTab: (BottomTab) -> Unit
+    onSelectTab: (BottomTab) -> Unit,
+    requestedFileId: String? = null
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
@@ -104,7 +106,8 @@ fun ApprovedModDetailScreen(
         downloadError = state.error,
         downloadErrorUrl = state.downloadErrorUrl,
         onOpenExternal = { url -> uriHandler.openUri(url) },
-        onBrowserHandoff = { url -> NexusBrowserLauncher.open(context, url) }
+        onBrowserHandoff = { url -> NexusBrowserLauncher.open(context, url) },
+        requestedFileId = requestedFileId
     )
 }
 
@@ -162,8 +165,21 @@ fun ApprovedModDetailContent(
     downloadError: String? = null,
     downloadErrorUrl: String? = null,
     onOpenExternal: (String) -> Unit = {},
-    onBrowserHandoff: (String) -> Unit = {}
+    onBrowserHandoff: (String) -> Unit = {},
+    requestedFileId: String? = null
 ) {
+    var fileIdQuery by rememberSaveable(mod.modId, requestedFileId) {
+        mutableStateOf(requestedFileId.orEmpty())
+    }
+    val exactMatches = files.filter { it.fileId == requestedFileId }
+    val selectedFile = exactMatches.singleOrNull()
+    val visibleFiles = if (fileIdQuery.isBlank()) files
+        else files.filter { it.fileId == fileIdQuery.trim() }
+    val downloadBusy = requestInFlight ||
+        downloadProgress.state == ModDownloadState.DOWNLOADING ||
+        downloadProgress.state == ModDownloadState.EXTRACTING ||
+        downloadProgress.state == ModDownloadState.INSTALLING ||
+        downloadProgress.state == ModDownloadState.REVIEW_REQUIRED
     Column(Modifier.fillMaxSize().background(Dark.Background).testTag("cinderbox.screen.mod-detail")) {
         Row(Modifier.fillMaxWidth().height(57.dp).padding(horizontal=20.dp),
             verticalAlignment=Alignment.CenterVertically) {
@@ -190,6 +206,42 @@ fun ApprovedModDetailContent(
                             modifier=Modifier.semantics { heading() })
                         Text("Browse / " + (mod.categoryName ?: "Mods"),color=Dark.Muted,
                             style=MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            // Exact-ID lookup is immediately visible, not buried in a long file list.
+            if (requestedFileId != null) {
+                item {
+                    Surface(Modifier.fillMaxWidth().testTag("cbnx01.id-lookup.result"),
+                        color = Dark.Paper, shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, Dark.Line)) {
+                        Column(Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Requested Nexus file #$requestedFileId", color = Dark.Ink,
+                                style = MaterialTheme.typography.titleMedium)
+                            if (selectedFile == null) {
+                                Text("This exact file is not in the loaded provider list (or is still loading). " +
+                                    "No different file will be selected.",
+                                    color = Dark.Warn, style = MaterialTheme.typography.bodySmall)
+                                if (fileError != null) Text("Nexus file list unavailable.", color = Dark.Warn)
+                            } else {
+                                Text(NexR2Display.text(selectedFile.fileName, 120), color = Dark.Ink)
+                                Text("Verified in the current provider file list · ID ${selectedFile.fileId}",
+                                    color = Dark.Muted, style = MaterialTheme.typography.bodySmall)
+                                OutlinedButton(onClick = { onDownloadForReview(selectedFile.fileId) },
+                                    enabled = !downloadBusy, modifier = Modifier.fillMaxWidth()
+                                        .testTag("cbnx01.id-lookup.download")) {
+                                    Text("Download exact file for review")
+                                }
+                                NexusBrowserHandoff.createUrl(mod.modId, selectedFile.fileId)?.let { url ->
+                                    OutlinedButton(onClick = { onBrowserHandoff(url) },
+                                        modifier = Modifier.fillMaxWidth()
+                                            .testTag("cbnx01.id-lookup.browser")) {
+                                        Text("Open exact file in Iceraven")
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -298,12 +350,27 @@ fun ApprovedModDetailContent(
                     Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                         Text(if (files.isEmpty()) "No file list loaded" else "${files.size} provider files",
                             color = Dark.Ink, style = MaterialTheme.typography.titleSmall)
+                        OutlinedTextField(value = fileIdQuery,
+                            onValueChange = { fileIdQuery = it.take(24) },
+                            label = { Text("Find exact file ID") }, singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("cbnx01.detail.file-id-filter"))
+                        if (fileIdQuery.isNotBlank() && visibleFiles.isEmpty()) {
+                            Text("No provider file matches ID ${fileIdQuery.trim()}. " +
+                                "Other files are hidden, not substituted.",
+                                color = Dark.Warn, style = MaterialTheme.typography.bodySmall)
+                        }
                         val busy = requestInFlight ||
                             downloadProgress.state == ModDownloadState.DOWNLOADING ||
                             downloadProgress.state == ModDownloadState.EXTRACTING ||
                             downloadProgress.state == ModDownloadState.INSTALLING ||
                             downloadProgress.state == ModDownloadState.REVIEW_REQUIRED
-                        NexR2Display.groupedFiles(files).forEach { group ->
+                        // Preserve the original grouping for unfiltered browsing;
+                        // group only the exact filtered provider data when requested.
+                        // Both paths retain the provider-side 120-file bound.
+                        val displayedGroups = if (fileIdQuery.isBlank())
+                            NexR2Display.groupedFiles(files)
+                        else NexR2Display.groupedFiles(visibleFiles)
+                        displayedGroups.forEach { group ->
                             HorizontalDivider(color = Dark.Line)
                             Text(group.kind.title, color = Dark.Ink,
                                 style = MaterialTheme.typography.titleSmall,
@@ -313,6 +380,8 @@ fun ApprovedModDetailContent(
                                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                     Text(NexR2Display.text(file.fileName, 120),
                                         color = Dark.Ink, style = MaterialTheme.typography.bodyMedium)
+                                    Text("File ID: ${file.fileId}", color = Dark.Muted,
+                                        style = MaterialTheme.typography.labelSmall)
                                     Text(listOfNotNull(
                                         NexR2Display.text(file.fileVersion, 35).takeIf { it.isNotBlank() }
                                             ?.let { "v$it" },
@@ -370,7 +439,7 @@ fun ApprovedModDetailContent(
                         downloadErrorUrl?.let { fallback ->
                             if (NexusModPageLinks.safeExternalHttps(fallback) != null)
                                 OutlinedButton(onClick = { onBrowserHandoff(fallback) },
-                                    modifier = Modifier.fillMaxWidth()) { Text("Open selected file in Firefox") }
+                                    modifier = Modifier.fillMaxWidth()) { Text("Open selected file in Iceraven") }
                         }
                         Text("A download is staged for mandatory review; it never silently installs.",
                             color = Dark.Muted, style = MaterialTheme.typography.bodySmall)

@@ -137,7 +137,8 @@ class ModDetailViewModel(
             message.contains("Not Premium", ignoreCase = true) ||
                 message.contains("premium", ignoreCase = true) ||
                 message.contains("403") ->
-                "Direct Nexus download unavailable. Open the exact selected file in Firefox and finish any required Nexus steps." to nexusUrl
+                ("Direct Nexus download unavailable. Open the exact selected file in " +
+                    "Iceraven or Firefox and finish any required Nexus steps.") to nexusUrl
             message.contains("429") ->
                 "Rate limit reached. Please try again later." to null
             else -> message to nexusUrl
