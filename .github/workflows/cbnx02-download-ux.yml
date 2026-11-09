@@ -1,0 +1,90 @@
+name: CB-NX02 Native Downloads and Exact-File Receipts
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/sdvsync/mods/**'
+      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
+      - 'app/src/main/java/com/sdvsync/SdvSyncApp.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/**'
+      - 'app/src/main/java/com/sdvsync/ui/viewmodels/**'
+      - 'app/src/androidTest/java/com/sdvsync/mods/CbNx02DownloadUxDeviceTest.kt'
+      - 'app/src/androidTest/java/com/sdvsync/ui/screens/CbNx02DownloadsUiDeviceTest.kt'
+      - 'scripts/devtool/cbnx02_*'
+      - '.github/workflows/cbnx02-download-ux.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-and-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Source contracts, Android SDK, hosted Gradle
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 -B scripts/devtool/cbnx02_source_gate.py
+          python3 -B scripts/devtool/cbnx01_gate.py
+          python3 -B scripts/devtool/ux08a_gate.py
+          python3 -B scripts/devtool/ux05bd_gate.py
+          python3 -B scripts/devtool/nex_r5_gate.py
+          bash -n scripts/devtool/cbnx02_emulator_ci.sh
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+  hosted-api36:
+    needs: source-and-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Build device-test APKs from exact source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: KVM and API36 provisioning
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'system-images;android-36;google_apis;x86_64'
+      - name: Synthetic private fixtures, never live Mods or Nexus
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          disk-size: 3072M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash scripts/devtool/cbnx02_emulator_ci.sh
+      - name: Upload redacted test receipt only
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: cbnx02-api36-synthetic-downloads
+          path: ${{ runner.temp }}/cbnx02-api36/STATUS.json
+          if-no-files-found: warn
+          retention-days: 14

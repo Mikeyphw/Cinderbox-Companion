@@ -17,5 +17,5 @@ for code in logs:
     assert not any(secret in code for secret in ('uri.toString(', 'parsed.key', 'parsed.expires',
         'downloadUrl', 'url,', 'intent.data.toString(', 'e.message','requestId','fileId','modId')), 'POTENTIAL_SECRET_LOGGED'
 assert 'NxmUriPolicy.parse(uri.toString())' in src
-assert 'downloadManager.startDownload(url, modName, parsed.modId, "nexus")' in src
+assert 'downloadManager.startDownload(url, modName, parsed.modId, "nexus", parsed.fileId)' in src, 'NXM_EXACT_FILE_ID_NOT_FORWARDED'
 print('CBNX01_HF04_REDACTED_NXM_SOURCE_PASS')

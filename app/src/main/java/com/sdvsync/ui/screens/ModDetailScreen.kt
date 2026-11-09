@@ -16,11 +16,13 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.sdvsync.R
 import com.sdvsync.mods.models.ModDownloadState
+import com.sdvsync.mods.ModDownloadPreferences
 import com.sdvsync.ui.components.ArrowLeftData
 import com.sdvsync.ui.components.HtmlText
 import com.sdvsync.ui.components.PixelDivider
@@ -41,6 +43,7 @@ import java.util.Locale
 @Composable
 fun ModDetailScreen(viewModel: ModDetailViewModel, onBack: () -> Unit) {
     val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
     val dateFormat = remember { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()) }
 
     Scaffold(
@@ -106,7 +109,9 @@ fun ModDetailScreen(viewModel: ModDetailViewModel, onBack: () -> Unit) {
             Text("File download options", style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
-                "Downloads are staged for review; no mod files change until approved.",
+                if (ModDownloadPreferences.requiresApproval(context))
+                    "Downloads are staged for review; no mod files change until approved."
+                else "Validated downloads install automatically; unsafe archives require attention.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -297,7 +302,7 @@ fun ModDetailScreen(viewModel: ModDetailViewModel, onBack: () -> Unit) {
                                                 progress.state == ModDownloadState.COMPLETED ||
                                                 progress.state == ModDownloadState.ERROR
                                         ) {
-                                            Text("Download for review")
+                                            Text(if (ModDownloadPreferences.requiresApproval(context)) "Download for review" else "Download and install")
                                         }
                                     }
 

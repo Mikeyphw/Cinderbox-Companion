@@ -470,6 +470,26 @@ fun SettingsScreen(
 
             }
 
+            // Mod downloads: approval is optional, but archive safety checks remain mandatory.
+            SectionHeader("Mod downloads")
+            Spacer(Modifier.height(8.dp))
+            StardewCard {
+                Row(Modifier.fillMaxWidth().padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Require approval before installing",
+                            style = MaterialTheme.typography.bodyMedium)
+                        Text("Off by default. Without approval, downloaded archives are validated and installed with rollback protection. Unsafe archives require attention.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = state.requireModApproval,
+                        onCheckedChange = { viewModel.setRequireModApproval(it) },
+                        modifier = Modifier.testTag("cbnx02.settings.require-approval"))
+                }
+            }
+            SettingsSectionGap()
+
             // Mods - Nexus API Key
             NexusApiKeySection(
                 hasKey = state.hasNexusApiKey,

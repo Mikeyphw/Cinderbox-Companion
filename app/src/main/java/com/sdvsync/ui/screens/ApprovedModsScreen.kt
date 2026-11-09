@@ -1,5 +1,9 @@
 package com.sdvsync.ui.screens
 
+import androidx.compose.runtime.remember
+import com.sdvsync.mods.ModDownloadJournal
+import com.sdvsync.mods.ModReviewQueue
+
 import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -162,6 +166,11 @@ fun ApprovedModsScreen(
     val state by viewModel.state.collectAsState()
     val browse by browseViewModel.state.collectAsState()
     val ctx = LocalContext.current
+    val journalRevision by ModDownloadJournal.revision.collectAsState()
+    val downloadRecords = remember(journalRevision) { ModDownloadJournal(ctx).list() }
+    val reviewCount = remember(journalRevision) { ModReviewQueue(ctx.filesDir).pendingCount() }
+    val activeTransfers = downloadRecords.count { it.status in setOf("QUEUED", "DOWNLOADING", "VALIDATING", "INSTALLING") }
+    val attentionTransfers = downloadRecords.count { it.status in setOf("REVIEW_REQUIRED", "BLOCKED", "FAILED") }
     // Persist only public provider/mod identifiers, never account data or API keys.
     val bookmarks = androidx.compose.runtime.remember(ctx) {
         ctx.getSharedPreferences("ux05_mod_bookmarks", Context.MODE_PRIVATE)
@@ -402,6 +411,21 @@ fun ApprovedModsScreen(
                     modifier = Modifier.testTag("cinderbox.mods.download-queue")
                         .semantics { contentDescription = "Open mod download queue" }) {
                     Text("Download queue", color = Dark.Forest)
+                }
+            }
+        }
+        item {
+            if (reviewCount > 0 || activeTransfers > 0 || attentionTransfers > 0) {
+                Surface(color = Dark.Paper, border = BorderStroke(1.dp, Dark.Line),
+                    shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("Download activity", style = MaterialTheme.typography.titleSmall,
+                            color = Dark.Ink)
+                        Text("$activeTransfers active · $reviewCount awaiting review · $attentionTransfers need attention",
+                            color = Dark.Muted, style = MaterialTheme.typography.bodySmall)
+                        Button(onClick = onOpenQueue, modifier = Modifier.fillMaxWidth()
+                            .testTag("cbnx02.mods.download-activity")) { Text("Open downloads") }
+                    }
                 }
             }
         }

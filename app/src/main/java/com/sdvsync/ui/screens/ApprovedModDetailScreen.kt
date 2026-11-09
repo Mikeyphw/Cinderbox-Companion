@@ -33,6 +33,7 @@ import com.sdvsync.mods.models.RemoteMod
 import com.sdvsync.mods.models.RemoteModFile
 import com.sdvsync.mods.models.ModDownloadProgress
 import com.sdvsync.mods.models.ModDownloadState
+import com.sdvsync.mods.ModDownloadPreferences
 import com.sdvsync.mods.api.NexusModPageLinks
 import com.sdvsync.mods.api.NexusBrowserHandoff
 import com.sdvsync.mods.api.NexusBrowserLauncher
@@ -175,11 +176,8 @@ fun ApprovedModDetailContent(
     val selectedFile = exactMatches.singleOrNull()
     val visibleFiles = if (fileIdQuery.isBlank()) files
         else files.filter { it.fileId == fileIdQuery.trim() }
-    val downloadBusy = requestInFlight ||
-        downloadProgress.state == ModDownloadState.DOWNLOADING ||
-        downloadProgress.state == ModDownloadState.EXTRACTING ||
-        downloadProgress.state == ModDownloadState.INSTALLING ||
-        downloadProgress.state == ModDownloadState.REVIEW_REQUIRED
+    // Different Nexus file IDs may be queued while another archive downloads.
+    val downloadBusy = requestInFlight
     Column(Modifier.fillMaxSize().background(Dark.Background).testTag("cinderbox.screen.mod-detail")) {
         Row(Modifier.fillMaxWidth().height(57.dp).padding(horizontal=20.dp),
             verticalAlignment=Alignment.CenterVertically) {
@@ -231,7 +229,7 @@ fun ApprovedModDetailContent(
                                 OutlinedButton(onClick = { onDownloadForReview(selectedFile.fileId) },
                                     enabled = !downloadBusy, modifier = Modifier.fillMaxWidth()
                                         .testTag("cbnx01.id-lookup.download")) {
-                                    Text("Download exact file for review")
+                                    Text(if (ModDownloadPreferences.requiresApproval(context)) "Download exact file for review" else "Download exact file")
                                 }
                                 NexusBrowserHandoff.createUrl(mod.modId, selectedFile.fileId)?.let { url ->
                                     OutlinedButton(onClick = { onBrowserHandoff(url) },
@@ -359,11 +357,8 @@ fun ApprovedModDetailContent(
                                 "Other files are hidden, not substituted.",
                                 color = Dark.Warn, style = MaterialTheme.typography.bodySmall)
                         }
-                        val busy = requestInFlight ||
-                            downloadProgress.state == ModDownloadState.DOWNLOADING ||
-                            downloadProgress.state == ModDownloadState.EXTRACTING ||
-                            downloadProgress.state == ModDownloadState.INSTALLING ||
-                            downloadProgress.state == ModDownloadState.REVIEW_REQUIRED
+                        // Only the current link-resolution gesture is single-flight.
+                        val busy = requestInFlight
                         // Preserve the original grouping for unfiltered browsing;
                         // group only the exact filtered provider data when requested.
                         // Both paths retain the provider-side 120-file bound.
@@ -410,7 +405,7 @@ fun ApprovedModDetailContent(
                                         enabled = !busy,
                                         modifier = Modifier.fillMaxWidth()
                                             .testTag("nex.r5.download-for-review")
-                                    ) { Text("Download for review") }
+                                    ) { Text(if (ModDownloadPreferences.requiresApproval(context)) "Download for review" else "Download and install") }
                                     // Explicit browser-assisted path preserves the selected file ID.
                                     NexusBrowserHandoff.createUrl(mod.modId, file.fileId)?.let { handoff ->
                                         OutlinedButton(
@@ -441,7 +436,7 @@ fun ApprovedModDetailContent(
                                 OutlinedButton(onClick = { onBrowserHandoff(fallback) },
                                     modifier = Modifier.fillMaxWidth()) { Text("Open selected file in Iceraven") }
                         }
-                        Text("A download is staged for mandatory review; it never silently installs.",
+                        Text(if (ModDownloadPreferences.requiresApproval(context)) "A download is staged for mandatory review; it never silently installs." else "Validated downloads install automatically. Unsafe archives remain for review.",
                             color = Dark.Muted, style = MaterialTheme.typography.bodySmall)
                         OutlinedButton(onClick = onReviewFiles,
                             modifier = Modifier.fillMaxWidth().testTag("cinderbox.mod-detail.files")) {

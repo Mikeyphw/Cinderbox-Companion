@@ -15,6 +15,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,9 +28,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -70,6 +76,7 @@ import com.sdvsync.ui.screens.ModBrowseScreen
 import com.sdvsync.ui.screens.ApprovedModDetailScreen
 import com.sdvsync.ui.screens.ModDetailScreen
 import com.sdvsync.ui.screens.ModManagerScreen
+import com.sdvsync.ui.screens.ModDownloadsScreen
 import com.sdvsync.ui.screens.ApprovedModsScreen
 import com.sdvsync.ui.screens.OperationCenterScreen
 import com.sdvsync.ui.screens.SaveViewerScreen
@@ -104,6 +111,9 @@ import org.koin.core.parameter.parametersOf
 
 class MainActivity : ComponentActivity() {
     private val nxmInFlight = AtomicBoolean(false)
+    private var openDownloadsRequested by mutableStateOf(false)
+    private var nxmNotice by mutableStateOf<String?>(null)
+    private var highlightedDownloadJobId by mutableStateOf<String?>(null)
 
     private val nexusSource: NexusModSource by inject()
     private val downloadManager: ModDownloadManager by inject()
@@ -123,6 +133,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
+        openDownloadsRequested = intent?.getBooleanExtra("cinderbox_open_downloads", false) == true
+        highlightedDownloadJobId = intent?.getStringExtra("cinderbox_download_job_id")
         handleIncomingIntent(intent)
         // Only launch a foreground service from a STARTED (visible) Activity.
         // The service remains active while the app is backgrounded and until logout/opt-out.
@@ -136,10 +148,28 @@ class MainActivity : ComponentActivity() {
             }
         }
         setContent {
-            // UX-00: approved sole dark appearance; stored legacy modes are ignored.
+            // A real download must be visible from both an external NXM link and a notification.
             SdvSyncTheme {
                 val navController = rememberNavController()
-                SdvSyncNavGraph(navController)
+                val snackbar = remember { SnackbarHostState() }
+                Box(Modifier.fillMaxSize()) {
+                    SdvSyncNavGraph(navController, highlightedDownloadJobId)
+                    SnackbarHost(hostState = snackbar, modifier = Modifier.align(Alignment.BottomCenter))
+                }
+                LaunchedEffect(openDownloadsRequested) {
+                    if (openDownloadsRequested) {
+                        navController.navigate("download_queue") { launchSingleTop = true }
+                        openDownloadsRequested = false
+                    }
+                }
+                LaunchedEffect(nxmNotice) {
+                    nxmNotice?.let { message ->
+                        // Do not clear the LaunchedEffect key before the suspending
+                        // snackbar call: doing so cancels it before feedback appears.
+                        snackbar.showSnackbar(message)
+                        if (nxmNotice == message) nxmNotice = null
+                    }
+                }
             }
         }
     }
@@ -156,6 +186,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra("cinderbox_open_downloads", false)) {
+            highlightedDownloadJobId = intent.getStringExtra("cinderbox_download_job_id")
+            openDownloadsRequested = true
+        }
         handleIncomingIntent(intent)
     }
 
@@ -183,11 +218,14 @@ class MainActivity : ComponentActivity() {
         val parsed = NxmUriPolicy.parse(uri.toString())
         Log.i(NXM_DIAG_TAG, if (parsed == null) "NXM_PARSE_REJECTED" else "NXM_PARSE_ACCEPTED")
         if (parsed == null) {
+            nxmNotice = "Invalid or expired Nexus download link"
             Toast.makeText(this, getString(R.string.nxm_invalid_link), Toast.LENGTH_SHORT).show()
             intent?.data = null
             return
         }
 
+        openDownloadsRequested = true
+        nxmNotice = "Nexus link accepted. Download status is shown here."
         Toast.makeText(this, getString(R.string.nxm_starting_download), Toast.LENGTH_SHORT).show()
         if (!nxmInFlight.compareAndSet(false, true)) {
             Log.i(NXM_DIAG_TAG, "NXM_SINGLE_FLIGHT_BLOCKED")
@@ -211,7 +249,7 @@ class MainActivity : ComponentActivity() {
                     "Mod #${parsed.modId}"
                 }
                 Log.i(NXM_DIAG_TAG, "NXM_DOWNLOAD_MANAGER_REQUESTED")
-                downloadManager.startDownload(url, modName, parsed.modId, "nexus")
+                downloadManager.startDownload(url, modName, parsed.modId, "nexus", parsed.fileId)
                 // The manager may still reject a request; this is NOT archive-staging proof.
                 Log.i(NXM_DIAG_TAG, "NXM_MANAGER_RETURNED_NOT_STAGED_PROOF")
             } catch (e: Exception) {
@@ -246,7 +284,7 @@ private const val FADE_ANIM_DURATION = 400
 private val BOTTOM_BAR_ROUTES = setOf("home", "game_download", "saves", "mods", "settings")
 
 @Composable
-fun SdvSyncNavGraph(navController: NavHostController) {
+fun SdvSyncNavGraph(navController: NavHostController, highlightedDownloadJobId: String? = null) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute by remember(navBackStackEntry) {
         derivedStateOf { navBackStackEntry?.destination?.route }
@@ -337,11 +375,15 @@ fun SdvSyncNavGraph(navController: NavHostController) {
                 onOpenHealth = { navController.navigate("installation_health") },
                 onOpenSyncLog = { navController.navigate("sync_log") },
                 onOpenTab = { tab ->
+                    if (tab == "download_queue") {
+                        navController.navigate("download_queue")
+                    } else {
                     // Work from both pre-login and authenticated Settings without Steam auth.
                     navController.popBackStack("main", inclusive = false).let { hadMain ->
                         if (!hadMain) navController.navigate("main")
                     }
                     navController.currentBackStackEntry?.savedStateHandle?.set("switchToTab", tab)
+                    }
                 }
             )
         }
@@ -417,12 +459,12 @@ fun SdvSyncNavGraph(navController: NavHostController) {
         // UX-08A: explicit, read-only secondary screens; no permission requests
         // or transfer modifications occur on navigation.
         composable("download_queue") {
-            ApprovedDeepStatusScreen(
-                area = DeepStatusArea.DOWNLOAD_QUEUE,
+            ModDownloadsScreen(
                 onBack = { navController.popBackStack() },
-                onOpenAdvancedSettings = { navController.navigate("more_advanced") },
+                onReview = { navController.navigate("mods_advanced") },
+                onOpenMod = { modId -> navController.navigate("mod_detail/${Uri.encode(modId)}/nexus") },
                 onOpenOperations = { navController.navigate("operation_center") },
-                onOpenHealth = { navController.navigate("installation_health") }
+                selectedJobId = highlightedDownloadJobId
             )
         }
         composable("file_access_overview") {

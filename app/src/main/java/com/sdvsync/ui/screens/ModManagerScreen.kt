@@ -118,6 +118,10 @@ fun ModManagerScreen(
         AlertDialog(onDismissRequest = {}, title = { Text("Review mod installation") },
             text = { Column {
                 Text(state.pendingLabel)
+                if (state.pendingModId.isNotBlank()) Text("Nexus mod: ${state.pendingModId}")
+                if (state.pendingFileId.isNotBlank()) Text("Exact Nexus file: ${state.pendingFileId}")
+                if (state.pendingDigest.isNotBlank()) Text("Archive SHA-256: ${state.pendingDigest}",
+                    style = MaterialTheme.typography.bodySmall)
                 state.pendingPreview?.changes?.forEach { c ->
                     Spacer(Modifier.height(8.dp))
                     Text("${c.action}: ${c.modName} → ${c.folder}")
