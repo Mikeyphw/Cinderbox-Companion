@@ -109,8 +109,8 @@ class ModDetailViewModel(
             try {
                 val url = nexusSource.getDownloadUrl(modId, fileId)
                 val modName = _state.value.mod?.name ?: "Unknown"
-                // Service stages archives for mandatory review; it never installs directly.
-                downloadManager.startDownload(url, modName, modId, source)
+                // The service validates every archive; user approval is a persistent optional setting.
+                downloadManager.startDownload(url, modName, modId, source, fileId)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {

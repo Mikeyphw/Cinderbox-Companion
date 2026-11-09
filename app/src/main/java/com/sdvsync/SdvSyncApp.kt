@@ -3,6 +3,7 @@ package com.sdvsync
 import android.app.Application
 import com.sdvsync.di.appModule
 import com.sdvsync.logging.AppLogger
+import com.sdvsync.mods.ModDownloadJournal
 import com.sdvsync.logging.JavaSteamLogBridge
 import com.sdvsync.steam.AndroidSteamMachineId
 import com.sdvsync.steam.SteamDiagnostics
@@ -15,6 +16,9 @@ class SdvSyncApp : Application() {
     override fun onCreate() {
         super.onCreate()
         AppLogger.init(this)
+        // Reconcile jobs left active by a previous killed app process.
+        // Expiring Nexus links are not persisted and are never silently retried.
+        runCatching { ModDownloadJournal(this).markInterrupted() }
         AndroidSteamMachineId.initialize(this)
         SteamDiagnostics.initialize(this)
         patchVZipBufferPool()

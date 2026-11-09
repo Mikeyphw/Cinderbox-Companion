@@ -175,46 +175,127 @@ internal class ModSafety(private val privateRoot: File, private val modsDir: Fil
     }
 }
 
-/** Single durable pending review. Downloads are NEVER installed before user approval. */
+/** A durable FIFO of downloaded mod archives, retaining the legacy head filename. */
 internal class ModReviewQueue(private val root: File) {
     companion object { private val queueLock = Any() }
     private val pending get() = File(root, "mod-review-pending.zip")
     private val metadata get() = File(root, "mod-review-pending.properties")
+    private val backlog get() = File(root, "mod-review-backlog")
 
-    fun hasPending(): Boolean = pending.exists() || metadata.exists()
-    fun archive(): File? = pending.takeIf { it.isFile }
-    fun description(): String {
-        if (!hasPending()) return ""
-        return runCatching { Properties().apply {
-            if (metadata.isFile) metadata.inputStream().use { load(it) }
-        }.getProperty("name") ?: "Mod archive" }.getOrDefault("Mod archive")
+    data class Receipt(val name: String, val source: String, val modId: String,
+        val fileId: String, val sha256: String, val jobId: String)
+
+    private fun next(): File? = backlog.listFiles()?.filter {
+        it.isFile && it.name.endsWith(".zip") && File(backlog, it.name.removeSuffix(".zip") + ".properties").isFile
+    }?.minByOrNull { it.name }
+
+    private fun promoteIfNeeded() {
+        if (pending.exists() || metadata.exists()) return
+        val archive = next() ?: return
+        val props = File(backlog, archive.name.removeSuffix(".zip") + ".properties")
+        check(archive.renameTo(pending)) { "Cannot restore pending review archive" }
+        check(props.renameTo(metadata)) { "Cannot restore pending review metadata" }
     }
-    fun source(): Pair<String, String> {
+
+    fun hasPending(): Boolean = synchronized(queueLock) {
+        promoteIfNeeded()
+        pending.exists() || metadata.exists() || next() != null
+    }
+
+    fun pendingCount(): Int = synchronized(queueLock) {
+        promoteIfNeeded()
+        (if (pending.exists() || metadata.exists()) 1 else 0) +
+            (backlog.listFiles()?.count { it.isFile && it.name.endsWith(".zip") &&
+                File(backlog, it.name.removeSuffix(".zip") + ".properties").isFile } ?: 0)
+    }
+
+    fun archive(): File? = synchronized(queueLock) {
+        promoteIfNeeded()
+        val file = pending.takeIf { it.isFile && metadata.isFile } ?: return@synchronized null
+        val expected = receipt().sha256
+        if (expected.isBlank()) return@synchronized file // pre-CB-NX02 legacy archive
+        if (!Regex("[a-f0-9]{64}").matches(expected)) return@synchronized null
+        val actual = runCatching {
+            val sha = MessageDigest.getInstance("SHA-256")
+            file.inputStream().buffered().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val size = input.read(buffer)
+                    if (size < 0) break
+                    sha.update(buffer, 0, size)
+                }
+            }
+            sha.digest().joinToString("") { "%02x".format(it) }
+        }.getOrNull()
+        file.takeIf { actual == expected }
+    }
+
+    fun receipt(): Receipt = synchronized(queueLock) {
+        promoteIfNeeded()
         val props = Properties()
         if (metadata.isFile) metadata.inputStream().use { props.load(it) }
-        return (props.getProperty("source") ?: "local") to (props.getProperty("mod_id") ?: "")
+        Receipt(props.getProperty("name") ?: "Mod archive",
+            props.getProperty("source") ?: "local",
+            props.getProperty("mod_id") ?: "",
+            props.getProperty("file_id") ?: "",
+            props.getProperty("sha256") ?: "",
+            props.getProperty("job_id") ?: "")
     }
-    fun enqueue(file: File, name: String, source: String, modId: String) = synchronized(queueLock) {
-        check(!hasPending() && !pending.exists() && !metadata.exists()) {
-            "A mod archive is already awaiting review in Mods"
+
+    fun description(): String = receipt().name
+    fun source(): Pair<String, String> = receipt().let { it.source to it.modId }
+
+    fun enqueue(file: File, name: String, source: String, modId: String,
+                fileId: String = "", jobId: String = "") = synchronized(queueLock) {
+        require(file.isFile && file.length() in 1..1_073_741_824L) { "Invalid mod archive size" }
+        require(fileId.isEmpty() || Regex("[1-9][0-9]{0,11}").matches(fileId)) {
+            "Invalid Nexus file identifier"
         }
         check(root.isDirectory || root.mkdirs()) { "Cannot access pending review storage" }
-        require(file.isFile && file.length() in 1..1_073_741_824L) { "Invalid mod archive size" }
-        val stage = File(root, "mod-review-staging.zip")
-        check(file.copyTo(stage, overwrite = false).length() == file.length()) { "Cannot stage mod review" }
+        promoteIfNeeded()
+        check(pendingCount() < 24) { "Review queue is full; finish or discard an archive first" }
+        val useHead = !pending.exists() && !metadata.exists()
+        val directory = if (useHead) root else backlog
+        check(directory.isDirectory || directory.mkdirs()) { "Cannot create review backlog" }
+        val base = if (useHead) "mod-review-pending"
+                   else "item-${System.currentTimeMillis()}-${UUID.randomUUID()}"
+        val archive = File(directory, "$base.zip")
+        val data = File(directory, "$base.properties")
+        val stage = File(directory, ".$base.staging.zip")
+        val stageProps = File(directory, ".$base.staging.properties")
+        check(!archive.exists() && !data.exists()) { "Review destination occupied" }
+        val digest = MessageDigest.getInstance("SHA-256")
         try {
-            val props = Properties().apply {
-                setProperty("name", name.take(150)); setProperty("source", source.take(50));
-                setProperty("mod_id", modId.take(100))
+            file.inputStream().buffered().use { input ->
+                stage.outputStream().buffered().use { output ->
+                    val buf = ByteArray(64 * 1024)
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        digest.update(buf, 0, n)
+                        output.write(buf, 0, n)
+                    }
+                }
             }
-            val tempProps = File(root, "mod-review-pending.tmp")
-            tempProps.outputStream().use { props.store(it, "Pending mod review") }
-            check(stage.renameTo(pending)) { "Cannot publish queued mod" }
-            check(tempProps.renameTo(metadata)) { "Cannot publish mod review metadata" }
-        } finally { if (stage.exists()) stage.delete() }
+            check(stage.length() == file.length()) { "Archive staging incomplete" }
+            val digestHex = digest.digest().joinToString("") { "%02x".format(it) }
+            val props = Properties().apply {
+                setProperty("name", name.take(150)); setProperty("source", source.take(50))
+                setProperty("mod_id", modId.take(100)); setProperty("file_id", fileId)
+                setProperty("sha256", digestHex); setProperty("job_id", jobId.take(64))
+            }
+            stageProps.outputStream().use { props.store(it, "Redacted mod download receipt") }
+            check(stage.renameTo(archive)) { "Cannot publish review archive" }
+            check(stageProps.renameTo(data)) { "Cannot publish review receipt" }
+        } finally {
+            if (stage.exists()) stage.delete()
+            if (stageProps.exists()) stageProps.delete()
+        }
     }
+
     fun clear() = synchronized(queueLock) {
-        check(pending.delete() || !pending.exists())
-        check(metadata.delete() || !metadata.exists())
+        check(pending.delete() || !pending.exists()) { "Cannot remove reviewed archive" }
+        check(metadata.delete() || !metadata.exists()) { "Cannot remove review receipt" }
+        promoteIfNeeded()
     }
 }

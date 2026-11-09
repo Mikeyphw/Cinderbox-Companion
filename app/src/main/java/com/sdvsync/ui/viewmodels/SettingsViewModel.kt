@@ -18,6 +18,7 @@ import com.sdvsync.fileaccess.SAFFileAccess
 import com.sdvsync.fileaccess.ShizukuFileAccess
 import com.sdvsync.logging.AppLogger
 import com.sdvsync.mods.ModDataStore
+import com.sdvsync.mods.ModDownloadPreferences
 import com.sdvsync.mods.api.NexusModSource
 import com.sdvsync.saves.SaveBackupManager
 import com.sdvsync.steam.SteamAuthenticator
@@ -49,6 +50,7 @@ data class SettingsState(
     val isLoggedIn: Boolean = false,
     val steamUsername: String? = null,
     val maxBackups: Int = SaveBackupManager.DEFAULT_MAX_BACKUPS,
+    val requireModApproval: Boolean = false,
     val hasNexusApiKey: Boolean = false,
     val nexusApiKeyMasked: String? = null,
     val isValidatingApiKey: Boolean = false,
@@ -126,6 +128,7 @@ class SettingsViewModel(
                     safIsStaging = SAFFileAccess.isStaging(context),
                     isLoggedIn = authenticator.authState.value is com.sdvsync.steam.AuthState.LoggedIn,
                     maxBackups = backupManager.maxBackups,
+                    requireModApproval = ModDownloadPreferences.requiresApproval(context),
                     hasNexusApiKey = apiKey != null,
                     nexusApiKeyMasked = maskedKey,
                     installedCinderboxVersion = installedCinderbox,
@@ -270,6 +273,12 @@ class SettingsViewModel(
                 }
             }
         }
+    }
+
+    fun setRequireModApproval(enabled: Boolean) {
+        runCatching { ModDownloadPreferences.setRequiresApproval(context, enabled) }
+            .onSuccess { _state.update { it.copy(requireModApproval = enabled) } }
+            .onFailure { AppLogger.e(TAG, "Could not save mod approval preference", it) }
     }
 
     fun removeNexusApiKey() {

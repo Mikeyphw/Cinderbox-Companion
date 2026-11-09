@@ -47,6 +47,8 @@ def check():
     service=read('app/src/main/java/com/sdvsync/mods/ModDownloadService.kt')
     assert 'ModReviewQueue(filesDir).enqueue(' in service, 'UX05BD_REVIEW_QUEUE_BYPASSED'
     assert 'state = ModDownloadState.REVIEW_REQUIRED' in service, 'UX05BD_REVIEW_STATE_BYPASSED'
+    assert 'fileManager.previewFromZip(tmp)' in service, 'UX05BD_ARCHIVE_VALIDATION_BYPASSED'
+    assert 'fileManager.installFromZip(tmp, preview.approvalKey)' in service, 'UX05BD_SAFE_INSTALL_BYPASSED'
     assert 'ux05bd-detail-fixture.png' in instrument
     assert "ImageChops.difference" in visual
     assert "reference.size==(args.expected_width,args.expected_height)" in visual

@@ -63,7 +63,7 @@ object OperationCenterPolicy {
                 "DOWNLOADING", "EXTRACTING", "INSTALLING" -> "Mod download or extraction in progress."
                 "COMPLETED" -> "Latest observed mod download completed."
                 else -> "No active mod download reported."
-            }, "Open Mods", if (ms == CenterStatus.ACTIVE) modPercent?.coerceIn(0, 100) else null)
+            }, "Open Mod Downloads", if (ms == CenterStatus.ACTIVE) modPercent?.coerceIn(0, 100) else null)
         if (smapiActive || smapiError) items += CenterItem("smapi", "SMAPI setup",
             if (smapiError) CenterStatus.ACTION_REQUIRED else CenterStatus.ACTIVE,
             if (smapiError) "Inspect SMAPI setup; do not replace files until recovery is reviewed."
@@ -71,7 +71,7 @@ object OperationCenterPolicy {
         if (appDownloadActive) items += CenterItem("cinderbox_apk", "Cinderbox download",
             CenterStatus.ACTIVE, "Cinderbox APK download in progress.", "Open Downloads")
         if (pendingReview) items += CenterItem("mod_review", "Mod archive awaiting approval",
-            CenterStatus.ACTION_REQUIRED, "Review the archive and proposed changes in Mods, or discard it.", "Open Mods")
+            CenterStatus.ACTION_REQUIRED, "Review the archive in Downloads, or discard it.", "Open Mod Downloads")
         for (id in journalTitles.keys) {
             if (id !in journals) continue
             items += CenterItem(id, journalTitles.getValue(id), CenterStatus.ACTION_REQUIRED,

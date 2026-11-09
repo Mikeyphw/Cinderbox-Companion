@@ -20,7 +20,8 @@ def check(root=ROOT):
     assert contract['navigation']['global_routes']==['home','game_download','saves','mods','settings']
     assert main.count('composable("download_queue")')==1
     assert main.count('composable("file_access_overview")')==1
-    assert main.count('ApprovedDeepStatusScreen(')==2
+    assert main.count('ApprovedDeepStatusScreen(')==1
+    assert main.count('ModDownloadsScreen(')==1
     assert 'onOpenQueue = { parentNavController.navigate("download_queue") }' in main
     assert 'onOpenFileAccess = { parentNavController.navigate("file_access_overview") }' in main
     assert 'onOpenAdvancedSettings = { navController.navigate("more_advanced") }' in main

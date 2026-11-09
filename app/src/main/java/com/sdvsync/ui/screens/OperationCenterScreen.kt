@@ -107,6 +107,7 @@ fun OperationCenterScreen(
                 CenterStatusCard(card, onClick = {
                     when (card.action) {
                         "Open Downloads" -> onOpenTab("game_download")
+                        "Open Mod Downloads" -> onOpenTab("download_queue")
                         "Open Mods" -> onOpenTab("mods")
                         "Open Saves" -> onOpenTab("saves")
                         "Open Sync Log" -> onOpenSyncLog()

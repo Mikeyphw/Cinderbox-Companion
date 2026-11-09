@@ -71,13 +71,20 @@ class ModSafetyTest {
         assertFalse(File(state, "mod-operation.properties").exists())
     }
 
-    @Test fun `review queue survives reopening and prevents replacement`() = withDirectories { state, _, _ ->
+    @Test fun `review queue survives reopening and promotes multiple exact-file receipts`() = withDirectories { state, _, _ ->
         val input = File(state, "test.zip").apply { writeText("fake zip archive") }
         val queue = ModReviewQueue(state)
-        queue.enqueue(input, "TestMod", "local", "")
+        queue.enqueue(input, "TestMod", "nexus", "50535", "178239", "job1")
+        queue.enqueue(input, "second", "nexus", "50535", "190561", "job2")
         assertTrue(ModReviewQueue(state).hasPending())
+        assertEquals(2, queue.pendingCount())
         assertEquals("TestMod", ModReviewQueue(state).description())
-        assertThrows(IllegalStateException::class.java) { queue.enqueue(input, "second", "local", "") }
+        assertEquals("178239", queue.receipt().fileId)
+        assertEquals("50535", queue.receipt().modId)
+        assertEquals(64, queue.receipt().sha256.length)
+        queue.clear()
+        assertEquals(1, ModReviewQueue(state).pendingCount())
+        assertEquals("190561", ModReviewQueue(state).receipt().fileId)
         queue.clear()
         assertFalse(queue.hasPending())
     }

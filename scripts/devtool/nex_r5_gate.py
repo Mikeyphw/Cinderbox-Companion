@@ -40,13 +40,14 @@ def check(root: Path=ROOT)->list[str]:
             'onDownloadForReview = viewModel::installFile',
             'onDownloadForReview(file.fileId)', 'nex.r5.download-for-review',
             'Download for review', 'REVIEW_REQUIRED','never silently installs',
-            'requestInFlight = state.isDownloading', 'val busy = requestInFlight ||')),
+            'requestInFlight = state.isDownloading', 'val busy = requestInFlight',
+            'val downloadBusy = requestInFlight')),
         'single-flight URL fetch':all(s in viewmodel for s in (
             'downloadLinkRequest.compareAndSet(false, true)',
             'isDownloading = true', 'isDownloading = false',
             'downloadLinkRequest.set(false)',
             'catch (cancelled: CancellationException)',
-            'downloadManager.startDownload(url, modName, modId, source)')),
+            'downloadManager.startDownload(url, modName, modId, source, fileId)')),
         'community browser fallback':all(s in detail for s in (
             'NexusModPageLinks.forTab(mod.modId, "posts")',
             'NexusModPageLinks.forTab(mod.modId, "images")',
@@ -91,6 +92,12 @@ def check(root: Path=ROOT)->list[str]:
             'NexR5UnifiedDetailTest','api-level: 36',
             ':app:assembleDebugAndroidTest','nex_r5_evidence.py')),
     }
+    # Each button is disabled only during current URL resolution, not while
+    # another download or review is active. Retain other NEX-R5 safeguards.
+    if any(lock in detail for lock in (
+        'val busy = requestInFlight ||',
+        'val downloadBusy = requestInFlight ||')):
+        required['queue-compatible-download-buttons']=False
     errors=['NEX_R5_MISSING:'+k for k,ok in required.items() if not ok]
     for f in ('release_enabled','publication_enabled','automatic_device_install',
               'device_qualification_complete'):

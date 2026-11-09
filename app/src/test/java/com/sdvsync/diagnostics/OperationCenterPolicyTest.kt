@@ -20,7 +20,7 @@ class OperationCenterPolicyTest {
     }
     @Test fun pendingModApprovalHasExplicitReviewAction() {
         val cards = items(mods = "REVIEW_REQUIRED", pending = true)
-        assertTrue(cards.any { it.id == "mod_review" && it.action == "Open Mods" })
+        assertTrue(cards.any { it.id == "mod_review" && it.action == "Open Mod Downloads" })
         assertEquals(CenterStatus.ACTION_REQUIRED, cards[1].status)
     }
     @Test fun unknownJournalNamesDoNotAppearOrLeak() {

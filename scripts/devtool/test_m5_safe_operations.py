@@ -14,11 +14,15 @@ class M5SafeOperationsTest(unittest.TestCase):
         self.assertIn('fileManager.installFromZip(archive, prior.approvalKey)',m)
         self.assertIn('fun discardPendingReview()',m)
         self.assertNotIn('fileManager.installFromZip(tempFile)',m)
-    def test_remote_download_does_not_install(self):
+    def test_remote_download_preserves_review_or_guarded_auto_install(self):
         service=read('app/src/main/java/com/sdvsync/mods/ModDownloadService.kt')
-        self.assertIn('ModReviewQueue(filesDir).enqueue(',service)
-        self.assertNotIn('fileManager.installFromZip(',service)
-        self.assertIn('ModDownloadState.REVIEW_REQUIRED',service)
+        self.assertIn('ModReviewQueue(filesDir).enqueue(', service)
+        self.assertIn('ModDownloadPreferences.requiresApproval(this)', service)
+        self.assertIn('ModDownloadState.REVIEW_REQUIRED', service)
+        self.assertIn('fileManager.previewFromZip(tmp)', service)
+        self.assertIn('fileManager.installFromZip(tmp, preview.approvalKey)', service)
+        self.assertLess(service.index('fileManager.previewFromZip(tmp)'),
+                        service.index('fileManager.installFromZip(tmp, preview.approvalKey)'))
     def test_fail_closed_legacy_mod_install(self):
         src=read('app/src/main/java/com/sdvsync/mods/ModFileManager.kt')
         self.assertIn('fun installFromZip(zipFile: File): InstallResult = InstallResult.Error',src)

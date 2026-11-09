@@ -15,7 +15,7 @@ required_tokens('app/src/main/java/com/sdvsync/mods/api/NexusBrowserHandoff.kt',
                 ['cinderbox_file=$fileId', 'cinderbox_mode=nxm', 'cinderbox_request=$requestId'])
 required_tokens('app/src/main/java/com/sdvsync/MainActivity.kt',
                 ['NxmUriPolicy.parse(uri.toString())', 'nxmInFlight.compareAndSet(false, true)',
-                 'nxmInFlight.set(false)', 'downloadManager.startDownload(url, modName, parsed.modId, "nexus")'])
+                 'nxmInFlight.set(false)', 'downloadManager.startDownload(url, modName, parsed.modId, "nexus", parsed.fileId)'])
 required_tokens('app/src/main/java/com/sdvsync/ui/screens/ApprovedModDetailScreen.kt',
                 ['cbnx01.browser-handoff', 'NexusBrowserHandoff.createUrl(mod.modId, file.fileId)',
                  'NexusBrowserLauncher.open(context, url)',
@@ -26,9 +26,11 @@ required_tokens('app/src/main/java/com/sdvsync/mods/api/NexusBrowserLauncher.kt'
 required_tokens('app/src/main/java/com/sdvsync/ui/viewmodels/ModDetailViewModel.kt',
                 ['mapDownloadError(e.message, fileId)', 'NexusBrowserHandoff.createUrl(modId, fileId)'])
 required_tokens('app/src/main/java/com/sdvsync/mods/ModDownloadManager.kt',
-                ['@Synchronized', 'ModDownloadState.DOWNLOADING', 'ModDownloadService.start('])
+                ['@Synchronized', 'ModDownloadService.start(', 'fileId: String = ""'])
 required_tokens('app/src/main/java/com/sdvsync/mods/ModDownloadService.kt',
-                ['ModReviewQueue(filesDir).enqueue(', 'Stage for mandatory review'])
+                ['ModReviewQueue(filesDir).enqueue(', 'fileManager.previewFromZip(tmp)',
+                 'fileManager.installFromZip(tmp, preview.approvalKey)',
+                 'ModDownloadPreferences.requiresApproval(this)'])
 required_tokens('app/src/test/java/com/sdvsync/mods/api/CbNx01HandoffTest.kt',
                 ['selectedModAndFileRemainInBrowserHandoff', 'onlyValidNxmMayStartDownload'])
 # Q01 HF02 ID navigation: source-only contract; Kotlin JVM tests verify parsing.

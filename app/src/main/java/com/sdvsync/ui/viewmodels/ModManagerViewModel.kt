@@ -22,6 +22,7 @@ import com.sdvsync.mods.ModCompatibilityIssue
 import com.sdvsync.mods.ModProfilePreview
 import com.sdvsync.mods.ModArchivePreview
 import com.sdvsync.mods.ModReviewQueue
+import com.sdvsync.mods.ModDownloadJournal
 import com.sdvsync.mods.ModSnapshot
 import com.sdvsync.mods.api.SmapiUpdateChecker
 import com.sdvsync.mods.models.InstallResult
@@ -56,6 +57,9 @@ data class ModManagerState(
     val importMessage: String? = null,
     val pendingPreview: ModArchivePreview? = null,
     val pendingLabel: String = "",
+    val pendingModId: String = "",
+    val pendingFileId: String = "",
+    val pendingDigest: String = "",
     val hasPendingReview: Boolean = false,
     val isApplyingReview: Boolean = false,
     val snapshots: List<ModSnapshot> = emptyList(),
@@ -238,8 +242,11 @@ class ModManagerViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val zip = pending.archive()
             val review = zip?.let { runCatching { fileManager.previewFromZip(it) }.getOrNull() }
+            val receipt = pending.receipt()
             _state.update { it.copy(hasPendingReview = pending.hasPending(),
-                pendingPreview = review, pendingLabel = pending.description(),
+                pendingPreview = review, pendingLabel = receipt.name,
+                pendingModId = receipt.modId, pendingFileId = receipt.fileId,
+                pendingDigest = receipt.sha256,
                 snapshots = fileManager.listRetainedSnapshots()) }
         }
     }
@@ -279,7 +286,10 @@ class ModManagerViewModel(
                                 com.sdvsync.mods.ModMetadata(installedFrom = "$source:$modId",
                                     installedAt = System.currentTimeMillis())) }
                         }
+                        val receipt = pending.receipt()
                         pending.clear()
+                        if (receipt.jobId.isNotBlank()) ModDownloadJournal(context).update(
+                            receipt.jobId, "INSTALLED", detail = "Approved and installed")
                         _state.update { it.copy(importMessage = "Installed: ${result.mods.joinToString { m -> m.manifest.name }}") }
                         loadInstalledMods()
                     }
@@ -298,7 +308,12 @@ class ModManagerViewModel(
 
     fun discardPendingReview() {
         viewModelScope.launch(Dispatchers.IO) {
-            runCatching { pending.clear() }.onFailure {
+            runCatching {
+                val receipt = pending.receipt()
+                pending.clear()
+                if (receipt.jobId.isNotBlank()) ModDownloadJournal(context).update(
+                    receipt.jobId, "DISCARDED", detail = "Archive discarded without installation")
+            }.onFailure {
                 _state.update { old -> old.copy(importMessage = "Cannot discard: ${it.message}") }
             }
             refreshSafetyState()
