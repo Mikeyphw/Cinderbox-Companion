@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -161,6 +162,11 @@ class MainActivity : ComponentActivity() {
     private fun handleIncomingIntent(intent: Intent?) {
         if (intent == null) return
         val uri = intent.data
+        if (uri?.scheme.equals("nxm", ignoreCase = true)) {
+            // Safe physical-device witness; never log uri.toString(), auth keys, or URLs.
+            Log.i(NXM_DIAG_TAG, if (intent.action == Intent.ACTION_VIEW)
+                "NXM_RECEIVED_VIEW" else "NXM_RECEIVED_OTHER_ACTION")
+        }
         if (uri != null && intent.action == Intent.ACTION_VIEW && uri.scheme != "nxm") {
             // Likely a .sdvsync file opened via share/file manager
             pendingImportUri = uri
@@ -175,6 +181,7 @@ class MainActivity : ComponentActivity() {
         if (uri.scheme != "nxm") return
 
         val parsed = NxmUriPolicy.parse(uri.toString())
+        Log.i(NXM_DIAG_TAG, if (parsed == null) "NXM_PARSE_REJECTED" else "NXM_PARSE_ACCEPTED")
         if (parsed == null) {
             Toast.makeText(this, getString(R.string.nxm_invalid_link), Toast.LENGTH_SHORT).show()
             intent?.data = null
@@ -183,6 +190,7 @@ class MainActivity : ComponentActivity() {
 
         Toast.makeText(this, getString(R.string.nxm_starting_download), Toast.LENGTH_SHORT).show()
         if (!nxmInFlight.compareAndSet(false, true)) {
+            Log.i(NXM_DIAG_TAG, "NXM_SINGLE_FLIGHT_BLOCKED")
             Toast.makeText(this, "A Nexus download request is already being processed", Toast.LENGTH_SHORT).show()
             intent?.data = null
             return
@@ -190,6 +198,7 @@ class MainActivity : ComponentActivity() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                Log.i(NXM_DIAG_TAG, "NXM_URL_RESOLUTION_STARTED")
                 val url = nexusSource.getDownloadUrl(
                     parsed.modId,
                     parsed.fileId,
@@ -201,8 +210,12 @@ class MainActivity : ComponentActivity() {
                 } catch (_: Exception) {
                     "Mod #${parsed.modId}"
                 }
+                Log.i(NXM_DIAG_TAG, "NXM_DOWNLOAD_MANAGER_REQUESTED")
                 downloadManager.startDownload(url, modName, parsed.modId, "nexus")
+                // The manager may still reject a request; this is NOT archive-staging proof.
+                Log.i(NXM_DIAG_TAG, "NXM_MANAGER_RETURNED_NOT_STAGED_PROOF")
             } catch (e: Exception) {
+                Log.i(NXM_DIAG_TAG, "NXM_RESOLUTION_OR_DOWNLOAD_FAILURE")
                 AppLogger.e("MainActivity", "NXM download failed (${e.javaClass.simpleName})")
                 launch(Dispatchers.Main) {
                     Toast.makeText(
@@ -212,6 +225,7 @@ class MainActivity : ComponentActivity() {
                     ).show()
                 }
             } finally {
+                Log.i(NXM_DIAG_TAG, "NXM_INFLIGHT_RELEASED")
                 nxmInFlight.set(false)
             }
         }
@@ -221,6 +235,9 @@ class MainActivity : ComponentActivity() {
     }
 
 }
+
+// Redacted, fixed-code Android log tag. Do not include URI data or auth credentials.
+private const val NXM_DIAG_TAG = "CBNX01_NXM_RX"
 
 private const val NAV_ANIM_DURATION = 300
 private const val FADE_ANIM_DURATION = 400

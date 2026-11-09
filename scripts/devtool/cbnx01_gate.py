@@ -45,6 +45,12 @@ required_tokens('app/src/main/java/com/sdvsync/MainActivity.kt',
                  'onOpenExactNexusSelection = { modId, fileId ->',
                  '.getStateFlow("cbnx01_selected_file_id", "").collectAsState()',
                  '?.set("cbnx01_selected_file_id", fileId)'])
+# Q01 HF04 physical intent receipt: no URL, token, key or query parameter is logged.
+required_tokens('app/src/main/java/com/sdvsync/MainActivity.kt', [
+    'private const val NXM_DIAG_TAG = "CBNX01_NXM_RX"',
+    '"NXM_RECEIVED_VIEW"', '"NXM_PARSE_REJECTED"', '"NXM_PARSE_ACCEPTED"',
+    '"NXM_URL_RESOLUTION_STARTED"', '"NXM_RESOLUTION_OR_DOWNLOAD_FAILURE"',
+    '"NXM_MANAGER_RETURNED_NOT_STAGED_PROOF"'])
 print('CBNX01_Q01_HF02_DIRECT_ID_NAVIGATION_SOURCE_PASS')
 print('CBNX01_CINDERBOX_SOURCE_PASS_RUNTIME_NOT_QUALIFIED')
 
