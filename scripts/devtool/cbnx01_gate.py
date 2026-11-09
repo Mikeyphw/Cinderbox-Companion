@@ -31,4 +31,17 @@ required_tokens('app/src/main/java/com/sdvsync/mods/ModDownloadService.kt',
                 ['ModReviewQueue(filesDir).enqueue(', 'Stage for mandatory review'])
 required_tokens('app/src/test/java/com/sdvsync/mods/api/CbNx01HandoffTest.kt',
                 ['selectedModAndFileRemainInBrowserHandoff', 'onlyValidNxmMayStartDownload'])
+# Q01 HF02 ID navigation: source-only contract; Kotlin JVM tests verify parsing.
+required_tokens('app/src/main/java/com/sdvsync/mods/api/NexusIdJumpPolicy.kt',
+                ['object NexusIdJumpPolicy', 'positiveId.matches', 'fileId'])
+required_tokens('app/src/main/java/com/sdvsync/ui/screens/ApprovedModsScreen.kt',
+                ['cbnx01.mods.open-by-id', 'cbnx01.id-lookup.mod',
+                 'cbnx01.id-lookup.file', 'onOpenRemoteFile(target.modId, target.fileId)'])
+required_tokens('app/src/main/java/com/sdvsync/ui/screens/ApprovedModDetailScreen.kt',
+                ['cbnx01.id-lookup.result', 'cbnx01.detail.file-id-filter',
+                 'visibleFiles', 'cbnx01.id-lookup.browser', 'File ID: ${file.fileId}'])
+required_tokens('app/src/main/java/com/sdvsync/MainActivity.kt',
+                ['mod_detail/{modId}/{source}?fileId={fileId}', 'onOpenRemoteFile = { modId, fileId ->'])
+print('CBNX01_Q01_HF02_DIRECT_ID_NAVIGATION_SOURCE_PASS')
 print('CBNX01_CINDERBOX_SOURCE_PASS_RUNTIME_NOT_QUALIFIED')
+

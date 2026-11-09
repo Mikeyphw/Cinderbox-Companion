@@ -584,10 +584,11 @@ fun SdvSyncNavGraph(navController: NavHostController) {
         }
 
         composable(
-            route = "mod_detail/{modId}/{source}",
+            route = "mod_detail/{modId}/{source}?fileId={fileId}",
             arguments = listOf(
                 navArgument("modId") { type = NavType.StringType },
-                navArgument("source") { type = NavType.StringType }
+                navArgument("source") { type = NavType.StringType },
+                navArgument("fileId") { type = NavType.StringType; defaultValue = "" }
             )
         ) { backStackEntry ->
             val modId = backStackEntry.arguments?.getString("modId") ?: return@composable
@@ -595,6 +596,8 @@ fun SdvSyncNavGraph(navController: NavHostController) {
             val viewModel: ModDetailViewModel = koinViewModel { parametersOf(modId, source) }
             ApprovedModDetailScreen(
                 viewModel = viewModel,
+                requestedFileId = backStackEntry.arguments?.getString("fileId")
+                    ?.takeIf { com.sdvsync.mods.api.NexusIdJumpPolicy.parse(modId, it)?.fileId == it },
                 onBack = { navController.popBackStack() },
                 onReviewFiles = {
                     navController.navigate("mod_detail_advanced/" + Uri.encode(modId) + "/" + Uri.encode(source))
@@ -750,6 +753,10 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
                     onBrowseMods = { parentNavController.navigate("mods_browse") },
                     onOpenRemoteMod = { modId, source ->
                         parentNavController.navigate("mod_detail/${Uri.encode(modId)}/${Uri.encode(source)}")
+                    },
+                    onOpenRemoteFile = { modId, fileId ->
+                        parentNavController.navigate(
+                            "mod_detail/${Uri.encode(modId)}/nexus?fileId=${Uri.encode(fileId)}")
                     },
                     onOpenInstalledMod = { uniqueId ->
                         parentNavController.navigate("installed_mod/${Uri.encode(uniqueId)}")
