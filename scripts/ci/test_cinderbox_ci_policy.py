@@ -44,6 +44,56 @@ class ClassificationTests(TestCase):
         x = policy.classify(['scripts/ci/cinderbox_ci_policy.py'])
         self.assertIn('nex_r5_gate.py', x['source_gates'])
 
+class SourceTestRunnerTests(TestCase):
+    def setUp(self):
+        self.t = tempfile.TemporaryDirectory(prefix='cbnx-ci-source-tests-')
+        self.addCleanup(self.t.cleanup)
+        self.root = Path(self.t.name)
+        (self.root / 'scripts/devtool').mkdir(parents=True)
+
+    def source(self, filename, code):
+        path = self.root / 'scripts/devtool' / filename
+        path.write_text(code, encoding='utf-8')
+        return path
+
+    def test_nxm_standalone_assertions_are_executed_not_skipped(self):
+        name = 'test_cbnx01_nxm_ingress.py'
+        self.source(name, 'from pathlib import Path\nPath("witness.txt").write_text("executed")\n')
+        policy.run_source_test(name, self.root)
+        self.assertEqual((self.root / 'witness.txt').read_text(), 'executed')
+
+    def test_nxm_standalone_failure_blocks_qualification(self):
+        name = 'test_cbnx01_nxm_ingress.py'
+        self.source(name, 'raise AssertionError("credential exposed")\n')
+        with self.assertRaises(subprocess.CalledProcessError):
+            policy.run_source_test(name, self.root)
+
+    def test_class_based_regression_is_discovered_and_executed(self):
+        name = 'test_ux08a_gate.py'
+        self.source(name, 'import unittest\nclass T(unittest.TestCase):\n'
+                          '    def test_real(self):\n'
+                          '        __import__("pathlib").Path("witness.txt").write_text("unit")\n')
+        policy.run_source_test(name, self.root)
+        self.assertEqual((self.root / 'witness.txt').read_text(), 'unit')
+
+    def test_empty_unittest_suite_fails_instead_of_silent_pass(self):
+        name = 'test_ux08a_gate.py'
+        self.source(name, 'print("zero tests")\n')
+        with self.assertRaises(subprocess.CalledProcessError):
+            policy.run_source_test(name, self.root)
+
+    def test_missing_linked_and_unlisted_tests_refused(self):
+        name = 'test_ux08a_gate.py'
+        with self.assertRaisesRegex(RuntimeError, 'MISSING_SOURCE_TEST'):
+            policy.run_source_test(name, self.root)
+        self.source(name, 'import unittest\n')
+        (self.root / 'scripts/devtool' / name).unlink()
+        (self.root / 'scripts/devtool' / name).symlink_to(self.root / 'witness.txt')
+        with self.assertRaisesRegex(RuntimeError, 'MISSING_SOURCE_TEST'):
+            policy.run_source_test(name, self.root)
+        with self.assertRaisesRegex(RuntimeError, 'SOURCE_TEST_UNLISTED'):
+            policy.run_source_test('untrusted.py', self.root)
+
 class GateTests(TestCase):
     def setUp(self):
         self.t = tempfile.TemporaryDirectory(prefix='cbnx-ci-unit-')

@@ -97,6 +97,31 @@ def classify(paths: list[str]) -> dict:
             'changed_files': len(paths)}
 
 
+# Historical tests are not all unittest.TestCase modules. This script's
+# module-body assertions MUST execute, while class-based tests MUST be
+# discovered and prove a nonzero test count (unittest exit code 5 is failure).
+# No automatic fallback from a failed unittest run to direct execution.
+STANDALONE_SOURCE_TESTS = frozenset({'test_cbnx01_nxm_ingress.py'})
+ALLOWED_SOURCE_TESTS = frozenset(name for tests in GROUP_TESTS.values() for name in tests)
+
+
+def run_source_test(file: str, root: Path) -> None:
+    if file not in ALLOWED_SOURCE_TESTS:
+        raise RuntimeError('CBNX_CI_SOURCE_TEST_UNLISTED:' + file)
+    target = root / 'scripts/devtool' / file
+    if not target.is_file() or target.is_symlink():
+        raise RuntimeError('CBNX_CI_MISSING_SOURCE_TEST:' + file)
+    if file in STANDALONE_SOURCE_TESTS:
+        argv = [sys.executable, '-B', str(target)]
+        mode = 'standalone-assertions'
+    else:
+        argv = [sys.executable, '-B', '-m', 'unittest', 'discover',
+                '-s', 'scripts/devtool', '-p', file, '-v']
+        mode = 'unittest-nonempty'
+    print('CBNX_CI_SOURCE_TEST_RUN:' + file + ' mode=' + mode, flush=True)
+    subprocess.run(argv, cwd=root, check=True)
+
+
 def run_targeted(plan: dict, root: Path) -> None:
     policy_path = root / 'docs/security/M3_RELEASE_POLICY.json'
     policy = json.loads(policy_path.read_text(encoding='utf-8'))
@@ -113,11 +138,7 @@ def run_targeted(plan: dict, root: Path) -> None:
         print('CBNX_CI_SOURCE_GATE: ' + file, flush=True)
         subprocess.run([sys.executable, '-B', str(target)], cwd=root, check=True)
     for file in plan['source_tests']:
-        target = root / 'scripts/devtool' / file
-        if not target.is_file() or target.is_symlink():
-            raise RuntimeError('CBNX_CI_MISSING_SOURCE_TEST:' + file)
-        subprocess.run([sys.executable, '-B', '-m', 'unittest', 'discover', '-s', 'scripts/devtool',
-                        '-p', file, '-v'], cwd=root, check=True)
+        run_source_test(file, root)
     print('CBNX_CI_TARGETED_SOURCE_PASS groups=' + ','.join(plan['groups']), flush=True)
 
 

@@ -181,12 +181,29 @@ class R47Contracts(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 r47_verify.verify(folder,SHA,RUN)
 
-    def test_ci_retriggers_on_ui_changes_and_checks_receipt(self):
+    def test_targeted_ui_classification_and_manual_r47_evidence(self):
         text=(r47_gate.ROOT/'.github/workflows/r47-ui-acceptance.yml').read_text()
-        for required in ('app/src/main/java/com/sdvsync/ui/**','app/src/main/java/com/sdvsync/MainActivity.kt',
-                         'app/build.gradle.kts','scripts/devtool/r47_verify.py',
-                         'if: always()',':app:assembleDebug :app:assembleDebugAndroidTest'):
+        targeted=(r47_gate.ROOT/'.github/workflows/cinderbox-targeted.yml').read_text()
+        self.assertIn('  workflow_dispatch:',text)
+        self.assertNotIn('  pull_request:',text)
+        self.assertIn('  pull_request:',targeted)
+        for required in ('scripts/devtool/r47_verify.py','if: always()',
+                         ':app:assembleDebug :app:assembleDebugAndroidTest',
+                         'R47_SYNTHETIC_EVIDENCE.json'):
             self.assertIn(required,text)
+        import importlib.util
+        path=r47_gate.ROOT/'scripts/ci/cinderbox_ci_policy.py'
+        spec=importlib.util.spec_from_file_location('r47_ci_targeted_policy',path)
+        module=importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        for changed in ('app/src/main/java/com/sdvsync/ui/screens/ApprovedModsScreen.kt',
+                        'app/src/main/java/com/sdvsync/MainActivity.kt',
+                        'app/build.gradle.kts',
+                        'app/src/androidTest/java/com/sdvsync/qualification/R47SyntheticExperienceDeviceTest.kt'):
+            plan = module.classify([changed])
+            self.assertTrue(plan['needs_android'])
+            self.assertIn('r47_gate.py', plan['source_gates'])
+        self.assertFalse(module.classify(['README.md'])['needs_android'])
 
     def test_devtool_future_extension_cannot_break_r47_source_check(self):
         # M25 is an independent Devtool entry; R47 must validate only its own
