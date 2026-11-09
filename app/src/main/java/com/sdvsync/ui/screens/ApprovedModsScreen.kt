@@ -157,7 +157,7 @@ fun ApprovedModsScreen(
     viewModel: ModManagerViewModel = koinViewModel(),
     browseViewModel: ModBrowseViewModel = koinViewModel(),
     onOpenOperationCenter: () -> Unit = {},
-    onOpenRemoteFile: (String, String) -> Unit = { _, _ -> }
+    onOpenExactNexusSelection: (String, String) -> Unit = { _, _ -> }
 ) {
     val state by viewModel.state.collectAsState()
     val browse by browseViewModel.state.collectAsState()
@@ -208,7 +208,7 @@ fun ApprovedModsScreen(
                         idLookupTarget?.let { target ->
                             idLookupOpen = false
                             if (target.fileId == null) onOpenRemoteMod(target.modId, "nexus")
-                            else onOpenRemoteFile(target.modId, target.fileId)
+                            else onOpenExactNexusSelection(target.modId, target.fileId)
                         }
                     }) { Text("Open exact selection") }
                 Text("Opening details never starts a download or installs a mod.",

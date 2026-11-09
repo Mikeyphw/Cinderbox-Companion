@@ -584,20 +584,23 @@ fun SdvSyncNavGraph(navController: NavHostController) {
         }
 
         composable(
-            route = "mod_detail/{modId}/{source}?fileId={fileId}",
+            route = "mod_detail/{modId}/{source}",
             arguments = listOf(
                 navArgument("modId") { type = NavType.StringType },
-                navArgument("source") { type = NavType.StringType },
-                navArgument("fileId") { type = NavType.StringType; defaultValue = "" }
+                navArgument("source") { type = NavType.StringType }
             )
         ) { backStackEntry ->
             val modId = backStackEntry.arguments?.getString("modId") ?: return@composable
             val source = backStackEntry.arguments?.getString("source") ?: return@composable
+            // A saved-state selection keeps the established detail route unchanged.
+            // State is scoped to this destination and survives configuration changes.
+            val selectedNexusFileId by backStackEntry.savedStateHandle
+                .getStateFlow("cbnx01_selected_file_id", "").collectAsState()
             val viewModel: ModDetailViewModel = koinViewModel { parametersOf(modId, source) }
             ApprovedModDetailScreen(
                 viewModel = viewModel,
-                requestedFileId = backStackEntry.arguments?.getString("fileId")
-                    ?.takeIf { com.sdvsync.mods.api.NexusIdJumpPolicy.parse(modId, it)?.fileId == it },
+                requestedFileId = selectedNexusFileId
+                    .takeIf { com.sdvsync.mods.api.NexusIdJumpPolicy.parse(modId, it)?.fileId == it },
                 onBack = { navController.popBackStack() },
                 onReviewFiles = {
                     navController.navigate("mod_detail_advanced/" + Uri.encode(modId) + "/" + Uri.encode(source))
@@ -754,9 +757,11 @@ fun MainScreen(parentNavController: NavHostController, showBottomBar: Boolean, s
                     onOpenRemoteMod = { modId, source ->
                         parentNavController.navigate("mod_detail/${Uri.encode(modId)}/${Uri.encode(source)}")
                     },
-                    onOpenRemoteFile = { modId, fileId ->
-                        parentNavController.navigate(
-                            "mod_detail/${Uri.encode(modId)}/nexus?fileId=${Uri.encode(fileId)}")
+                    onOpenExactNexusSelection = { modId, fileId ->
+                        parentNavController.navigate("mod_detail/${Uri.encode(modId)}/nexus")
+                        // No file-ID query parameter: preserve all legacy route contracts.
+                        parentNavController.currentBackStackEntry?.savedStateHandle
+                            ?.set("cbnx01_selected_file_id", fileId)
                     },
                     onOpenInstalledMod = { uniqueId ->
                         parentNavController.navigate("installed_mod/${Uri.encode(uniqueId)}")

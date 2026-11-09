@@ -364,7 +364,13 @@ fun ApprovedModDetailContent(
                             downloadProgress.state == ModDownloadState.EXTRACTING ||
                             downloadProgress.state == ModDownloadState.INSTALLING ||
                             downloadProgress.state == ModDownloadState.REVIEW_REQUIRED
-                        NexR2Display.groupedFiles(visibleFiles).forEach { group ->
+                        // Preserve the original grouping for unfiltered browsing;
+                        // group only the exact filtered provider data when requested.
+                        // Both paths retain the provider-side 120-file bound.
+                        val displayedGroups = if (fileIdQuery.isBlank())
+                            NexR2Display.groupedFiles(files)
+                        else NexR2Display.groupedFiles(visibleFiles)
+                        displayedGroups.forEach { group ->
                             HorizontalDivider(color = Dark.Line)
                             Text(group.kind.title, color = Dark.Ink,
                                 style = MaterialTheme.typography.titleSmall,
