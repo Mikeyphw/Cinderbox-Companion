@@ -1,0 +1,93 @@
+name: CB-NX01 Exact Nexus File Firefox Handoff
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/sdvsync/mods/api/NxmUriPolicy.kt'
+      - 'app/src/main/java/com/sdvsync/mods/api/NexusBrowserLauncher.kt'
+      - 'app/src/main/java/com/sdvsync/mods/api/NexusBrowserHandoff.kt'
+      - 'app/src/main/java/com/sdvsync/mods/ModDownloadManager.kt'
+      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
+      - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModDetailViewModel.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModDetailScreen.kt'
+      - 'app/src/test/java/com/sdvsync/mods/api/CbNx01HandoffTest.kt'
+      - 'app/src/androidTest/java/com/sdvsync/mods/api/CbNx01IntentDeviceTest.kt'
+      - 'scripts/devtool/cbnx01_*'
+      - 'scripts/devtool/test_cbnx01_*'
+      - '.github/workflows/cbnx01-firefox-handoff.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-and-jvm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - run: python3 -B scripts/devtool/cbnx01_gate.py
+      - run: python3 -B scripts/devtool/nex_r5_gate.py
+      - run: python3 -B -m unittest discover -s scripts/devtool -p 'test_cbnx01_emulator_ci.py' -v
+      - run: bash -n scripts/devtool/cbnx01_emulator_ci.sh
+      - run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+  api36-nxm-policy:
+    needs: source-and-jvm
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Compile hosted debug and instrumentation APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Verify ephemeral KVM and Android 36 disk budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'system-images;android-36;google_apis;x86_64'
+          avd_root="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
+          mkdir -p "$avd_root"
+          test "$(df -Pk "$avd_root" | awk 'END {print $4}')" -ge 4194304
+      - name: Run exactly one CB-NX01 policy test and save sanitized evidence
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          disk-size: 3072M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash scripts/devtool/cbnx01_emulator_ci.sh
+      - name: Upload only sanitized CB-NX01 emulator receipt, even on failure
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: cbnx01-api36-nxm-policy-evidence
+          path: ${{ runner.temp }}/cbnx01-api36-policy/STATUS.json
+          if-no-files-found: warn
+          retention-days: 14
