@@ -21,7 +21,8 @@ required_tokens('app/src/main/java/com/sdvsync/ui/screens/ApprovedModDetailScree
                  'NexusBrowserLauncher.open(context, url)',
                  'onDownloadForReview(file.fileId)'])
 required_tokens('app/src/main/java/com/sdvsync/mods/api/NexusBrowserLauncher.kt',
-                ['org.mozilla.firefox', 'org.mozilla.firefox_beta', 'Intent.ACTION_VIEW'])
+                ['io.github.forkmaintainers.iceraven', 'org.mozilla.firefox',
+                 'org.mozilla.firefox_beta', 'Intent.ACTION_VIEW'])
 required_tokens('app/src/main/java/com/sdvsync/ui/viewmodels/ModDetailViewModel.kt',
                 ['mapDownloadError(e.message, fileId)', 'NexusBrowserHandoff.createUrl(modId, fileId)'])
 required_tokens('app/src/main/java/com/sdvsync/mods/ModDownloadManager.kt',

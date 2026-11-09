@@ -6,9 +6,10 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 
-/** Opens a verified Cinderbox handoff in a Firefox browser when available. */
+/** Opens an exact-file Cinderbox handoff in Iceraven or another supported Gecko browser. */
 object NexusBrowserLauncher {
-    private val firefoxPackages = listOf(
+    internal val compatibleBrowserPackages = listOf(
+        "io.github.forkmaintainers.iceraven",
         "org.mozilla.firefox", "org.mozilla.firefox_beta", "org.mozilla.fennec_fdroid"
     )
 
@@ -18,7 +19,7 @@ object NexusBrowserLauncher {
         if (uri.scheme != "https" || uri.host != "www.nexusmods.com" ||
             uri.getQueryParameter("cinderbox_mode") != "nxm" ||
             uri.getQueryParameter("cinderbox_file").isNullOrBlank()) return
-        for (packageName in firefoxPackages) {
+        for (packageName in compatibleBrowserPackages) {
             try {
                 context.startActivity(Intent(Intent.ACTION_VIEW, uri).apply {
                     `package` = packageName
@@ -26,13 +27,13 @@ object NexusBrowserLauncher {
                 })
                 return
             } catch (_: ActivityNotFoundException) {
-                // Continue to other Firefox distributions.
+                // Continue to other supported Gecko distributions.
             } catch (_: SecurityException) {
                 // Browser not permitted; try another option.
             }
         }
         Toast.makeText(context,
-            "Firefox with Stardew Nexus Download Queue is needed for automatic handoff; opening Nexus normally.",
+            "Iceraven or Firefox with Stardew Nexus Download Queue is needed for automatic handoff; opening Nexus normally.",
             Toast.LENGTH_LONG).show()
         try {
             context.startActivity(Intent(Intent.ACTION_VIEW, uri).apply {

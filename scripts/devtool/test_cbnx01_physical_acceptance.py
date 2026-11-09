@@ -13,7 +13,7 @@ import cbnx01_physical_acceptance as q
 def baseline():
     return {'installed_base_apk_sha256': 'a'*64,
             'mods_directory_listing_sha256': 'b'*64,
-            'firefox_packages_present': ['org.mozilla.firefox'],
+            'compatible_browser_packages_present': ['io.github.forkmaintainers.iceraven'],
             'pending_review': {'present': False}}
 
 
@@ -78,6 +78,46 @@ class AcceptanceTests(unittest.TestCase):
             self.assertEqual(p.stat().st_mode & 0o777, 0o600)
             with self.assertRaises(FileExistsError):
                 q.write_private(p, {})
+
+    def test_iceraven_only_installation_is_supported(self):
+        class FakeAdb:
+            def text(self, *args, **kwargs):
+                known = {
+                    ('get-state',): 'device',
+                    ('shell', 'getprop', 'ro.build.version.sdk'): '36',
+                    ('shell', 'getprop', 'ro.kernel.qemu'): '',
+                    ('shell', 'getprop', 'ro.product.cpu.abi'): 'arm64-v8a',
+                }
+                if args[:3] == ('shell', 'pm', 'path'):
+                    return ('package:/data/app/iceraven/base.apk'
+                            if args[3] == 'io.github.forkmaintainers.iceraven' else None)
+                return known[args]
+            def call(self, *args, **kwargs):
+                self.assert_never_used = True
+                return b'mod listing contents are not written to receipt\n'
+        with patch.object(q, 'apk_info', return_value=(q.APP, 'a' * 64)), \
+             patch.object(q, 'private_pending', return_value={'present': False}):
+            snapshot = q.physical_snapshot(FakeAdb())
+        self.assertEqual(snapshot['compatible_browser_packages_present'],
+                         ['io.github.forkmaintainers.iceraven'])
+        self.assertEqual(snapshot['android_api'], 36)
+        self.assertNotIn('firefox_packages_present', snapshot)
+
+    def test_missing_all_supported_browsers_is_refused(self):
+        class FakeAdb:
+            def text(self, *args, **kwargs):
+                known = {
+                    ('get-state',): 'device',
+                    ('shell', 'getprop', 'ro.build.version.sdk'): '36',
+                    ('shell', 'getprop', 'ro.kernel.qemu'): '',
+                    ('shell', 'getprop', 'ro.product.cpu.abi'): 'arm64-v8a',
+                }
+                if args[:3] == ('shell', 'pm', 'path'):
+                    return None
+                return known[args]
+        with patch.object(q, 'apk_info', return_value=(q.APP, 'a' * 64)):
+            with self.assertRaisesRegex(q.Refusal, 'COMPATIBLE_GECKO_BROWSER_NOT_INSTALLED'):
+                q.physical_snapshot(FakeAdb())
 
     def test_device_probe_refuses_emulator(self):
         class FakeAdb:

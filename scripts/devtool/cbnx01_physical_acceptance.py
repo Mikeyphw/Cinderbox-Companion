@@ -20,7 +20,10 @@ import uuid
 
 APP = 'com.sdvsync'
 MODS_DIR = '/storage/emulated/0/StardewValley/desktop/Mods'
-FIREFOX_PACKAGES = ('org.mozilla.firefox', 'org.mozilla.firefox_beta', 'org.mozilla.fennec_fdroid')
+GECKO_BROWSER_PACKAGES = (
+    'io.github.forkmaintainers.iceraven',
+    'org.mozilla.firefox', 'org.mozilla.firefox_beta', 'org.mozilla.fennec_fdroid',
+)
 ID = re.compile(r'[1-9][0-9]{0,11}\Z')
 HEX64 = re.compile(r'[0-9a-f]{64}\Z')
 HEX40 = re.compile(r'[0-9a-f]{40}\Z')
@@ -129,9 +132,9 @@ def physical_snapshot(adb: Adb) -> dict:
     if sdk != '36' or qemu not in ('', '0') or not abi or not abi.startswith('arm64'):
         raise Refusal('PHYSICAL_ARM64_ANDROID36_REQUIRED')
     package, app_sha = apk_info(adb)
-    firefox = tuple(p for p in FIREFOX_PACKAGES if adb.text('shell', 'pm', 'path', p, optional=True))
-    if not firefox:
-        raise Refusal('FIREFOX_ANDROID_NOT_INSTALLED')
+    browsers = tuple(p for p in GECKO_BROWSER_PACKAGES if adb.text('shell', 'pm', 'path', p, optional=True))
+    if not browsers:
+        raise Refusal('COMPATIBLE_GECKO_BROWSER_NOT_INSTALLED')
     # The output may contain filenames; hash in memory and never persist it.
     listing = adb.call('shell', 'ls', '-laR', MODS_DIR)
     if listing is None or not listing.strip():
@@ -141,7 +144,7 @@ def physical_snapshot(adb: Adb) -> dict:
         'device_kind': 'physical-arm64',
         'app_package': package,
         'installed_base_apk_sha256': app_sha,
-        'firefox_packages_present': list(firefox),
+        'compatible_browser_packages_present': list(browsers),
         'mods_directory_listing_sha256': digest(listing),
         'mods_listing_is_content_digest': False,
         'pending_review': private_pending(adb),
@@ -167,8 +170,8 @@ def assess(before: dict, after: dict, expected_mod_id: str, expected_file_id: st
         reasons.append('INSTALLED_APK_CHANGED')
     if before.get('mods_directory_listing_sha256') != after.get('mods_directory_listing_sha256'):
         reasons.append('MODS_LISTING_CHANGED_BEFORE_APPROVAL')
-    if before.get('firefox_packages_present') != after.get('firefox_packages_present'):
-        reasons.append('FIREFOX_INSTALLATION_CHANGED')
+    if before.get('compatible_browser_packages_present') != after.get('compatible_browser_packages_present'):
+        reasons.append('COMPATIBLE_BROWSER_INSTALLATION_CHANGED')
     # No file-ID metadata, no verified browser callback or independent binary
     # attribution exists in CB-NX01. Be explicit instead of marking it qualified.
     return {
@@ -253,7 +256,7 @@ def main(argv: list[str] | None = None) -> int:
         'android': snapshot, 'evaluation': evaluation,
         'browser_extension_installed_machine_verified': False,
         'manual_observation_required': [
-            'actual Firefox extension enabled on Android',
+            'actual Iceraven/Firefox extension enabled on Android',
             'exact file row and Nexus confirmation observed',
             'Android external-app prompt leads to Cinderbox',
             'review UI shows archive before install',
