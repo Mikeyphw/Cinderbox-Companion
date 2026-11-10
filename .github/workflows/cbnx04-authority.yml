@@ -8,6 +8,9 @@ on:
       - 'app/src/test/java/com/sdvsync/mods/NexusPairingAuthorityCacheTest.kt'
       - 'scripts/devtool/cbnx04_hf01_*'
       - 'scripts/devtool/cbnx04_hf02_*'
+      - 'scripts/devtool/cbnx04_hf03_*'
+      - 'app/src/main/java/com/sdvsync/mods/NexusLoopbackBindPolicy.kt'
+      - 'app/src/test/java/com/sdvsync/mods/NexusLoopbackBindPolicyTest.kt'
       - 'app/src/androidTest/java/com/sdvsync/mods/CbNx04AuthorityDeviceTest.kt'
       - 'scripts/devtool/cbnx04_*'
       - '.github/workflows/cbnx04-authority.yml'
@@ -45,6 +48,8 @@ jobs:
           python3 -B scripts/devtool/cbnx04_hf01_negative_tests.py
           python3 -B scripts/devtool/cbnx04_hf02_source_gate.py
           python3 -B scripts/devtool/cbnx04_hf02_negative_tests.py
+          python3 -B scripts/devtool/cbnx04_hf03_source_gate.py
+          python3 -B scripts/devtool/cbnx04_hf03_negative_tests.py
           python3 -B scripts/devtool/cbnx02_source_gate.py
           python3 -B scripts/devtool/cbnx01_gate.py
           bash -n scripts/devtool/cbnx04_emulator_ci.sh

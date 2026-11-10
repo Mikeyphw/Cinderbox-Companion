@@ -63,10 +63,20 @@ internal object NexusPairingBridge {
         stopLocked()
         // Explicit pre-bind reuse prevents transient Android emulator TIME_WAIT bind failures.
         // Bind remains IPv4 loopback-only; never expose this listener on a LAN interface.
-        val socket = ServerSocket().apply {
-            reuseAddress = true
-            bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 4)
-            soTimeout = 1000
+        // An AndroidJUnit/Android lifecycle restart can briefly leave the loopback
+        // port in use even after closing the previous listener. Retry ONLY address
+        // reuse conflicts, with a strict upper bound; never bind to all interfaces.
+        val socket = NexusLoopbackBindPolicy.acquire {
+            ServerSocket().also { candidate ->
+                try {
+                    candidate.reuseAddress = true
+                    candidate.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 4)
+                    candidate.soTimeout = 1000
+                } catch (error: Exception) {
+                    runCatching { candidate.close() }
+                    throw error
+                }
+            }
         }
         listener = socket
         windowDeadline = now() + WINDOW_MS

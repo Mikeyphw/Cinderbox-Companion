@@ -36,6 +36,9 @@ SAFE_STAGES = set((
     'REVOKE_START', 'REVOKE_PAIR', 'REVOKE_ACCEPTED',
     'REVOKE_OLD_TOKEN_DENIED', 'REVOKE_STOP'
 ))
+SAFE_CAUSES = {'BIND_IN_USE', 'SOCKET_FAILURE', 'TIMEOUT', 'SECURITY',
+               'INTERRUPTED', 'ASSERTION', 'OTHER'}
+safe_causes = {}
 safe_stages = {}
 start = Counter()
 passed = Counter()
@@ -55,6 +58,9 @@ for line in raw.splitlines():
             match = re.search(r'CBNX03_SAFE_STAGE_([A-Z_]+)', value)
             if match and match.group(1) in SAFE_STAGES:
                 block['safe_stage'] = match.group(1)
+            cause_match = re.search(r'CBNX03_SAFE_CAUSE_([A-Z_]+)', value)
+            if cause_match and cause_match.group(1) in SAFE_CAUSES:
+                block['safe_cause'] = cause_match.group(1)
     elif line.startswith('INSTRUMENTATION_STATUS_CODE: '):
         code = line.split(': ', 1)[1].strip()
         method = block.get('test')
@@ -71,6 +77,8 @@ for line in raw.splitlines():
                 failed[method] += 1
                 if block.get('safe_stage') in SAFE_STAGES:
                     safe_stages[method] = block['safe_stage']
+                if block.get('safe_cause') in SAFE_CAUSES:
+                    safe_causes[method] = block['safe_cause']
         block = {}
 
 reason_codes = []
@@ -109,6 +117,10 @@ receipt = {
                                      if failed[name] and name in safe_stages},
     'safe_pairing_failure_stage': next((safe_stages[name] for name in methods
                                         if failed[name] and name in safe_stages), None),
+    'safe_pairing_failure_causes': {name: safe_causes[name] for name in methods
+                                     if failed[name] and name in safe_causes},
+    'safe_pairing_failure_cause': next((safe_causes[name] for name in methods
+                                        if failed[name] and name in safe_causes), None),
     'app_sha256': a.app_sha, 'test_apk_sha256': a.test_sha,
     'emulator_only': True, 'live_firefox_qualified': False,
     'physical_device_qualified': False, 'live_nexus_qualified': False,

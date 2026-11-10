@@ -93,15 +93,41 @@ class CbNx03PairingDeviceTest {
         assertEquals(403, request("GET", "/v1/hello", headers = mapOf("Host" to "evil.example")).first)
         // HTTP field names are case-insensitive; reject a mixed-case duplicate too.
         assertEquals(403, request("GET", "/v1/hello", headers = mapOf("hOsT" to "evil.example")).first)
+        // Repeated explicit stop/start must retain loopback-only binding.
+        // This exercises the previously failing HANDOFF_START lifecycle without
+        // changing the exact seven-method roster or touching durable game data.
+        repeat(4) {
+            NexusPairingBridge.stop()
+            assertFalse(NexusPairingBridge.snapshot().listening)
+            val rebound = NexusPairingBridge.start(context)
+            assertTrue(rebound.listening)
+            assertEquals(200, request("GET", "/v1/hello").first)
+        }
     }
 
     // Safe fixed-step failure labels; never include tokens, NXM URLs or response bodies.
+    private fun safeCause(error: Throwable): String {
+        var current: Throwable? = error
+        repeat(5) {
+            when (current) {
+                is java.net.BindException -> return "BIND_IN_USE"
+                is java.net.SocketTimeoutException -> return "TIMEOUT"
+                is java.net.SocketException -> return "SOCKET_FAILURE"
+                is SecurityException -> return "SECURITY"
+                is InterruptedException -> return "INTERRUPTED"
+                is AssertionError -> return "ASSERTION"
+            }
+            current = current?.cause
+        }
+        return "OTHER"
+    }
+
     private fun <T> atStage(stage: String, block: () -> T): T = try {
         block()
     } catch (e: AssertionError) {
-        throw AssertionError("CBNX03_SAFE_STAGE_$stage", e)
+        throw AssertionError("CBNX03_SAFE_STAGE_$stage CBNX03_SAFE_CAUSE_${safeCause(e)}", e)
     } catch (e: Exception) {
-        throw AssertionError("CBNX03_SAFE_STAGE_$stage", e)
+        throw AssertionError("CBNX03_SAFE_STAGE_$stage CBNX03_SAFE_CAUSE_${safeCause(e)}", e)
     }
 
     @Test fun pairingReadOnlyAndNonceReplayFails() {
