@@ -295,7 +295,20 @@ internal object NexusPairingBridge {
                                             .put("file_id", entry.fileId)
                                             .put("status", entry.status))
                                     }
+                                // Independent local SMAPI inventory is opt-in and read-only.
+                                // Do NOT call ModFileManager.listInstalledMods(): it can rename folders.
+                                val authority = runCatching { NexusPairingAuthority.snapshot(
+                                    ModDownloadJournal(context).list(),
+                                    java.io.File(com.sdvsync.cinderbox.CinderboxPaths.MODS_DIR), now()) }
                                 200 to JSONObject().put("protocol", 1).put("proof_kind", "journal_only")
+                                    .put("authority", authority.getOrElse {
+                                        JSONObject().put("schema", 1).put("scope", "LOCAL_SMAPI_AND_JOURNAL")
+                                            .put("inventory_state", "UNAVAILABLE")
+                                            .put("remote_update_check", "NOT_PERFORMED")
+                                            .put("items", JSONArray())
+                                    })
+                                    // Legacy field stays false for CB-NX03 clients; authoritative
+                                    // CB-NX04 inventory has its OWN explicit qualification field.
                                     .put("installed_inventory_qualified", false)
                                     .put("handoff_enabled", permitHandoffs)
                                     .put("inbox_available", inboxResult.isSuccess)
