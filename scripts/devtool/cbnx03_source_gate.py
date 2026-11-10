@@ -13,7 +13,10 @@ settings = read('app/src/main/java/com/sdvsync/ui/screens/SettingsScreen.kt')
 panel = read('app/src/main/java/com/sdvsync/ui/screens/NexusPairingPanel.kt')
 tests = read('app/src/androidTest/java/com/sdvsync/mods/CbNx03PairingDeviceTest.kt')
 workflow = read('.github/workflows/cbnx03-pairing.yml')
-for word in ('ServerSocket(PORT, 4, InetAddress.getByName("127.0.0.1"))',
+for word in ('bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 4)',
+             'reuseAddress = true',
+             'if (headers.containsKey(key))',
+             'respond(output, 403, JSONObject().put("error", "refused"), null)',
              'val allowedOrigin', 'x-cbnx-nonce', 'MessageDigest.isEqual',
              'proof_kind", "journal_only"', 'installed_inventory_qualified',
              'private const val WINDOW_MS = 10 * 60_000L', 'stopLocked()',
@@ -27,6 +30,14 @@ for test in ('optInRequiredAndLoopbackOnly', 'pairingReadOnlyAndNonceReplayFails
              'revokeInvalidatesTokenAndStopsListening', 'incorrectCodesLockOutPairing'):
     assert test in tests, 'CBNX03_MISSING_EMULATOR_TEST:'+test
 assert 'CbNx03PairingDeviceTest' in workflow and 'api-level: 36' in workflow
+assert 'cbnx03_hf01_negative_tests.py' in workflow, 'CBNX03_HF01_HOSTED_NEGATIVE_TESTS_NOT_WIRED'
+receipt = read('scripts/devtool/cbnx03_instrumentation_receipt.py')
+for contract in ("elif code == '0'", "elif code == '1'", "'test_results': results", "'failure_reason_codes': reason_codes"):
+    assert contract in receipt, 'CBNX03_HF01_RECEIPT_CONTRACT_STALE:' + contract
+runner = read('scripts/devtool/cbnx03_emulator_ci.sh')
+assert 'cbnx03_instrumentation_receipt.py' in runner, 'CBNX03_HF01_RUNNER_RECEIPT_MISSING'
+assert 'hOsT' in tests, 'CBNX03_HF01_MISSING_DUPLICATE_HOST_CASE'
+
 policy = json.loads(read('docs/security/M3_RELEASE_POLICY.json'))
 for flag in ('release_enabled','publication_enabled','automatic_device_install','device_qualification_complete'):
     assert policy[flag] is False, 'CBNX03_RELEASE_FLAG_CHANGED:'+flag

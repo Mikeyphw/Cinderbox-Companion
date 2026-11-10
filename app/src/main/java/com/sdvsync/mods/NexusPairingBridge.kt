@@ -7,6 +7,7 @@ import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketTimeoutException
@@ -52,8 +53,13 @@ internal object NexusPairingBridge {
 
     fun start(context: Context): Snapshot = synchronized(guard) {
         stopLocked()
-        val socket = ServerSocket(PORT, 4, InetAddress.getByName("127.0.0.1"))
-        socket.soTimeout = 1000
+        // Explicit pre-bind reuse prevents transient Android emulator TIME_WAIT bind failures.
+        // Bind remains IPv4 loopback-only; never expose this listener on a LAN interface.
+        val socket = ServerSocket().apply {
+            reuseAddress = true
+            bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 4)
+            soTimeout = 1000
+        }
         listener = socket
         windowDeadline = now() + WINDOW_MS
         codeDeadline = now() + CODE_MS
@@ -143,7 +149,13 @@ internal object NexusPairingBridge {
             val at = line.indexOf(':')
             if (at < 1) return
             val key = line.substring(0, at).lowercase()
-            if (headers.put(key, line.substring(at + 1).trim()) != null) return
+            if (headers.containsKey(key)) {
+                // Duplicate Host / Origin / Authorization are denied explicitly, not by
+                // silently closing: callers receive deterministic fail-closed 403.
+                respond(output, 403, JSONObject().put("error", "refused"), null)
+                return
+            }
+            headers[key] = line.substring(at + 1).trim()
         }
         val origin = headers["origin"]
         // Browser background sends Origin absent or moz-extension://<unique-id>.

@@ -27,6 +27,8 @@ adb -s "$serial" shell am instrument -w -r -e class \
   com.sdvsync.test/androidx.test.runner.AndroidJUnitRunner > "$raw" 2>&1
 status=$?
 set -e
+# The parser prints safe fixed failure categories, never raw instrumentation.
+# Preserve the redacted receipt even when a test fails; raw logs are deleted.
 python3 -B scripts/devtool/cbnx03_instrumentation_receipt.py \
   --log "$raw" --exit "$status" --source "$CBNX03_HEAD_SHA" \
   --run "$GITHUB_RUN_ID" --app-sha "$app_sha" --test-sha "$test_sha" \

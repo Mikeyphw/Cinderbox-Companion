@@ -33,6 +33,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$CBNX03_HEAD_SHA"
           python3 -B scripts/devtool/cbnx03_source_gate.py
+          python3 -B scripts/devtool/cbnx03_hf01_negative_tests.py
           python3 -B scripts/devtool/cbnx02_source_gate.py
           python3 -B scripts/devtool/cbnx01_gate.py
           bash -n scripts/devtool/cbnx03_emulator_ci.sh

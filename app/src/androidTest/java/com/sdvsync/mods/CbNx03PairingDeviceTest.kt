@@ -58,6 +58,8 @@ class CbNx03PairingDeviceTest {
         assertEquals(9, requireNotNull(snapshot.code).length)
         assertEquals(403, request("GET", "/v1/hello", headers = mapOf("Origin" to "https://evil.example")).first)
         assertEquals(403, request("GET", "/v1/hello", headers = mapOf("Host" to "evil.example")).first)
+        // HTTP field names are case-insensitive; reject a mixed-case duplicate too.
+        assertEquals(403, request("GET", "/v1/hello", headers = mapOf("hOsT" to "evil.example")).first)
     }
 
     @Test fun pairingReadOnlyAndNonceReplayFails() {
