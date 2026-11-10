@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # CB-NX02B HF02: hosted API36 synthetic tests only; no Nexus credentials or real Mods.
 set -euo pipefail
-: "${GITHUB_SHA:?}" "${GITHUB_RUN_ID:?}" "${RUNNER_TEMP:?}" "${RUNNER_OS:?}"
+: "${CBNX02_HEAD_SHA:?}" "${GITHUB_RUN_ID:?}" "${RUNNER_TEMP:?}" "${RUNNER_OS:?}"
 [[ "$RUNNER_OS" == Linux && "$(uname -m)" == x86_64 ]] || exit 2
-[[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]] || exit 2
+[[ "$(git rev-parse HEAD)" == "$CBNX02_HEAD_SHA" ]] || exit 2
 serial=emulator-5554
 out="$RUNNER_TEMP/cbnx02-api36"
 mkdir -p "$out"
@@ -34,7 +34,7 @@ adb -s "$serial" shell am instrument -w -r -e class \
 status=$?
 set -e
 python3 -B scripts/devtool/cbnx02_instrumentation_receipt.py \
-  --log "$raw" --exit-code "$status" --source "$GITHUB_SHA" \
+  --log "$raw" --exit-code "$status" --source "$CBNX02_HEAD_SHA" \
   --run "$GITHUB_RUN_ID" --app-sha "$app_sha" --installed-sha "$installed_sha" \
   --test-sha "$test_sha" --output "$out/STATUS.json"
 echo CBNX02B_HF02_API36_SYNTHETIC_ROSTER_PASS_NO_LIVE_PROVIDER_PROOF

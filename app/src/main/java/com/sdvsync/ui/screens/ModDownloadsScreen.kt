@@ -18,6 +18,14 @@ import com.sdvsync.mods.ModDownloadJournal
 import com.sdvsync.mods.ModDownloadManager
 import com.sdvsync.mods.ModDownloadPreferences
 import com.sdvsync.mods.ModDownloadRecord
+import com.sdvsync.mods.ModDownloadEvidencePolicy
+import com.sdvsync.mods.NexusPairingAuthority
+import com.sdvsync.mods.NexusArchiveProvenance
+import com.sdvsync.cinderbox.CinderboxPaths
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.sdvsync.mods.ModQueueControlPolicy
 import com.sdvsync.mods.ModReviewQueue
 import com.sdvsync.mods.api.NexusBrowserHandoff
@@ -53,6 +61,59 @@ fun ModDownloadsScreen(
         reviewState.pendingFileId == reviewHead.fileId &&
         reviewState.pendingLabel == reviewHead.name
     var reviewOpen by remember { mutableStateOf(false) }
+    var inspectingEvidenceJob by remember { mutableStateOf<String?>(null) }
+    var evidenceBusy by remember { mutableStateOf(false) }
+    var evidenceDetails by remember { mutableStateOf<ModDownloadEvidencePolicy.Details?>(null) }
+    val evidenceScope = rememberCoroutineScope()
+    val inspectEvidence: (ModDownloadRecord) -> Unit = { record ->
+        if (!evidenceBusy) {
+            inspectingEvidenceJob = record.id
+            evidenceBusy = true
+            evidenceDetails = null
+            evidenceScope.launch {
+                // Hashing a retained ZIP can be expensive; never run on Compose's UI thread.
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val recordsAtScan = journal.list()
+                        val archive = NexusArchiveProvenance.inspect(recordsAtScan, context.filesDir)
+                        val report = NexusPairingAuthority.snapshot(recordsAtScan,
+                            File(CinderboxPaths.MODS_DIR), System.currentTimeMillis())
+                        val rows = report.optJSONArray("items")
+                        val matches = (0 until (rows?.length() ?: 0)).mapNotNull { index ->
+                            rows?.optJSONObject(index)
+                        }.filter { row ->
+                            row.optString("mod_id") == record.modId &&
+                                row.optString("file_id") == record.fileId
+                        }
+                        val row = matches.singleOrNull()
+                        val exactArchiveVerified = archive.available &&
+                            archive.confirmedJobIds.contains(record.id)
+                        ModDownloadEvidencePolicy.evaluate(record.id, record.source,
+                            record.modId, record.fileId, record.status, row?.let {
+                                ModDownloadEvidencePolicy.Observation(
+                                    jobId = record.id,
+                                    modId = it.optString("mod_id"),
+                                    fileId = it.optString("file_id"),
+                                    archiveState = if (!archive.available) "UNAVAILABLE"
+                                        else if (exactArchiveVerified) "VERIFIED_AT_SCAN"
+                                        else "NO_RETAINED_ARCHIVE",
+                                    archiveQualified = exactArchiveVerified,
+                                    archiveScope = "LOCAL_ZIP_VS_APP_RECEIPT",
+                                    inventoryState = report.optString("inventory_state"),
+                                    modState = it.optString("installed_mod_state"),
+                                    exactFileInstalled = it.optString("exact_file_installed")
+                                )
+                            })
+                    }.getOrElse {
+                        ModDownloadEvidencePolicy.evaluate(record.id, record.source,
+                            record.modId, record.fileId, record.status, null)
+                    }
+                }
+                if (inspectingEvidenceJob == record.id) evidenceDetails = result
+                evidenceBusy = false
+            }
+        }
+    }
     // ZIP previews can be expensive. Do not re-preview on each persisted byte update.
     LaunchedEffect(reviewHead.jobId, reviewHead.sha256, reviewCount) {
         if (reviewCount > 0) reviewModel.refreshSafetyState()
@@ -79,6 +140,32 @@ fun ModDownloadsScreen(
         "Finished" -> record.status in setOf("INSTALLED", "COMPLETED", "CANCELLED", "DISCARDED")
         else -> true
     } }
+
+    if (inspectingEvidenceJob != null) {
+        AlertDialog(
+            onDismissRequest = { inspectingEvidenceJob = null },
+            title = { Text("Exact-file evidence") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (evidenceBusy || evidenceDetails == null) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text("Checking app-private receipts and SMAPI manifests…")
+                    } else {
+                        Text(evidenceDetails!!.journal)
+                        Text(evidenceDetails!!.archive, modifier = Modifier.testTag("cbnx05.evidence.archive"))
+                        Text(evidenceDetails!!.mod, modifier = Modifier.testTag("cbnx05.evidence.mod"))
+                        Text(evidenceDetails!!.exactFile,
+                            modifier = Modifier.testTag("cbnx05.evidence.exact-file"))
+                    }
+                    Text("Archive proof is app-local, not a Nexus checksum. " +
+                        "Exact Nexus file installation not verified. " +
+                        "Reading evidence does not download or install mods.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = { TextButton(onClick = { inspectingEvidenceJob = null }) { Text("Close") } }
+        )
+    }
 
     if (reviewOpen) {
         AlertDialog(
@@ -213,6 +300,7 @@ fun ModDownloadsScreen(
                 onCancelOne = { manager.cancelOne(record.id) },
                 onMoveUp = { manager.move(record.id, -1) },
                 onMoveDown = { manager.move(record.id, 1) },
+                onInspectEvidence = { inspectEvidence(record) },
                 onRetryExact = {
                     NexusBrowserHandoff.createUrl(record.modId, record.fileId)?.let { url ->
                         NexusBrowserLauncher.open(context, url)
@@ -237,7 +325,8 @@ internal fun DownloadRecordCard(record: ModDownloadRecord, current: ModDownloadS
     isReviewHead: Boolean = true, fromNotification: Boolean = false,
     onPause: () -> Unit = {}, onResume: () -> Unit = {},
     onCancelOne: () -> Unit = {}, onMoveUp: () -> Unit = {},
-    onMoveDown: () -> Unit = {}, onRetryExact: () -> Unit = {}) {
+    onMoveDown: () -> Unit = {}, onRetryExact: () -> Unit = {},
+    onInspectEvidence: () -> Unit = {}) {
     val active = record.status in setOf("QUEUED", "DOWNLOADING", "VALIDATING", "INSTALLING")
     val needsReview = record.status in setOf("REVIEW_REQUIRED", "BLOCKED")
     val fraction = if (record.total > 0) (record.received.toFloat() / record.total)
@@ -292,6 +381,13 @@ internal fun DownloadRecordCard(record: ModDownloadRecord, current: ModDownloadS
                 }
                 if (record.modId.isNotBlank()) {
                     OutlinedButton(onClick = { onOpenMod(record.modId) }) { Text("Mod details") }
+                }
+                if (record.source == "nexus" && record.modId.isNotBlank() &&
+                    record.fileId.isNotBlank()) {
+                    OutlinedButton(onClick = onInspectEvidence,
+                        modifier = Modifier.testTag("cbnx05.evidence.open")) {
+                        Text("Evidence details")
+                    }
                 }
                 if (record.status == "DOWNLOADING" && current == ModDownloadState.DOWNLOADING) {
                     TextButton(onClick = onCancel) { Text("Cancel all transfers") }

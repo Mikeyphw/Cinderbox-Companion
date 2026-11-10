@@ -2,6 +2,8 @@ name: CB-NX03 Authenticated Pairing and Exact-file Inbox API36
 on:
   pull_request:
     paths:
+      - 'app/src/main/java/com/sdvsync/mods/ModDownloadEvidencePolicy.kt'
+      - 'scripts/devtool/cbnx02_source_gate.py'
       - 'app/src/main/java/com/sdvsync/mods/NexusPairingBridge.kt'
       - 'app/src/main/java/com/sdvsync/mods/NexusPairingAuthorityCache.kt'
       - 'app/src/test/java/com/sdvsync/mods/NexusPairingAuthorityCacheTest.kt'

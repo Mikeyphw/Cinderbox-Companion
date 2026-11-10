@@ -53,6 +53,21 @@ class CbNx02DownloadsUiDeviceTest {
         assertEquals(0, accidentallyApproved)
     }
 
+    @Test fun exactJobEvidenceButtonCannotStartInstallOrOpenWrongMod() {
+        var inspected = 0
+        var reviewed = 0
+        var opened = 0
+        rule.setContent { MaterialTheme {
+            DownloadRecordCard(record("INSTALLED"), ModDownloadState.IDLE,
+                onReview = { reviewed++ }, onOpenMod = { opened++ }, onCancel = {},
+                onInspectEvidence = { inspected++ })
+        } }
+        rule.onNodeWithTag("cbnx05.evidence.open").performClick()
+        assertEquals(1, inspected)
+        assertEquals(0, reviewed)
+        assertEquals(0, opened)
+    }
+
     @Test fun activeCardShowsBytesAndExplicitCancelAllAction() {
         var cancellations = 0
         rule.setContent { MaterialTheme {

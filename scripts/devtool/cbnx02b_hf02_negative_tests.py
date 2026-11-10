@@ -43,6 +43,12 @@ def verify_source():
     assert 'check(journal.update(item.id, "INSTALLED"' in svc
     assert 'CbNx02BAdmissionDeviceTest' in runner and 'CbNx02BQueueControlsUiDeviceTest' in runner
     assert 'CBNX02B_HF02_SOURCE_GATE_PASS' in gate
+    # Audit the CURRENT canonical source gate against the real receipt parser.
+    # A pre-migration completion-only marker would make the staging preflight fail.
+    assert 'events == 2 * len(EXPECTED)' in gate
+    assert 'len(started) == len(EXPECTED)' in gate
+    assert 'started.get(x) == 1 and passed.get(x) == 1' in gate
+    assert 'set(passed) == EXPECTED' not in gate
     for s in ('url','token','cookie','expires','key','nxm','downloadUrl'):
         assert f'.put("{s}"' not in ledger and f'setProperty("{s}"' not in ledger
     return mgr, ledger, svc, runner
@@ -70,18 +76,27 @@ def mutate_negative_tests(manager, ledger, service, runner):
 def receipt_tests():
     mod=load_receipt()
     items=sorted(mod.EXPECTED)
-    assert len(items)==17, len(items)
-    raw=''.join(f'INSTRUMENTATION_STATUS: class={c}\nINSTRUMENTATION_STATUS: test={t}\nINSTRUMENTATION_STATUS_CODE: 1\nINSTRUMENTATION_STATUS: class={c}\nINSTRUMENTATION_STATUS: test={t}\nINSTRUMENTATION_STATUS_CODE: 0\n' for c,t in items)
-    raw+='OK (17 tests)\n'
+    assert len(items)==18, len(items)
+    assert ('com.sdvsync.ui.screens.CbNx02DownloadsUiDeviceTest',
+            'exactJobEvidenceButtonCannotStartInstallOrOpenWrongMod') in items
+    raw=''.join(f'INSTRUMENTATION_STATUS: class={c}\nINSTRUMENTATION_STATUS: test={t}\nINSTRUMENTATION_STATUS: numtests=18\nINSTRUMENTATION_STATUS_CODE: 1\nINSTRUMENTATION_STATUS: class={c}\nINSTRUMENTATION_STATUS: test={t}\nINSTRUMENTATION_STATUS: numtests=18\nINSTRUMENTATION_STATUS_CODE: 0\n' for c,t in items)
+    raw+='OK (18 tests)\nINSTRUMENTATION_CODE: -1\n'
     src='a'*40; app='b'*64; apk='c'*64
     assert mod.validate(raw,0,src,app,app,apk)
     bad={
-      'missing_class_or_test':raw.replace(f'INSTRUMENTATION_STATUS: class={items[0][0]}\nINSTRUMENTATION_STATUS: test={items[0][1]}\nINSTRUMENTATION_STATUS_CODE: 0\n','',1),
-      'bad_legacy_count':raw.replace('OK (17 tests)','OK (8 tests)'),
+      'missing_class_or_test':raw.replace(f'INSTRUMENTATION_STATUS: class={items[0][0]}\nINSTRUMENTATION_STATUS: test={items[0][1]}\nINSTRUMENTATION_STATUS: numtests=18\nINSTRUMENTATION_STATUS_CODE: 0\n','',1),
+      'bad_legacy_count':raw.replace('OK (18 tests)','OK (8 tests)'),
       'bad_status':raw+'INSTRUMENTATION_FAILED\n',
-      'duplicate_test':raw.replace('OK (17 tests)',f'INSTRUMENTATION_STATUS: class={items[0][0]}\nINSTRUMENTATION_STATUS: test={items[0][1]}\nINSTRUMENTATION_STATUS_CODE: 0\nOK (17 tests)'),
+      'duplicate_test':raw.replace('OK (18 tests)',f'INSTRUMENTATION_STATUS: class={items[0][0]}\nINSTRUMENTATION_STATUS: test={items[0][1]}\nINSTRUMENTATION_STATUS: numtests=18\nINSTRUMENTATION_STATUS_CODE: 0\nOK (18 tests)'),
       'incorrect_roster':raw.replace(f'INSTRUMENTATION_STATUS: test={items[0][1]}', 'INSTRUMENTATION_STATUS: test=unrelated',2),
     }
+    bad.update({
+      'missing_start':raw.replace(f'INSTRUMENTATION_STATUS: class={items[0][0]}\nINSTRUMENTATION_STATUS: test={items[0][1]}\nINSTRUMENTATION_STATUS: numtests=18\nINSTRUMENTATION_STATUS_CODE: 1\n','',1),
+      'duplicate_start':raw.replace('OK (18 tests)',f'INSTRUMENTATION_STATUS: class={items[0][0]}\nINSTRUMENTATION_STATUS: test={items[0][1]}\nINSTRUMENTATION_STATUS: numtests=18\nINSTRUMENTATION_STATUS_CODE: 1\nOK (18 tests)'),
+      'incorrect_numtests':raw.replace('numtests=18', 'numtests=17',1),
+      'forged_status':raw.replace('INSTRUMENTATION_STATUS_CODE: 0', 'INSTRUMENTATION_STATUS_CODE: -2',1),
+      'missing_final_success':raw.replace('INSTRUMENTATION_CODE: -1','INSTRUMENTATION_CODE: 0'),
+    })
     for label,value in bad.items(): assert not mod.validate(value,0,src,app,app,apk), label
     assert not mod.validate(raw,1,src,app,app,apk)
     assert not mod.validate(raw,0,src,app,'c'*64,apk)
@@ -95,6 +110,6 @@ def main():
     mgr, journal, svc, runner=verify_source()
     mutate_negative_tests(mgr,journal,svc,runner)
     n=receipt_tests()
-    print(f'CBNX02B_HF02_OFFLINE_NEGATIVE_PASS roster=17 receipt_mutations={n} source_mutations=8')
+    print(f'CBNX02B_HF02_OFFLINE_NEGATIVE_PASS roster=18 receipt_mutations={n} source_mutations=8')
 
 if __name__=='__main__': main()

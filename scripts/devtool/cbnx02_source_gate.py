@@ -148,7 +148,11 @@ runner=require('scripts/devtool/cbnx02_emulator_ci.sh', [
     'CbNx02DownloadUxDeviceTest,com.sdvsync.ui.screens.CbNx02DownloadsUiDeviceTest,com.sdvsync.ui.screens.CbNx02BQueueControlsUiDeviceTest,com.sdvsync.mods.CbNx02BAdmissionDeviceTest',
     'scripts/devtool/cbnx02_instrumentation_receipt.py'])
 receipt=require('scripts/devtool/cbnx02_instrumentation_receipt.py', [
-    'ROSTER = {', 'len(EXPECTED)', 'set(passed) == EXPECTED',
+    'ROSTER = {', 'len(EXPECTED)',
+    'events == 2 * len(EXPECTED)',
+    'len(started) == len(EXPECTED)', 'len(passed) == len(EXPECTED)',
+    'started.get(x) == 1 and passed.get(x) == 1',
+    'for x in EXPECTED', 'invalid == 0',
     'CbNx02BQueueControlsUiDeviceTest', 'CbNx02BAdmissionDeviceTest',
     "'physical_device_qualified': False", "'live_nexus_qualified': False"])
 assert 'OK (8 tests)' not in receipt and "'test_count':8" not in receipt
@@ -179,3 +183,44 @@ reviewvm=require('app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewMode
     'row.status in setOf("REVIEW_REQUIRED", "BLOCKED")',
     'check(ModDownloadJournal(context).update(receipt.jobId, "INSTALLED"',
     '"Cannot discard uncertain installation evidence"'])
+
+# CB-NX05A: actual mod-level and archive-level statuses remain independent.
+# Canonical CB-NX02 device roster now includes the exact-job inspection action.
+provenance = require(MOD+'ModDownloadEvidencePolicy.kt', [
+    'internal object ModDownloadEvidencePolicy', 'VERIFIED_AT_SCAN',
+    'LOCAL_ZIP_VS_APP_RECEIPT', 'observation.modId != modId',
+    'observation.fileId != fileId', 'observation.jobId != jobId', 'exactFileInstalled != "UNKNOWN"',
+    'Exact Nexus file installation not verified', 'inventoryState == "QUALIFIED"'])
+for forbidden in ('installFromZip(', 'startDownload(', 'httpClient.newCall(',
+                  'setHandoffEnabled(', 'java.net.', 'SharedPreferences('):
+    assert forbidden not in provenance, 'CBNX05A_EVIDENCE_POLICY_SIDE_EFFECT:'+forbidden
+inspect = require(SCREENS+'ModDownloadsScreen.kt', [
+    'NexusPairingAuthority.snapshot(recordsAtScan', 'NexusArchiveProvenance.inspect(recordsAtScan',
+    'withContext(Dispatchers.IO)', 'ModDownloadEvidencePolicy.evaluate(',
+    'cbnx05.evidence.open', 'onInspectEvidence = { inspectEvidence(record) }',
+    'Archive proof is app-local, not a Nexus checksum',
+    'Exact Nexus file installation not verified'])
+assert 'NexusPairingAuthority.snapshot(recordsAtScan' in inspect
+suite = require('app/src/androidTest/java/com/sdvsync/ui/screens/CbNx02DownloadsUiDeviceTest.kt',
+    ['exactJobEvidenceButtonCannotStartInstallOrOpenWrongMod'])
+assert len(re.findall(r'@Test\s+fun\s+([A-Za-z_0-9]+)\s*\(', suite)) == 4
+unit = require('app/src/test/java/com/sdvsync/mods/ModDownloadEvidencePolicyTest.kt',
+    ['class ModDownloadEvidencePolicyTest', 'wrongScopeAndForgedExactFileClaimFailClosed'])
+assert len(re.findall(r'@Test\s+fun\s+([A-Za-z_0-9]+)\s*\(', unit)) == 8
+receipt = text('scripts/devtool/cbnx02_instrumentation_receipt.py')
+negative = text('scripts/devtool/cbnx02b_hf02_negative_tests.py')
+assert "'qualification': 'CBNX05A_API36_EXACT_JOB_EVIDENCE'" in receipt
+assert 'exactJobEvidenceButtonCannotStartInstallOrOpenWrongMod' in receipt
+assert 'len(items)==18' in negative and 'roster=18' in negative
+assert 'roster=17' not in negative and 'OK (17 tests)' not in negative
+workflow = text('.github/workflows/cbnx02-download-ux.yml')
+runner = text('scripts/devtool/cbnx02_emulator_ci.sh')
+for needed in ('pull_request:', 'CBNX02_HEAD_SHA:',
+    'python3 -B scripts/devtool/cbnx04_sdk_image_recovery.py',
+    ':app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest',
+    'needs: source-and-build', 'api-level: 36'):
+    assert needed in workflow, 'CBNX05A_STALE_HOSTED_WORKFLOW:'+needed
+assert 'sdkmanager --install' not in workflow
+assert '$CBNX02_HEAD_SHA' in runner and '"$GITHUB_SHA"' not in runner
+assert 'CbNx02DownloadsUiDeviceTest' in runner
+print('CBNX05A_CANONICAL_DOWNLOADS_EVIDENCE_AND_18_DEVICE_TESTS_PASS')
