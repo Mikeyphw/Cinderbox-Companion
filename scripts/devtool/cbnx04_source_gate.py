@@ -126,4 +126,20 @@ for p in ('app/src/main/java/com/sdvsync/ui/screens/Cbnx04UpdatesDashboard.kt',
     'app/src/main/java/com/sdvsync/ui/screens/ModDownloadsScreen.kt'):
     assert "'"+p+"'" in workflow, 'CBNX04D_WORKFLOW_PATH_OMITTED:'+p
 assert "'CBNX04C_API36_SYNTHETIC_SMAPI_CACHE_EVIDENCE'" not in receipt
+
+# Canonical API36 SDK setup is fail-closed and retried only for the exact image.
+sdk = source('scripts/devtool/cbnx04_sdk_image_recovery.py')
+for current_workflow in ('.github/workflows/cbnx03-pairing.yml',
+                         '.github/workflows/cbnx04-authority.yml'):
+    w = source(current_workflow)
+    for marker in ('python3 -B scripts/devtool/cbnx04_sdk_image_recovery.py',
+                   'python3 -B scripts/devtool/cbnx04_sdk_image_recovery_negative_tests.py',
+                   'needs: source-jvm', 'api-level: 36',
+                   'path: ${{ runner.temp }}'):
+        assert marker in w, 'CBNX04D_SDK_STALE_WORKFLOW:'+marker
+    assert 'sdkmanager --install ' not in w, 'CBNX04D_SDK_UNGUARDED_OLD_INSTALL'
+assert 'MAX_ATTEMPTS = 3' in sdk
+assert 'system-images;android-36;google_apis;x86_64' in sdk
+assert 'UNSAFE_SDK_PACKAGE_LINK' in sdk
+
 print('CBNX04D_CANONICAL_NATIVE_DASHBOARD_EIGHTEEN_TEST_CONTRACT_PASS')

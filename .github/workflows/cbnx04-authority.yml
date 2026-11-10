@@ -15,6 +15,8 @@ on:
       - 'app/src/main/java/com/sdvsync/mods/NexusPairingAuthorityCache.kt'
       - 'app/src/test/java/com/sdvsync/mods/NexusPairingAuthorityCacheTest.kt'
       - 'scripts/devtool/cbnx04_hf01_*'
+      - 'scripts/devtool/cbnx04_sdk_image_recovery.py'
+      - 'scripts/devtool/cbnx04_sdk_image_recovery_negative_tests.py'
       - 'scripts/devtool/cbnx04_hf02_*'
       - 'scripts/devtool/cbnx04_hf03_*'
       - 'app/src/main/java/com/sdvsync/mods/NexusLoopbackBindPolicy.kt'
@@ -58,6 +60,7 @@ jobs:
           python3 -B scripts/devtool/cbnx04_hf02_negative_tests.py
           python3 -B scripts/devtool/cbnx04_hf03_source_gate.py
           python3 -B scripts/devtool/cbnx04_hf03_negative_tests.py
+          python3 -B scripts/devtool/cbnx04_sdk_image_recovery_negative_tests.py
           python3 -B scripts/devtool/cbnx02_source_gate.py
           python3 -B scripts/devtool/cbnx01_gate.py
           bash -n scripts/devtool/cbnx04_emulator_ci.sh
@@ -91,7 +94,7 @@ jobs:
           set -euo pipefail
           test -c /dev/kvm
           sudo chmod a+rw /dev/kvm
-          sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'system-images;android-36;google_apis;x86_64'
+          python3 -B scripts/devtool/cbnx04_sdk_image_recovery.py
       - name: Synthetic read-only archive and manifest evidence, never game data
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:

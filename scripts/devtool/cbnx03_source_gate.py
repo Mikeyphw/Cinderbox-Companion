@@ -41,4 +41,20 @@ assert 'hOsT' in tests, 'CBNX03_HF01_MISSING_DUPLICATE_HOST_CASE'
 policy = json.loads(read('docs/security/M3_RELEASE_POLICY.json'))
 for flag in ('release_enabled','publication_enabled','automatic_device_install','device_qualification_complete'):
     assert policy[flag] is False, 'CBNX03_RELEASE_FLAG_CHANGED:'+flag
+
+# Canonical API36 SDK setup is fail-closed and retried only for the exact image.
+sdk = read('scripts/devtool/cbnx04_sdk_image_recovery.py')
+for current_workflow in ('.github/workflows/cbnx03-pairing.yml',
+                         '.github/workflows/cbnx04-authority.yml'):
+    w = read(current_workflow)
+    for marker in ('python3 -B scripts/devtool/cbnx04_sdk_image_recovery.py',
+                   'python3 -B scripts/devtool/cbnx04_sdk_image_recovery_negative_tests.py',
+                   'needs: source-jvm', 'api-level: 36',
+                   'path: ${{ runner.temp }}'):
+        assert marker in w, 'CBNX04D_SDK_STALE_WORKFLOW:'+marker
+    assert 'sdkmanager --install ' not in w, 'CBNX04D_SDK_UNGUARDED_OLD_INSTALL'
+assert 'MAX_ATTEMPTS = 3' in sdk
+assert 'system-images;android-36;google_apis;x86_64' in sdk
+assert 'UNSAFE_SDK_PACKAGE_LINK' in sdk
+
 print('CBNX03A_ANDROID_SOURCE_PASS_RUNTIME_UNQUALIFIED')
