@@ -6,7 +6,7 @@ ROOT=Path(__file__).resolve().parents[2]
 receiver=ROOT/'scripts/devtool/cbnx04_instrumentation_receipt.py'
 text=receiver.read_text(encoding='utf8')
 names=tuple(re.findall(r"    '([A-Za-z0-9_]+)',",text.split('methods = (',1)[1].split(')',1)[0]))
-assert len(names)==15 and len(set(names))==15
+assert len(names)==18 and len(set(names))==18
 sha='a'*40; apk='b'*64
 
 def run(log, exit_code=0, src=sha):
@@ -20,22 +20,22 @@ def run(log, exit_code=0, src=sha):
         receipt=json.loads(output.read_text())
         return result.returncode,receipt,result.stdout+result.stderr
 
-def block(name,code,cls='com.sdvsync.mods.CbNx04AuthorityDeviceTest',total='15'):
+def block(name,code,cls='com.sdvsync.mods.CbNx04AuthorityDeviceTest',total='18'):
     return '\n'.join([f'INSTRUMENTATION_STATUS: class={cls}',
                       f'INSTRUMENTATION_STATUS: test={name}',
                       f'INSTRUMENTATION_STATUS: numtests={total}',
                       f'INSTRUMENTATION_STATUS_CODE: {code}'])+'\n'
 raw=''.join(block(name,'1')+block(name,'0') for name in names)
-raw+='OK (15 tests)\nINSTRUMENTATION_CODE: -1\n'
+raw+='OK (18 tests)\nINSTRUMENTATION_CODE: -1\n'
 rc,receipt,output=run(raw)
-assert rc==0 and receipt['status']=='PASS' and receipt['test_count']==15
-assert receipt['event_count']==30 and receipt['physical_device_qualified'] is False
+assert rc==0 and receipt['status']=='PASS' and receipt['test_count']==18
+assert receipt['event_count']==36 and receipt['physical_device_qualified'] is False
 mutants=[
-    (raw.replace('numtests=15','numtests=16',1),0,sha),
+    (raw.replace('numtests=18','numtests=19',1),0,sha),
     (raw.replace('com.sdvsync.mods.CbNx04AuthorityDeviceTest','wrong.Class',1),0,sha),
     (raw.replace('INSTRUMENTATION_STATUS_CODE: 0','INSTRUMENTATION_STATUS_CODE: -2',1),0,sha),
     (raw.replace('INSTRUMENTATION_STATUS_CODE: 1','INSTRUMENTATION_STATUS_CODE: 0',1),0,sha),
-    (raw.replace('OK (15 tests)','OK (14 tests)'),0,sha),
+    (raw.replace('OK (18 tests)','OK (17 tests)'),0,sha),
     (raw.replace('INSTRUMENTATION_CODE: -1','INSTRUMENTATION_CODE: 0'),0,sha),
     (raw,1,sha),
     (raw,0,'not-a-sha'),
@@ -52,4 +52,4 @@ for index, (bad,exit_code,source) in enumerate(mutants):
 secret='NXM_BEARER_SECRET_SHOULD_NOT_APPEAR'
 _,receipt,output=run(raw+'FAILURES!!! '+secret+'\n')
 assert secret not in json.dumps(receipt)+output
-print('CBNX04C_CANONICAL_NEGATIVE_AND_PRIVACY_PASS mutations='+str(len(mutants)))
+print('CBNX04D_CANONICAL_NEGATIVE_AND_PRIVACY_PASS mutations='+str(len(mutants)))

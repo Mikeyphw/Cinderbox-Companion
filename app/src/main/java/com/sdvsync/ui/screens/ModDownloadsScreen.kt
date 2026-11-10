@@ -67,6 +67,7 @@ fun ModDownloadsScreen(
         approvalRequired = ModDownloadPreferences.requiresApproval(context)
     }
     var filter by remember { mutableStateOf("All") }
+    var showUpdates by remember { mutableStateOf(false) }
     var preferenceError by remember { mutableStateOf(false) }
 
     val attention = records.count { it.status in setOf("REVIEW_REQUIRED", "BLOCKED", "FAILED", "INTERRUPTED", "VERIFY_REQUIRED") }
@@ -138,6 +139,19 @@ fun ModDownloadsScreen(
         Text("$current active · $pausedCount paused · $attention need attention · $reviewCount awaiting review",
             style = MaterialTheme.typography.bodyMedium, color = Dark.Muted)
 
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = !showUpdates, onClick = { showUpdates = false },
+                label = { Text("Download queue") }, modifier = Modifier.testTag("cbnx04d.download-tab"))
+            FilterChip(selected = showUpdates, onClick = { showUpdates = true },
+                label = { Text("Updates") }, modifier = Modifier.testTag("cbnx04d.updates-tab"))
+        }
+        if (showUpdates) {
+            Cbnx04UpdatesDashboard(reviewState,
+                onCheckNow = { reviewModel.checkForUpdates() },
+                onIgnoreVersion = { reviewModel.ignoreUpdate(it) },
+                onRestoreVersion = { reviewModel.unignoreUpdate(it) },
+                onOpenNexusMod = onOpenMod)
+        } else {
         if (reviewCount > 0) {
             Surface(color = Dark.Paper, border = BorderStroke(1.dp, Dark.Line),
                 shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
@@ -213,6 +227,7 @@ fun ModDownloadsScreen(
         OutlinedButton(onClick = onOpenOperations, modifier = Modifier.fillMaxWidth()) {
             Text("Open operation center")
         }
+        } // Download queue is hidden while the native Updates view is selected.
     }
 }
 

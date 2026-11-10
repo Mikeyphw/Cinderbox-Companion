@@ -1,9 +1,13 @@
-name: CB-NX04 Canonical SMAPI Cache and Archive Evidence API36
+name: CB-NX04 Canonical Native Updates and SMAPI Evidence API36
 on:
   pull_request:
     paths:
       - 'app/src/main/java/com/sdvsync/mods/NexusPairingAuthority.kt'
       - 'app/src/main/java/com/sdvsync/mods/NexusUpdateEvidence.kt'
+      - 'app/src/main/java/com/sdvsync/mods/ModUpdatesDashboardPolicy.kt'
+      - 'app/src/test/java/com/sdvsync/mods/ModUpdatesDashboardPolicyTest.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/Cbnx04UpdatesDashboard.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ModDownloadsScreen.kt'
       - 'app/src/main/java/com/sdvsync/mods/ModDataStore.kt'
       - 'app/src/test/java/com/sdvsync/mods/NexusUpdateEvidenceTest.kt'
       - 'app/src/main/java/com/sdvsync/mods/NexusArchiveProvenance.kt'

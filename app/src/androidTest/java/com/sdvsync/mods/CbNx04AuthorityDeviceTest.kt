@@ -209,4 +209,56 @@ class CbNx04AuthorityDeviceTest {
         assertEquals("UNKNOWN", item(scan).getString("update_state"))
         assertFalse(scan.toString().contains("nxm://"))
     }
+    private fun dashboardFixture(enabled: Boolean = true, id: String = "test.Enabled") =
+        com.sdvsync.mods.models.InstalledMod(
+            com.sdvsync.mods.models.ModManifest("Synthetic", "Test", "1.2.0", id,
+                "Synthetic", updateKeys = listOf("Nexus:50535")),
+            "Enabled", "synthetic", enabled)
+
+    private fun dashboardObservations() = mapOf("test.enabled" to
+        ModUpdateObservation("test.Enabled", "1.2.0", "1.3.0", UpdateAssessment.NEWER))
+
+    @Test fun dashboardFreshSmapiEvidenceIsModOnlyNotExactFile() {
+        val result = ModUpdatesDashboardPolicy.evaluate(listOf(dashboardFixture()),
+            dashboardObservations(), emptyMap(), 9_999_000L, 10_000_000L)
+        assertEquals("SMAPI_CACHE_FRESH", result.freshness)
+        assertEquals(1, result.availableCount)
+        assertEquals("NEWER", result.entries.single().status)
+        assertEquals("50535", result.entries.single().nexusModId)
+    }
+
+    @Test fun dashboardFourHourBoundaryAndClockAnomalyAreUncertain() {
+        val now = 30_000_000L
+        val valid = ModUpdatesDashboardPolicy.evaluate(listOf(dashboardFixture()),
+            dashboardObservations(), emptyMap(), now - NexusUpdateEvidence.FRESH_MS, now)
+        assertEquals(1, valid.availableCount)
+        val stale = ModUpdatesDashboardPolicy.evaluate(listOf(dashboardFixture()),
+            dashboardObservations(), emptyMap(), now - NexusUpdateEvidence.FRESH_MS - 1L, now)
+        assertEquals("SMAPI_CACHE_STALE", stale.freshness)
+        assertEquals(0, stale.availableCount)
+        assertEquals("UNKNOWN", stale.entries.single().status)
+        val future = ModUpdatesDashboardPolicy.evaluate(listOf(dashboardFixture()),
+            dashboardObservations(), emptyMap(), now + 1L, now)
+        assertEquals("CLOCK_INVALID", future.freshness)
+        assertEquals(0, future.availableCount)
+    }
+
+    @Test fun dashboardDisabledDuplicateAndIgnoredVersionsAreNotActionable() {
+        val now = 10_000_000L
+        val ignored = mapOf("test.enabled" to com.sdvsync.mods.models.ModUpdateInfo(
+            "test.Enabled", "1.2.0", "1.3.0", null, "Nexus:50535"))
+        val view = ModUpdatesDashboardPolicy.evaluate(listOf(dashboardFixture()),
+            dashboardObservations(), ignored, now - 1000L, now)
+        assertEquals(0, view.availableCount)
+        assertEquals(1, view.ignoredCount)
+        val duplicate = ModUpdatesDashboardPolicy.evaluate(listOf(dashboardFixture(),
+            dashboardFixture(id = "TEST.ENABLED")), dashboardObservations(),
+            emptyMap(), now - 1000L, now)
+        assertEquals(0, duplicate.availableCount)
+        assertTrue(duplicate.entries.all { it.status == "AMBIGUOUS" })
+        val disabled = ModUpdatesDashboardPolicy.evaluate(listOf(dashboardFixture(false)),
+            dashboardObservations(), emptyMap(), now - 1000L, now)
+        assertEquals("DISABLED", disabled.entries.single().status)
+    }
+
 }

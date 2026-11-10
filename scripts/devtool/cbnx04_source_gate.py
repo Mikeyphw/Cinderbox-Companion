@@ -50,7 +50,7 @@ for forbidden in ('renameTo(', 'deleteRecursively(', 'installFromZip(', 'startDo
     assert forbidden not in proof, 'CBNX04B_ARCHIVE_PROOF_MUTATING:'+forbidden
 assert 'archive_proof_state' in authority and 'VERIFIED_AT_SCAN' in authority
 assert 'exact_file_installed", "UNKNOWN"' in authority
-assert "'qualification': 'CBNX04C_API36_SYNTHETIC_SMAPI_CACHE_EVIDENCE'" in receipt
+assert "'qualification': 'CBNX04D_API36_SYNTHETIC_NATIVE_UPDATES_EVIDENCE'" in receipt
 assert 'method_events != 14' not in receipt, 'CBNX04B_STALE_EVENT_ROSTER'
 assert "'test_count': 7 if ok else 0" not in receipt, 'CBNX04B_STALE_TEST_COUNT'
 
@@ -61,11 +61,11 @@ assert 'CbNx04AuthorityDeviceTest' in runner and 'api-level: 36' in workflow
 assert 'cbnx04_source_gate.py' in workflow and 'cbnx04_negative_tests.py' in workflow
 assert 'cbnx04_emulator_ci.sh' in workflow and 'cbnx04_instrumentation_receipt.py' in runner
 methods=tuple(re.findall(r'@Test\s+fun\s+([A-Za-z_0-9]+)\s*\(',tests))
-assert len(methods)==15 and len(set(methods))==15, 'CBNX04_EMULATOR_ROSTER_DRIFT'
+assert len(methods)==18 and len(set(methods))==18, 'CBNX04_EMULATOR_ROSTER_DRIFT'
 for method in methods:
     assert "'"+method+"'" in receipt, 'CBNX04_MISSING_RECEIPT_METHOD:'+method
-assert 'method_events != 30' in receipt and "block.get('numtests') != '15'" in receipt
-assert "'test_count': 15 if ok else 0" in receipt
+assert 'method_events != 36' in receipt and "block.get('numtests') != '18'" in receipt
+assert "'test_count': 18 if ok else 0" in receipt
 # CBNX04C HF01: the canonical API36 freshness fixture must test REAL elapsed
 # arithmetic, not merely a timestamp with a large-looking absolute value.
 expiry = tests.split('@Test fun expiredOrClockInvalidSmapiCacheCannotShowAnUpdate()', 1)
@@ -93,4 +93,37 @@ assert 'assertEquals(fourHours, NexusUpdateEvidence.FRESH_MS)' in unit
 assert len(re.findall(r'@Test\s+fun\s+[A-Za-z_0-9]+\s*\(', unit)) == 6
 print('CBNX04C_HF01_ACTUAL_ELAPSED_BOUNDARY_SOURCE_CONTRACT_PASS')
 
-print('CBNX04C_CANONICAL_FRESH_SMAPI_FIFTEEN_METHOD_ROSTER_PASS')
+print('CBNX04D_CANONICAL_NATIVE_UPDATES_EIGHTEEN_METHOD_ROSTER_PASS')
+
+# CB-NX04D: native UI is wired to the existing current app-owned SMAPI cache.
+# Superseded 15-test roster and unconditional update badges are rejected.
+policy=source(mods+'ModUpdatesDashboardPolicy.kt')
+ui=source('app/src/main/java/com/sdvsync/ui/screens/Cbnx04UpdatesDashboard.kt')
+downloads=source('app/src/main/java/com/sdvsync/ui/screens/ModDownloadsScreen.kt')
+vm=source('app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt')
+unit=source('app/src/test/java/com/sdvsync/mods/ModUpdatesDashboardPolicyTest.kt')
+assert 'NexusUpdateEvidence.freshness(snapshot, nowMs)' in policy
+assert 'NexusUpdateEvidence.classify(snapshot,' in policy
+assert 'status == "NEWER" && !it.ignored' in policy
+assert 'counts[id] != 1' in policy and '!mod.enabled' in policy
+assert 'candidateVersion = decision.candidate?.take(80)' in policy
+assert 'onCheckNow = { reviewModel.checkForUpdates() }' in downloads
+assert 'Cbnx04UpdatesDashboard(reviewState,' in downloads
+assert 'cbnx04d.updates-tab' in downloads and 'cbnx04d.download-tab' in downloads
+assert 'state.updateObservations' in ui and 'state.lastUpdateCheckMs' in ui
+assert 'cbnx04d.updates.check-now' in ui and 'enabled = !state.isLoading && !state.isCheckingUpdates' in ui
+assert 'ModUpdateInsight.freshness(' in ui
+assert 'checkForUpdates()' in vm and 'updateChecker.checkDetailed(enabledMods)' in vm
+assert not any(x in ui or x in policy for x in ('installFromZip(', 'ModDownloadService.start(', 'httpClient.newCall(', 'WebView(', 'startDownload('))
+assert unit.count('@Test fun ') == 5
+for name in ('dashboardFreshSmapiEvidenceIsModOnlyNotExactFile',
+    'dashboardFourHourBoundaryAndClockAnomalyAreUncertain',
+    'dashboardDisabledDuplicateAndIgnoredVersionsAreNotActionable'):
+    assert '@Test fun '+name in tests
+for p in ('app/src/main/java/com/sdvsync/ui/screens/Cbnx04UpdatesDashboard.kt',
+    'app/src/main/java/com/sdvsync/mods/ModUpdatesDashboardPolicy.kt',
+    'app/src/test/java/com/sdvsync/mods/ModUpdatesDashboardPolicyTest.kt',
+    'app/src/main/java/com/sdvsync/ui/screens/ModDownloadsScreen.kt'):
+    assert "'"+p+"'" in workflow, 'CBNX04D_WORKFLOW_PATH_OMITTED:'+p
+assert "'CBNX04C_API36_SYNTHETIC_SMAPI_CACHE_EVIDENCE'" not in receipt
+print('CBNX04D_CANONICAL_NATIVE_DASHBOARD_EIGHTEEN_TEST_CONTRACT_PASS')
