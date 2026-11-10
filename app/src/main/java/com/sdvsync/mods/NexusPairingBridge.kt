@@ -38,10 +38,28 @@ internal object NexusPairingBridge {
     // CB-NX04 HF01: return /v1/state promptly even on slow/unavailable external storage.
     // Exact-file/install status remains UNKNOWN until a completed read-only scan.
     private val activePrivateReviewRoot = java.util.concurrent.atomic.AtomicReference<java.io.File?>(null)
+    private val activeContext = java.util.concurrent.atomic.AtomicReference<Context?>(null)
+    private fun readCachedSmapiEvidence(): NexusUpdateEvidence.Snapshot {
+        val app = activeContext.get() ?: return NexusUpdateEvidence.Snapshot(available = false)
+        return runCatching {
+            // This executes only on the existing single-flight read-only worker.
+            // Double timestamp read rejects an update occurring during the observations read.
+            kotlinx.coroutines.runBlocking {
+                kotlinx.coroutines.withTimeout(3000L) {
+                    val store = ModDataStore(app)
+                    val first = store.getLastUpdateCheck()
+                    val observations = store.getUpdateObservations()
+                    val second = store.getLastUpdateCheck()
+                    if (first != second) NexusUpdateEvidence.Snapshot(available = false)
+                    else NexusUpdateEvidence.Snapshot(first, observations)
+                }
+            }
+        }.getOrElse { NexusUpdateEvidence.Snapshot(available = false) }
+    }
     private val authorityCache = NexusPairingAuthorityCache { records, observedAt ->
         NexusPairingAuthority.snapshot(records,
             java.io.File(com.sdvsync.cinderbox.CinderboxPaths.MODS_DIR), observedAt,
-            activePrivateReviewRoot.get()).toString()
+            activePrivateReviewRoot.get(), readCachedSmapiEvidence()).toString()
     }
     data class Snapshot(val listening: Boolean, val code: String?, val connected: Boolean,
                         val remainingSeconds: Long, val handoffEnabled: Boolean)
@@ -82,6 +100,7 @@ internal object NexusPairingBridge {
             }
         })
         listener = socket
+        activeContext.set(context.applicationContext)
         windowDeadline = now() + WINDOW_MS
         codeDeadline = now() + CODE_MS
         code = (100_000_000 + random.nextInt(900_000_000)).toString()
@@ -104,6 +123,7 @@ internal object NexusPairingBridge {
         connected = false
         nonces.clear()
         activePrivateReviewRoot.set(null)
+        activeContext.set(null)
         authorityCache.invalidate()
         // A new pairing requires deliberate local user action and a fresh code.
         code = null
@@ -122,6 +142,7 @@ internal object NexusPairingBridge {
         challenges.clear()
         nonces.clear()
         activePrivateReviewRoot.set(null)
+        activeContext.set(null)
         authorityCache.invalidate()
         windowDeadline = 0L
         codeDeadline = 0L

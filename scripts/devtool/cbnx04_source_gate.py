@@ -20,8 +20,8 @@ for marker in ('internal object NexusPairingAuthority', 'fun snapshot(records:',
                'Files.isSymbolicLink(manifest.toPath())', 'MAX_MANIFEST_BYTES', 'MAX_FOLDERS',
                'folder.name.startsWith(".")', 'getOrPut(nexusId)', 'uniqueId.matches(id)',
                '"UNAVAILABLE"', '"QUALIFIED"', '"AMBIGUOUS"', '"DISABLED_PRESENT"',
-               '.put("exact_file_installed", "UNKNOWN")', '.put("update_state", "UNKNOWN")',
-               '.put("archive_checksum_qualified", verified)', '.put("remote_update_check", "NOT_PERFORMED")',
+               '.put("exact_file_installed", "UNKNOWN")', '.put("update_state", update.status)',
+               '.put("archive_checksum_qualified", verified)', '.put("remote_update_check", freshness)',
                'records.filter { it.source == "nexus"', 'val reportableDownload = setOf('):
     assert marker in authority, 'CBNX04_EVIDENCE_CONTRACT_MISSING:'+marker
 for forbidden in ('listInstalledMods(', 'renameTo(', 'deleteRecursively(', 'startDownload(',
@@ -30,6 +30,15 @@ for forbidden in ('listInstalledMods(', 'renameTo(', 'deleteRecursively(', 'star
     assert forbidden not in authority, 'CBNX04_READONLY_MUTATION_REGRESSION:'+forbidden
 assert 'NexusPairingAuthority.snapshot(' in bridge and 'ModDownloadJournal(context).list()' in bridge
 assert 'NexusArchiveProvenance.inspect(records, privateReviewRoot)' in authority
+update_source=source(mods+'NexusUpdateEvidence.kt')
+for marker in ('fun freshness(', 'fun classify(', 'SMAPI_CACHE_STALE', 'SMAPI_CACHE_FRESH',
+               'CLOCK_INVALID', 'ModUpdatePolicy.assess(', 'obs.installedVersion != installedVersion'):
+    assert marker in update_source, 'CBNX04C_UPDATE_POLICY_CONTRACT_MISSING:'+marker
+assert 'readCachedSmapiEvidence()' in bridge
+assert 'activeContext.set(null)' in bridge and 'getUpdateObservations()' in bridge
+assert 'getLastUpdateCheck()' in bridge and 'withTimeout(3000L)' in bridge
+for forbidden in ('startDownload(', 'checkDetailed(', 'httpClient.newCall(', 'ModDownloadService.start('):
+    assert forbidden not in update_source and forbidden not in bridge, 'CBNX04C_BACKGROUND_PROVIDER_OR_MUTATION:'+forbidden
 assert 'activePrivateReviewRoot.get()' in bridge and 'activePrivateReviewRoot.set(null)' in bridge
 for word in ('MessageDigest.getInstance("SHA-256")', 'Files.isSymbolicLink',
              'expected = props.getProperty("sha256")', 'record.modId != mod',
@@ -41,7 +50,7 @@ for forbidden in ('renameTo(', 'deleteRecursively(', 'installFromZip(', 'startDo
     assert forbidden not in proof, 'CBNX04B_ARCHIVE_PROOF_MUTATING:'+forbidden
 assert 'archive_proof_state' in authority and 'VERIFIED_AT_SCAN' in authority
 assert 'exact_file_installed", "UNKNOWN"' in authority
-assert "'qualification': 'CBNX04B_API36_SYNTHETIC_ARCHIVE_EVIDENCE'" in receipt
+assert "'qualification': 'CBNX04C_API36_SYNTHETIC_SMAPI_CACHE_EVIDENCE'" in receipt
 assert 'method_events != 14' not in receipt, 'CBNX04B_STALE_EVENT_ROSTER'
 assert "'test_count': 7 if ok else 0" not in receipt, 'CBNX04B_STALE_TEST_COUNT'
 
@@ -52,9 +61,9 @@ assert 'CbNx04AuthorityDeviceTest' in runner and 'api-level: 36' in workflow
 assert 'cbnx04_source_gate.py' in workflow and 'cbnx04_negative_tests.py' in workflow
 assert 'cbnx04_emulator_ci.sh' in workflow and 'cbnx04_instrumentation_receipt.py' in runner
 methods=tuple(re.findall(r'@Test\s+fun\s+([A-Za-z_0-9]+)\s*\(',tests))
-assert len(methods)==10 and len(set(methods))==10, 'CBNX04_EMULATOR_ROSTER_DRIFT'
+assert len(methods)==15 and len(set(methods))==15, 'CBNX04_EMULATOR_ROSTER_DRIFT'
 for method in methods:
     assert "'"+method+"'" in receipt, 'CBNX04_MISSING_RECEIPT_METHOD:'+method
-assert 'method_events != 20' in receipt and "block.get('numtests') != '10'" in receipt
-assert "'test_count': 10 if ok else 0" in receipt
-print('CBNX04B_CANONICAL_ARCHIVE_PROVENANCE_TEN_METHOD_ROSTER_PASS')
+assert 'method_events != 30' in receipt and "block.get('numtests') != '15'" in receipt
+assert "'test_count': 15 if ok else 0" in receipt
+print('CBNX04C_CANONICAL_FRESH_SMAPI_FIFTEEN_METHOD_ROSTER_PASS')

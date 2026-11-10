@@ -26,6 +26,11 @@ methods = (
     'privateArchiveDigestAndExactJobMatchOnlyAtScanTime',
     'tamperedRetainedArchiveNeverQualifiesDigest',
     'wrongExactFileReceiptCannotProveAnotherJob',
+    'freshAppOwnedSmapiCandidateMayReportNewerModNotExactFile',
+    'expiredOrClockInvalidSmapiCacheCannotShowAnUpdate',
+    'versionOrIdentifierMismatchCannotPromoteCachedCandidate',
+    'disabledOrAmbiguousSmapiLinkNeverProducesUpdateBadge',
+    'forgedOrMalformedVersionCannotBeExportedAsUpdateProof',
 )
 allowed = set(methods)
 expected_class = 'com.sdvsync.mods.CbNx04AuthorityDeviceTest'
@@ -48,7 +53,7 @@ for line in raw.splitlines():
         klass = block.get('class')
         if method:
             method_events += 1
-            if method not in allowed or klass != expected_class or block.get('numtests') != '10':
+            if method not in allowed or klass != expected_class or block.get('numtests') != '15':
                 unknown_count += 1
             elif code == '1':
                 start[method] += 1
@@ -67,12 +72,12 @@ def fail(code, condition):
         reason_codes.append(code)
 
 fail('unexpected_method_or_class', unknown_count != 0)
-fail('invalid_runner_event_count', method_events != 20)
+fail('invalid_runner_event_count', method_events != 30)
 fail('missing_or_duplicate_start', any(start[n] != 1 for n in methods))
 fail('missing_or_duplicate_success', any(passed[n] != 1 for n in methods))
 fail('runner_reported_failure', any(failed[n] for n in methods) or
      'FAILURES!!!' in raw or 'INSTRUMENTATION_FAILED' in raw)
-fail('runner_summary_mismatch', 'OK (10 tests)' not in raw or
+fail('runner_summary_mismatch', 'OK (15 tests)' not in raw or
      'INSTRUMENTATION_CODE: -1' not in raw)
 fail('runner_process_failure', a.exit != '0')
 fail('source_or_apk_hash_invalid', not re.fullmatch(r'[0-9a-f]{40}', a.source) or
@@ -83,10 +88,10 @@ results = {name: ('PASS' if start[name] == 1 and passed[name] == 1 and not faile
                   else 'FAIL' if failed[name] else 'INCOMPLETE') for name in methods}
 receipt = {
     'schema_version': 2,
-    'qualification': 'CBNX04B_API36_SYNTHETIC_ARCHIVE_EVIDENCE',
+    'qualification': 'CBNX04C_API36_SYNTHETIC_SMAPI_CACHE_EVIDENCE',
     'status': 'PASS' if ok else 'FAIL',
     'source_sha': a.source, 'run_id': a.run,
-    'test_count': 10 if ok else 0,
+    'test_count': 15 if ok else 0,
     'test_methods': list(methods) if ok else [],
     'test_results': results,
     'event_count': method_events,
@@ -103,4 +108,4 @@ print('CBNX04_HF01_RECEIPT_STATUS=' + receipt['status'])
 if not ok:
     print('CBNX04_HF01_SAFE_FAILURE_CODES=' + ','.join(reason_codes))
     raise SystemExit('CBNX04_HOSTED_INSTRUMENTATION_REFUSED')
-print('CBNX04B_API36_EXACT_TEN_TESTS_PASS')
+print('CBNX04C_API36_EXACT_FIFTEEN_TESTS_PASS')

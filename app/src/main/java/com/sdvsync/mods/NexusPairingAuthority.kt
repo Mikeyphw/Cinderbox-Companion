@@ -78,7 +78,8 @@ internal object NexusPairingAuthority {
 
     /** No paths, UniqueIDs, cookies, archive hashes, tokens or arbitrary provider text in HTTP. */
     fun snapshot(records: List<ModDownloadRecord>, modsDir: File, observedAtMs: Long,
-                 privateReviewRoot: File? = null): JSONObject {
+                 privateReviewRoot: File? = null,
+                 updates: NexusUpdateEvidence.Snapshot = NexusUpdateEvidence.Snapshot()): JSONObject {
         val inventory = readInventory(modsDir)
         val archiveProof = NexusArchiveProvenance.inspect(records, privateReviewRoot)
         val output = JSONArray()
@@ -88,6 +89,7 @@ internal object NexusPairingAuthority {
         val used = mutableSetOf<String>()
         val reportableDownload = setOf("VALIDATING", "REVIEW_REQUIRED", "BLOCKED", "INSTALLING", "INSTALLED")
         val linked = if (inventory.qualified) inventory.linked else emptyMap()
+        val freshness = NexusUpdateEvidence.freshness(updates, observedAtMs)
 
         fun append(modId: String, fileId: String, status: String, journalDownloaded: Boolean, jobId: String?) {
             if (output.length() >= MAX_EXPORTED_ITEMS) return
@@ -109,6 +111,10 @@ internal object NexusPairingAuthority {
                 verified -> "VERIFIED_AT_SCAN"
                 else -> "NO_RETAINED_ARCHIVE"
             }
+            val update = if (manifestState == "PRESENT" && entries.size == 1) {
+                NexusUpdateEvidence.classify(updates, entries.single().uniqueId,
+                    entries.single().version, observedAtMs)
+            } else NexusUpdateEvidence.Decision("UNKNOWN")
             val row = JSONObject()
                 .put("mod_id", modId).put("file_id", fileId)
                 .put("journal_state", status)
@@ -118,8 +124,13 @@ internal object NexusPairingAuthority {
                 .put("archive_proof_scope", "LOCAL_ZIP_VS_APP_RECEIPT")
                 .put("installed_mod_state", manifestState)
                 .put("exact_file_installed", "UNKNOWN")
-                // No comparable Nexus file-version observation is available here.
-                .put("update_state", "UNKNOWN")
+                // Derived only from a fresh, ID/version-matched APP-owned SMAPI cache.
+                // NEVER an exact Nexus file-version or provider-signed hash assertion.
+                .put("update_state", update.status)
+                .put("update_proof_scope", "CACHED_SMAPI_MOD_VERSION")
+            if (update.status == "NEWER" && update.candidate != null) {
+                row.put("candidate_version", update.candidate)
+            }
             if (manifestState in setOf("PRESENT", "DISABLED_PRESENT")) {
                 row.put("installed_version", entries.single().version)
             }
@@ -136,7 +147,7 @@ internal object NexusPairingAuthority {
             .put("scope", "LOCAL_SMAPI_AND_JOURNAL")
             .put("observed_at_ms", observedAtMs.coerceAtLeast(0L))
             .put("inventory_state", if (inventory.qualified) "QUALIFIED" else "UNAVAILABLE")
-            .put("remote_update_check", "NOT_PERFORMED")
+            .put("remote_update_check", freshness)
             .put("items", output)
     }
 }

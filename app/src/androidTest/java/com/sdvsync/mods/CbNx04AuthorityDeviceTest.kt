@@ -127,4 +127,73 @@ class CbNx04AuthorityDeviceTest {
         assertFalse(row.getBoolean("archive_checksum_qualified"))
         assertEquals("UNAVAILABLE", row.getString("archive_proof_state"))
     }
+
+    private fun smapi(checkedAt: Long, version: String = "1.2.0",
+                      candidate: String? = "1.3.0",
+                      assessment: UpdateAssessment = UpdateAssessment.NEWER) =
+        NexusUpdateEvidence.Snapshot(checkedAt, mapOf("test.enabled" to
+            ModUpdateObservation("test.Enabled", version, candidate, assessment)))
+
+    @Test fun freshAppOwnedSmapiCandidateMayReportNewerModNotExactFile() = fixture { root ->
+        manifest(root, "Enabled", "50535")
+        val scan = NexusPairingAuthority.snapshot(listOf(job()), root, 1_000_000L,
+            reviews(root), smapi(999_000L))
+        assertEquals("SMAPI_CACHE_FRESH", scan.getString("remote_update_check"))
+        assertEquals("NEWER", item(scan).getString("update_state"))
+        assertEquals("1.3.0", item(scan).getString("candidate_version"))
+        assertEquals("CACHED_SMAPI_MOD_VERSION", item(scan).getString("update_proof_scope"))
+        assertEquals("UNKNOWN", item(scan).getString("exact_file_installed"))
+        assertFalse(item(scan).getBoolean("archive_checksum_qualified"))
+    }
+
+    @Test fun expiredOrClockInvalidSmapiCacheCannotShowAnUpdate() = fixture { root ->
+        manifest(root, "Enabled", "50535")
+        val expired = NexusPairingAuthority.snapshot(listOf(job()), root, 15_000_000L,
+            reviews(root), smapi(999_000L))
+        assertEquals("SMAPI_CACHE_STALE", expired.getString("remote_update_check"))
+        assertEquals("UNKNOWN", item(expired).getString("update_state"))
+        assertFalse(item(expired).has("candidate_version"))
+        val clock = NexusPairingAuthority.snapshot(listOf(job()), root, 1_000_000L,
+            reviews(root), smapi(1_000_001L))
+        assertEquals("CLOCK_INVALID", clock.getString("remote_update_check"))
+        assertEquals("UNKNOWN", item(clock).getString("update_state"))
+    }
+
+    @Test fun versionOrIdentifierMismatchCannotPromoteCachedCandidate() = fixture { root ->
+        manifest(root, "Enabled", "50535")
+        val badVersion = NexusPairingAuthority.snapshot(listOf(job()), root, 1_000_000L,
+            reviews(root), smapi(999_000L, version = "1.2.1"))
+        assertEquals("UNKNOWN", item(badVersion).getString("update_state"))
+        val wrongId = NexusUpdateEvidence.Snapshot(999_000L, mapOf("other.mod" to
+            ModUpdateObservation("other.mod", "1.2.0", "1.3.0", UpdateAssessment.NEWER)))
+        val scan = NexusPairingAuthority.snapshot(listOf(job()), root, 1_000_000L,
+            reviews(root), wrongId)
+        assertEquals("UNKNOWN", item(scan).getString("update_state"))
+    }
+
+    @Test fun disabledOrAmbiguousSmapiLinkNeverProducesUpdateBadge() = fixture { root ->
+        manifest(root, ".Disabled", "50535")
+        var scan = NexusPairingAuthority.snapshot(listOf(job()), root, 1_000_000L,
+            reviews(root), NexusUpdateEvidence.Snapshot(999_000L, mapOf("test..disabled" to
+                ModUpdateObservation("test..Disabled", "1.2.0", "1.3.0", UpdateAssessment.NEWER))))
+        assertEquals("UNKNOWN", item(scan).getString("update_state"))
+        manifest(root, "Enabled", "50535")
+        scan = NexusPairingAuthority.snapshot(listOf(job()), root, 1_000_000L,
+            reviews(root), smapi(999_000L))
+        assertEquals("AMBIGUOUS", item(scan).getString("installed_mod_state"))
+        assertEquals("UNKNOWN", item(scan).getString("update_state"))
+    }
+
+    @Test fun forgedOrMalformedVersionCannotBeExportedAsUpdateProof() = fixture { root ->
+        manifest(root, "Enabled", "50535")
+        val forged = smapi(999_000L, candidate = "1.1.0", assessment = UpdateAssessment.NEWER)
+        val bad = NexusPairingAuthority.snapshot(listOf(job()), root, 1_000_000L,
+            reviews(root), forged)
+        assertEquals("UNKNOWN", item(bad).getString("update_state"))
+        val injected = smapi(999_000L, candidate = "nxm://secret", assessment = UpdateAssessment.NEWER)
+        val scan = NexusPairingAuthority.snapshot(listOf(job()), root, 1_000_000L,
+            reviews(root), injected)
+        assertEquals("UNKNOWN", item(scan).getString("update_state"))
+        assertFalse(scan.toString().contains("nxm://"))
+    }
 }

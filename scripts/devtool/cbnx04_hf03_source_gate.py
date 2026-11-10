@@ -46,12 +46,14 @@ print('CBNX04B_NAMED_BIND_AND_CANONICAL_CONTRACT_PASS methods=7 unit=4')
 authority_receipt = (ROOT/'scripts/devtool/cbnx04_instrumentation_receipt.py').read_text()
 authority_source = (ROOT/'app/src/main/java/com/sdvsync/mods/NexusPairingAuthority.kt').read_text()
 archive_source = (ROOT/'app/src/main/java/com/sdvsync/mods/NexusArchiveProvenance.kt').read_text()
-assert 'CBNX04B_API36_SYNTHETIC_ARCHIVE_EVIDENCE' in authority_receipt
-assert 'method_events != 20' in authority_receipt
-assert "'test_count': 10 if ok else 0" in authority_receipt
+assert 'CBNX04C_API36_SYNTHETIC_SMAPI_CACHE_EVIDENCE' in authority_receipt
+assert 'method_events != 30' in authority_receipt
+assert "'test_count': 15 if ok else 0" in authority_receipt
 assert '.put("archive_checksum_qualified", verified)' in authority_source
 assert 'NexusArchiveProvenance.inspect(records, privateReviewRoot)' in authority_source
 assert 'MessageDigest.getInstance("SHA-256")' in archive_source
 assert 'record.modId != mod || record.fileId != file' in archive_source
 assert 'method_events != 14' not in authority_receipt
-print('CBNX04B_MIGRATED_HF03_SOURCE_GATE_CANONICAL_PASS')
+print('CBNX04C_MIGRATED_HF03_SOURCE_GATE_CANONICAL_PASS')
+
+assert "SMAPI_CACHE_FRESH" in (ROOT/"app/src/main/java/com/sdvsync/mods/NexusUpdateEvidence.kt").read_text()
