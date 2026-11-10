@@ -26,6 +26,17 @@ methods = (
 )
 allowed = set(methods)
 expected_class = 'com.sdvsync.mods.CbNx03PairingDeviceTest'
+# Allowlisted diagnostic labels only; stack details never enter redacted receipts.
+SAFE_STAGES = set((
+    'START', 'PAIR', 'STATE_FETCH', 'STATE_ASSERT', 'NONCE_REPLAY', 'NO_INSTALL_ENDPOINT',
+    'HANDOFF_START', 'HANDOFF_PAIR', 'HANDOFF_OPT_IN_GUARD', 'HANDOFF_LOCAL_ENABLE',
+    'HANDOFF_ADMISSION', 'HANDOFF_STATE', 'HANDOFF_RESOLVE',
+    'INBOX_START', 'INBOX_PAIR', 'INBOX_OPT_IN', 'INBOX_ADMISSION', 'INBOX_STOP',
+    'INBOX_DURABILITY', 'INBOX_NO_DOWNLOAD',
+    'REVOKE_START', 'REVOKE_PAIR', 'REVOKE_ACCEPTED',
+    'REVOKE_OLD_TOKEN_DENIED', 'REVOKE_STOP'
+))
+safe_stages = {}
 start = Counter()
 passed = Counter()
 failed = Counter()
@@ -39,6 +50,11 @@ for line in raw.splitlines():
         key, sep, value = kv.partition('=')
         if sep and key in ('test', 'class', 'numtests'):
             block[key] = value.strip()
+        elif sep and key == 'stack':
+            # Extract only the fixed label, never exception detail or secret-bearing URL.
+            match = re.search(r'CBNX03_SAFE_STAGE_([A-Z_]+)', value)
+            if match and match.group(1) in SAFE_STAGES:
+                block['safe_stage'] = match.group(1)
     elif line.startswith('INSTRUMENTATION_STATUS_CODE: '):
         code = line.split(': ', 1)[1].strip()
         method = block.get('test')
@@ -53,6 +69,8 @@ for line in raw.splitlines():
                 passed[method] += 1
             else:
                 failed[method] += 1
+                if block.get('safe_stage') in SAFE_STAGES:
+                    safe_stages[method] = block['safe_stage']
         block = {}
 
 reason_codes = []
@@ -87,10 +105,10 @@ receipt = {
     'unexpected_event_count': unknown_count,
     'failure_reason_codes': reason_codes,
     # Fixed enumeration from the one failing test only. No raw exception/response/secret.
-    'safe_pairing_failure_stage': next((code for code in
-        ('START', 'PAIR', 'STATE_FETCH', 'STATE_ASSERT', 'NONCE_REPLAY', 'NO_INSTALL_ENDPOINT')
-        if failed['pairingReadOnlyAndNonceReplayFails'] and
-        'CBNX03_SAFE_STAGE_' + code in raw), None),
+    'safe_pairing_failure_stages': {name: safe_stages[name] for name in methods
+                                     if failed[name] and name in safe_stages},
+    'safe_pairing_failure_stage': next((safe_stages[name] for name in methods
+                                        if failed[name] and name in safe_stages), None),
     'app_sha256': a.app_sha, 'test_apk_sha256': a.test_sha,
     'emulator_only': True, 'live_firefox_qualified': False,
     'physical_device_qualified': False, 'live_nexus_qualified': False,

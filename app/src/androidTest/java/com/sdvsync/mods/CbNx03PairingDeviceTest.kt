@@ -10,6 +10,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.io.BufferedInputStream
+import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 
 /** Synthetic localhost-only test: no Nexus, real Mods writes or provider credentials. */
@@ -23,8 +25,8 @@ class CbNx03PairingDeviceTest {
     private fun request(method: String, path: String, body: String = "",
                         headers: Map<String, String> = emptyMap()): Pair<Int, JSONObject> {
         Socket().use { socket ->
-            socket.connect(InetSocketAddress("127.0.0.1", NexusPairingBridge.PORT), 1500)
-            socket.soTimeout = 1800
+            socket.connect(InetSocketAddress("127.0.0.1", NexusPairingBridge.PORT), 5000)
+            socket.soTimeout = 8000
             val bytes = body.toByteArray(StandardCharsets.UTF_8)
             val prelude = buildString {
                 append("$method $path HTTP/1.1\r\nHost: 127.0.0.1:${NexusPairingBridge.PORT}\r\n")
@@ -34,12 +36,43 @@ class CbNx03PairingDeviceTest {
             }
             socket.getOutputStream().write(prelude.toByteArray(StandardCharsets.US_ASCII) + bytes)
             socket.getOutputStream().flush()
-            val raw = socket.getInputStream().readBytes().toString(StandardCharsets.UTF_8)
-            val status = raw.substringBefore("\r\n").split(' ')[1].toInt()
-            val payload = raw.substringAfter("\r\n\r\n")
+            // The old readBytes() waited for TCP close on a heavily loaded API36 emulator.
+            // Read exactly the bounded Content-Length instead, without relaxing any HTTP assertion.
+            val input = BufferedInputStream(socket.getInputStream())
+            val head = ByteArrayOutputStream()
+            val terminator = byteArrayOf(13, 10, 13, 10)
+            while (head.size() < 8192) {
+                val b = input.read()
+                require(b >= 0) { "CBNX03_TRUNCATED_HTTP_HEADERS" }
+                head.write(b)
+                val bytesRead = head.toByteArray()
+                if (bytesRead.size >= 4 && bytesRead.takeLast(4).toByteArray().contentEquals(terminator)) break
+            }
+            require(head.size() < 8192) { "CBNX03_OVERSIZED_HTTP_HEADERS" }
+            val lines = head.toString(StandardCharsets.US_ASCII.name()).split("\r\n")
+            val statusLine = lines.first().split(' ')
+            require(statusLine.size >= 3 && statusLine[0] == "HTTP/1.1") { "CBNX03_INVALID_HTTP_STATUS" }
+            val status = statusLine[1].toInt()
+            val lengths = lines.filter { it.startsWith("Content-Length:", ignoreCase = true) }
+            require(lengths.size == 1) { "CBNX03_INVALID_CONTENT_LENGTH_COUNT" }
+            val length = lengths.single().substringAfter(':').trim().toInt()
+            require(length in 0..65536) { "CBNX03_UNBOUNDED_HTTP_BODY" }
+            val bodyBytes = ByteArray(length)
+            var offset = 0
+            while (offset < length) {
+                val count = input.read(bodyBytes, offset, length - offset)
+                require(count > 0) { "CBNX03_TRUNCATED_HTTP_BODY" }
+                offset += count
+            }
+            val payload = String(bodyBytes, StandardCharsets.UTF_8)
             return status to (if (payload.isBlank()) JSONObject() else JSONObject(payload))
         }
     }
+
+    // Isolate tests by exact Nexus identity rather than deleting durable user inbox data.
+    // The real inbox still handles duplicate/replay behavior within each individual test.
+    private fun distinctFixtureFile(): String =
+        (100_000_000L + (java.security.SecureRandom().nextInt(900_000_000)).toLong()).toString()
 
     private fun pair(): String {
         val hello = request("GET", "/v1/hello")
@@ -90,13 +123,19 @@ class CbNx03PairingDeviceTest {
     }
 
     @Test fun revokeInvalidatesTokenAndStopsListening() {
-        NexusPairingBridge.start(context)
-        val token = pair()
+        atStage("REVOKE_START") { NexusPairingBridge.start(context) }
+        val token = atStage("REVOKE_PAIR") { pair() }
         val h = mapOf("Authorization" to "Bearer $token", "X-CBNX-Nonce" to "ABCDEFGHIJKLMNOPQRSTUV")
-        assertEquals(200, request("POST", "/v1/revoke", "{}", h).first)
-        assertEquals(401, request("GET", "/v1/state", headers = h + ("X-CBNX-Nonce" to "ABCDEFGHIJKLMNOPQRSTUVW")).first)
-        NexusPairingBridge.stop()
-        assertFalse(NexusPairingBridge.snapshot().listening)
+        atStage("REVOKE_ACCEPTED") {
+            assertEquals(200, request("POST", "/v1/revoke", "{}", h).first)
+        }
+        atStage("REVOKE_OLD_TOKEN_DENIED") {
+            assertEquals(401, request("GET", "/v1/state", headers = h + ("X-CBNX-Nonce" to "ABCDEFGHIJKLMNOPQRSTUVW")).first)
+        }
+        atStage("REVOKE_STOP") {
+            NexusPairingBridge.stop()
+            assertFalse(NexusPairingBridge.snapshot().listening)
+        }
     }
 
     @Test fun incorrectCodesLockOutPairing() {
@@ -116,25 +155,34 @@ class CbNx03PairingDeviceTest {
         mapOf("Authorization" to "Bearer $token", "X-CBNX-Nonce" to nonce)
 
     @Test fun exactFileHandoffRequiresLocalOptInAndNeverStartsDownload() {
-        NexusPairingBridge.start(context)
-        val token = pair()
+        atStage("HANDOFF_START") { NexusPairingBridge.start(context) }
+        val token = atStage("HANDOFF_PAIR") { pair() }
         val id = java.util.UUID.randomUUID().toString().replace("-", "")
-        val body = JSONObject().put("mod_id", "50535").put("file_id", "178239")
+        val fileId = distinctFixtureFile()
+        val body = JSONObject().put("mod_id", "50535").put("file_id", fileId)
             .put("request_id", id).toString()
-        assertEquals(403, request("POST", "/v1/handoff", body, headers(token)).first)
-        NexusPairingBridge.setHandoffEnabled(true)
-        val accepted = request("POST", "/v1/handoff", body, headers(token))
-        assertEquals(202, accepted.first)
-        assertEquals("pending_user_action", accepted.second.getString("status"))
-        assertFalse(accepted.second.getBoolean("download_started"))
-        assertFalse(accepted.second.getBoolean("archive_staged"))
-        assertFalse(accepted.second.getBoolean("installed"))
-        val state = request("GET", "/v1/state", headers = headers(token))
-        assertEquals(200, state.first)
-        assertTrue(state.second.getBoolean("handoff_enabled"))
-        assertTrue(state.second.getJSONArray("handoffs").toString().contains(id))
-        assertTrue(NexusPairingInbox.list(context).any { it.id == id && it.status == "PENDING" })
-        assertTrue(NexusPairingInbox.resolve(context, id, "DISMISSED"))
+        atStage("HANDOFF_OPT_IN_GUARD") {
+            assertEquals(403, request("POST", "/v1/handoff", body, headers(token)).first)
+        }
+        atStage("HANDOFF_LOCAL_ENABLE") { NexusPairingBridge.setHandoffEnabled(true) }
+        atStage("HANDOFF_ADMISSION") {
+            val accepted = request("POST", "/v1/handoff", body, headers(token))
+            assertEquals(202, accepted.first)
+            assertEquals("pending_user_action", accepted.second.getString("status"))
+            assertFalse(accepted.second.getBoolean("download_started"))
+            assertFalse(accepted.second.getBoolean("archive_staged"))
+            assertFalse(accepted.second.getBoolean("installed"))
+        }
+        atStage("HANDOFF_STATE") {
+            val state = request("GET", "/v1/state", headers = headers(token))
+            assertEquals(200, state.first)
+            assertTrue(state.second.getBoolean("handoff_enabled"))
+            assertTrue(state.second.getJSONArray("handoffs").toString().contains(id))
+        }
+        atStage("HANDOFF_RESOLVE") {
+            assertTrue(NexusPairingInbox.list(context).any { it.id == id && it.status == "PENDING" })
+            assertTrue(NexusPairingInbox.resolve(context, id, "DISMISSED"))
+        }
     }
 
     @Test fun invalidIdentityReplayAndConcurrentDuplicateAreFailClosed() {
@@ -161,20 +209,28 @@ class CbNx03PairingDeviceTest {
     }
 
     @Test fun inboxSurvivesBridgeShutdownWithoutReenqueuingAnything() {
-        NexusPairingBridge.start(context)
-        val token = pair()
-        NexusPairingBridge.setHandoffEnabled(true)
+        atStage("INBOX_START") { NexusPairingBridge.start(context) }
+        val token = atStage("INBOX_PAIR") { pair() }
         val id = java.util.UUID.randomUUID().toString().replace("-", "")
-        val body = JSONObject().put("mod_id", "50535").put("file_id", "190561")
+        val body = JSONObject().put("mod_id", "50535").put("file_id", distinctFixtureFile())
             .put("request_id", id).toString()
-        assertEquals(202, request("POST", "/v1/handoff", body, headers(token)).first)
-        NexusPairingBridge.stop()
-        assertFalse(NexusPairingBridge.snapshot().handoffEnabled)
-        assertTrue(NexusPairingInbox.list(context).any { it.id == id && it.status == "PENDING" })
-        assertTrue(NexusPairingInbox.resolve(context, id, "OPENED"))
-        assertTrue(NexusPairingInbox.list(context).any { it.id == id && it.status == "OPENED" })
+        atStage("INBOX_OPT_IN") { NexusPairingBridge.setHandoffEnabled(true) }
+        atStage("INBOX_ADMISSION") {
+            assertEquals(202, request("POST", "/v1/handoff", body, headers(token)).first)
+        }
+        atStage("INBOX_STOP") {
+            NexusPairingBridge.stop()
+            assertFalse(NexusPairingBridge.snapshot().handoffEnabled)
+        }
+        atStage("INBOX_DURABILITY") {
+            assertTrue(NexusPairingInbox.list(context).any { it.id == id && it.status == "PENDING" })
+            assertTrue(NexusPairingInbox.resolve(context, id, "OPENED"))
+            assertTrue(NexusPairingInbox.list(context).any { it.id == id && it.status == "OPENED" })
+        }
         // No ModDownloadJournal job can be produced by this request-only bridge.
-        assertFalse(ModDownloadJournal(context).list().any { it.name == id })
+        atStage("INBOX_NO_DOWNLOAD") {
+            assertFalse(ModDownloadJournal(context).list().any { it.name == id })
+        }
     }
 
 }
