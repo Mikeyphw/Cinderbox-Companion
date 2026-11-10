@@ -1,24 +1,5 @@
 name: R45-R46 Consolidated Five-Tab UI and Friendly Error Contracts
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/**'
-      - 'app/src/test/java/com/sdvsync/ui/**'
-      - 'app/src/main/res/values/strings.xml'
-      - 'scripts/devtool/r45*.py'
-      - '.devtool.toml'
-      - '.github/workflows/r45-full-ui.yml'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/**'
-      - 'app/src/test/java/com/sdvsync/ui/**'
-      - 'app/src/main/res/values/strings.xml'
-      - 'scripts/devtool/r45*.py'
-      - '.devtool.toml'
-      - '.github/workflows/r45-full-ui.yml'
   workflow_dispatch:
 permissions:
   contents: read

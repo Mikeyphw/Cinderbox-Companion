@@ -1,20 +1,5 @@
 name: Cinderbox UX-09C01 — real offline large-text, touch targets and IME
 on:
-  pull_request:
-    paths:
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/**'
-      - 'scripts/devtool/ux09c_*'
-      - 'scripts/devtool/test_ux09c_gate.py'
-      - '.github/workflows/cinderbox-ux09c01-accessibility.yml'
-      - 'app/src/main/java/com/sdvsync/ui/theme/CinderboxDarkTokens.kt'
-      - 'docs/security/M3_RELEASE_POLICY.json'
-      - 'design/cinderbox/02_CONTRACT/**'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/**'
-      - 'scripts/devtool/ux09c_*'
-      - '.github/workflows/cinderbox-ux09c01-accessibility.yml'
   workflow_dispatch:
 permissions:
   contents: read

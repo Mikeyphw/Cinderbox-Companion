@@ -1,25 +1,5 @@
 name: Cinderbox UX-09C02 — status bar and real-device screen overhaul
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/LoginScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/AdvancedCinderboxChrome.kt'
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/UxDeviceChromeTest.kt'
-      - 'scripts/devtool/ux09c02_*'
-      - 'scripts/devtool/test_ux09c02_gate.py'
-      - '.github/workflows/cinderbox-ux09c02-device-chrome.yml'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/LoginScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/AdvancedCinderboxChrome.kt'
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/UxDeviceChromeTest.kt'
-      - 'scripts/devtool/ux09c02_*'
-      - '.github/workflows/cinderbox-ux09c02-device-chrome.yml'
   workflow_dispatch:
 permissions:
   contents: read

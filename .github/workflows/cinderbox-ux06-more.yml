@@ -1,25 +1,5 @@
 name: Cinderbox UX-06 — approved dark More and local-first settings
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedMoreScreen.kt'
-      - 'app/src/androidTest/java/com/sdvsync/qualification/UX06MoreDeviceTest.kt'
-      - 'app/src/androidTest/java/com/sdvsync/qualification/R48RealActivityDeviceTest.kt'
-      - 'scripts/devtool/ux_06_more_gate.py'
-      - 'scripts/devtool/test_ux_06_more.py'
-      - 'scripts/devtool/ux06_emulator_ci.sh'
-      - '.github/workflows/cinderbox-ux06-more.yml'
-      - 'docs/security/M3_RELEASE_POLICY.json'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedMoreScreen.kt'
-      - 'app/src/androidTest/java/com/sdvsync/qualification/UX06MoreDeviceTest.kt'
-      - 'scripts/devtool/ux_06_more_gate.py'
-      - 'scripts/devtool/ux06_emulator_ci.sh'
-      - '.github/workflows/cinderbox-ux06-more.yml'
   workflow_dispatch:
 permissions:
   contents: read

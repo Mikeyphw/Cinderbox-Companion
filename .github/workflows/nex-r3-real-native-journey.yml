@@ -1,12 +1,5 @@
 name: NEX-R3 Real MainActivity Journey — Offline Provider Acceptance
 on:
-  pull_request:
-    paths:
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/NexR3NativeJourneyTest.kt'
-      - 'scripts/devtool/nex_r3_*'
-      - 'scripts/devtool/test_nex_r3_*'
-      - '.github/workflows/nex-r3-real-native-journey.yml'
-      - 'docs/devtool/NEX_R3_FINAL_ACCEPTANCE.md'
   workflow_dispatch:
 permissions:
   contents: read

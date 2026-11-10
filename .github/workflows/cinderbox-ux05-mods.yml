@@ -1,24 +1,5 @@
 name: Cinderbox UX-05 — approved dark Mods source and safety
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModsScreen.kt'
-      - 'app/src/androidTest/java/com/sdvsync/qualification/R48RealActivityDeviceTest.kt'
-      - 'scripts/devtool/ux_05_mods_gate.py'
-      - 'scripts/devtool/test_ux_05_mods.py'
-      - '.github/workflows/cinderbox-ux05-mods.yml'
-      - 'docs/security/M3_RELEASE_POLICY.json'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModsScreen.kt'
-      - 'app/src/androidTest/java/com/sdvsync/qualification/R48RealActivityDeviceTest.kt'
-      - 'scripts/devtool/ux_05_mods_gate.py'
-      - 'scripts/devtool/test_ux_05_mods.py'
-      - '.github/workflows/cinderbox-ux05-mods.yml'
-      - 'docs/security/M3_RELEASE_POLICY.json'
   workflow_dispatch:
 permissions:
   contents: read

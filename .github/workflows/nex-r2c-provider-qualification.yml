@@ -1,15 +1,5 @@
 name: NEX-R2C Provider Schema Mapping and Optional Live Read-Only Qualification
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/mods/api/NexusCatalogOperation.kt'
-      - 'app/src/main/java/com/sdvsync/mods/api/NexusModSource.kt'
-      - 'app/src/main/java/com/sdvsync/mods/api/NexusProviderIntegrity.kt'
-      - 'app/src/test/java/com/sdvsync/mods/api/NexR1CatalogContractTest.kt'
-      - 'app/src/test/java/com/sdvsync/mods/api/NexusProviderIntegrityTest.kt'
-      - 'scripts/devtool/nex_r2c_*'
-      - 'scripts/devtool/test_nex_r2c_*'
-      - '.github/workflows/nex-r2c-provider-qualification.yml'
   workflow_dispatch:
 permissions:
   contents: read

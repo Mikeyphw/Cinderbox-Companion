@@ -1,24 +1,5 @@
 name: Cinderbox UX-08A — native download queue and file access deep routes
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedMoreScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModsScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedDeepStatusScreen.kt'
-      - 'app/src/androidTest/java/com/sdvsync/qualification/UX08DeepStatusDeviceTest.kt'
-      - 'scripts/devtool/ux08a_*'
-      - 'scripts/devtool/test_ux08a_gate.py'
-      - '.github/workflows/cinderbox-ux08a-deep-routes.yml'
-      - 'docs/security/M3_RELEASE_POLICY.json'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedDeepStatusScreen.kt'
-      - 'app/src/androidTest/java/com/sdvsync/qualification/UX08DeepStatusDeviceTest.kt'
-      - 'scripts/devtool/ux08a_*'
-      - '.github/workflows/cinderbox-ux08a-deep-routes.yml'
   workflow_dispatch:
 permissions:
   contents: read

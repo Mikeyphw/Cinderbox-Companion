@@ -3,67 +3,6 @@ name: Devtool source contract (no Gradle)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [master]
-    paths:
-      - '.devtool.toml'
-      - 'devtoolw'
-      - 'gradle/wrapper/gradle-wrapper.properties'
-      - '.github/workflows/devtool-*.yml'
-      - '.github/workflows/build.yml'
-      - 'scripts/devtool/ci_workflow_contract.py'
-      - 'scripts/devtool/test_a10_lane_consolidation.py'
-      - 'scripts/devtool/a05_*.py'
-      - 'scripts/devtool/a07_*.py'
-      - 'scripts/devtool/test_a05_*.py'
-      - 'scripts/devtool/test_a07_*.py'
-      - 'scripts/devtool/test_a10_*.py'
-      - 'scripts/devtool/cinderbox_devtool_audit.py'
-      - 'scripts/devtool/test_cinderbox_devtool_audit.py'
-      - 'scripts/devtool/test_storage_alias_source.py'
-      - 'scripts/devtool/test_r39_hosted_source.py'
-      - 'scripts/devtool/hosted_debug.py'
-      - 'scripts/devtool/test_hosted_debug.py'
-      - 'scripts/devtool/check_security_contract.py'
-      - 'scripts/devtool/test_m19_device_qualification.py'
-      - 'scripts/devtool/test_m24_staged_gate.py'
-      - 'scripts/devtool/test_m3h_reliability.py'
-      - 'app/src/main/java/com/sdvsync/local/**'
-      - 'app/src/main/java/com/sdvsync/download/**'
-      - 'app/src/main/java/com/sdvsync/mods/**'
-      - 'app/src/test/java/com/sdvsync/local/PlatformStoragePathsTest.kt'
-      - 'app/src/androidTest/java/com/sdvsync/qualification/PlatformStorageAliasDeviceTest.kt'
-  pull_request:
-    branches: [master]
-    paths:
-      - '.devtool.toml'
-      - 'devtoolw'
-      - 'gradle/wrapper/gradle-wrapper.properties'
-      - '.github/workflows/devtool-*.yml'
-      - '.github/workflows/build.yml'
-      - 'scripts/devtool/ci_workflow_contract.py'
-      - 'scripts/devtool/test_a10_lane_consolidation.py'
-      - 'scripts/devtool/a05_*.py'
-      - 'scripts/devtool/a07_*.py'
-      - 'scripts/devtool/test_a05_*.py'
-      - 'scripts/devtool/test_a07_*.py'
-      - 'scripts/devtool/test_a10_*.py'
-      - 'scripts/devtool/cinderbox_devtool_audit.py'
-      - 'scripts/devtool/test_cinderbox_devtool_audit.py'
-      - 'scripts/devtool/test_storage_alias_source.py'
-      - 'scripts/devtool/test_r39_hosted_source.py'
-      - 'scripts/devtool/hosted_debug.py'
-      - 'scripts/devtool/test_hosted_debug.py'
-      - 'scripts/devtool/check_security_contract.py'
-      - 'scripts/devtool/test_m19_device_qualification.py'
-      - 'scripts/devtool/test_m24_staged_gate.py'
-      - 'scripts/devtool/test_m3h_reliability.py'
-      - 'app/src/main/java/com/sdvsync/local/**'
-      - 'app/src/main/java/com/sdvsync/download/**'
-      - 'app/src/main/java/com/sdvsync/mods/**'
-      - 'app/src/test/java/com/sdvsync/local/PlatformStoragePathsTest.kt'
-      - 'app/src/androidTest/java/com/sdvsync/qualification/PlatformStorageAliasDeviceTest.kt'
-
 permissions:
   contents: read
 

@@ -1,24 +1,5 @@
 name: M25-03 R2D Conservative Game Status and Safety
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/m25-bulk-r2d.yml'
-      - 'app/src/main/java/com/sdvsync/mods/GameSessionSafety.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt'
-      - 'app/src/test/java/com/sdvsync/mods/GameSessionSafetyTest.kt'
-      - 'scripts/devtool/m25_bulk_r2d_gate.py'
-      - 'docs/devtool/M25_03_R2D_GAME_STATUS_GUARD.md'
-  push:
-    branches: [master]
-    paths:
-      - '.github/workflows/m25-bulk-r2d.yml'
-      - 'app/src/main/java/com/sdvsync/mods/GameSessionSafety.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ModManagerScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt'
-      - 'app/src/test/java/com/sdvsync/mods/GameSessionSafetyTest.kt'
-      - 'scripts/devtool/m25_bulk_r2d_gate.py'
-      - 'docs/devtool/M25_03_R2D_GAME_STATUS_GUARD.md'
   workflow_dispatch:
 permissions:
   contents: read

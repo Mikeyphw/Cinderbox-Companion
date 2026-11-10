@@ -1,19 +1,5 @@
 name: Cinderbox UX-09B2 — 21 native states, four read-only deep routes
 on:
-  pull_request:
-    paths:
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/**'
-      - 'scripts/devtool/ux09b2_*'
-      - 'scripts/devtool/test_ux09b2_gate.py'
-      - 'design/cinderbox/02_CONTRACT/**'
-      - '.github/workflows/cinderbox-ux09b2-deep-evidence.yml'
-      - 'docs/security/M3_RELEASE_POLICY.json'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/**'
-      - 'scripts/devtool/ux09b2_*'
-      - '.github/workflows/cinderbox-ux09b2-deep-evidence.yml'
   workflow_dispatch:
 permissions:
   contents: read

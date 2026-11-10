@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import re
+import runpy
 import sys
 import tomllib
 import r47_patch
@@ -63,7 +64,18 @@ def check()->dict:
     r47_mmrl_emulator_fix.validate_workflow(workflow)
     assert 'scripts/devtool/r47_verify.py' in workflow
     assert '--source-sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID"' in workflow
-    assert "'app/src/main/java/com/sdvsync/ui/**'" in workflow
+    # R47 remains manual after the Aurora-style CI migration. The targeted
+    # PR workflow now owns UI source-change classification. Do not delete the
+    # original Android 36 emulator, evidence or security checks above/below.
+    assert '  workflow_dispatch:\n' in workflow, 'R47_MANUAL_DISPATCH_REQUIRED'
+    assert '  pull_request:\n' not in workflow and '  push:\n' not in workflow, 'R47_LEGACY_AUTO_TRIGGER_RESTORED'
+    targeted=read('.github/workflows/cinderbox-targeted.yml')
+    policy_source=read('scripts/ci/cinderbox_ci_policy.py')
+    assert '  pull_request:\n' in targeted and '    branches: [master]' in targeted, 'R47_TARGETED_ENTRY_MISSING'
+    assert "'ui': ['ux08a_gate.py', 'r47_gate.py']" in policy_source, 'R47_TARGETED_GATE_UNWIRED'
+    assert "p.startswith(('app/src/main/java/com/sdvsync/ui/'," in policy_source, 'R47_UI_CLASSIFICATION_MISSING'
+    assert 'if sensitive or (android and not groups):' in policy_source, 'R47_SHARED_ACTIVITY_FALLBACK_MISSING'
+    assert "'app/build.gradle.kts'" in policy_source, 'R47_BUILD_RISK_MISSING'
     for area in ('GAME','SAVES','MODS','MORE'):
         assert 'R45GuideArea.'+area in test
     assert 'R46ErrorPanel(' in test and 'R45AreaGuide(area)' in test
@@ -83,7 +95,13 @@ def check()->dict:
     assert ':app:assembleDebug :app:assembleDebugAndroidTest' in workflow
     assert 'ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d' in workflow
     assert 'scripts/devtool/r47_emulator_ci.sh' in workflow
-    assert 'app/src/androidTest/java/com/sdvsync/qualification/R47SyntheticExperienceDeviceTest.kt' in workflow
+    # The legacy R47 workflow is now manual-only; the central targeted lane
+    # must recognize the actual R47 instrumentation source as Android work.
+    # Validate classification behavior, not a removed workflow paths filter.
+    instrumentation_path = 'app/src/androidTest/java/com/sdvsync/qualification/R47SyntheticExperienceDeviceTest.kt'
+    instrumentation_route = runpy.run_path(str(ROOT/'scripts/ci/cinderbox_ci_policy.py'))['classify']([instrumentation_path])
+    assert (instrumentation_route['needs_android'] and
+            'r47_gate.py' in instrumentation_route['source_gates']), 'R47_INSTRUMENTATION_NOT_TARGETED'
     assert 'if-no-files-found: error' in workflow and 'R47_SYNTHETIC_EVIDENCE.json' in cap
     assert "[targets.cinderbox.jobs.r47-ui-source]" in read('.devtool.toml')
     assert cfg['targets']['cinderbox']['jobs']['r47-ui-source']['metadata']['release_enabled'] is False

@@ -1,25 +1,5 @@
 name: R43D Fixed Destination UX Source Contracts
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/ui/policy/R43DDestinationPresentation.kt'
-      - 'app/src/main/java/com/sdvsync/ui/viewmodels/GameDownloadViewModel.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/GameDownloadScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/components/CinderboxWizardDialog.kt'
-      - 'app/src/test/java/com/sdvsync/ui/policy/R43DDestinationPresentationTest.kt'
-      - 'scripts/devtool/r43d_*.py'
-      - 'scripts/devtool/test_r43d_gate.py'
-      - '.devtool.toml'
-      - '.github/workflows/r43d-destination-ux.yml'
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/ui/**'
-      - 'app/src/test/java/com/sdvsync/ui/policy/R43DDestinationPresentationTest.kt'
-      - 'scripts/devtool/r43d_*.py'
-      - 'scripts/devtool/test_r43d_gate.py'
-      - '.devtool.toml'
-      - '.github/workflows/r43d-destination-ux.yml'
   workflow_dispatch:
 permissions:
   contents: read

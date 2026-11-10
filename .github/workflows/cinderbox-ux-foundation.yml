@@ -1,12 +1,5 @@
 name: Cinderbox UX — native dark/local-first foundation
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/**'
-      - 'app/src/test/java/com/sdvsync/ui/**'
-      - 'scripts/devtool/ux_00_01_source_gate.py'
-      - '.github/workflows/cinderbox-ux-foundation.yml'
   workflow_dispatch:
 permissions:
   contents: read

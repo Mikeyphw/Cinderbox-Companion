@@ -24,7 +24,7 @@ SOURCE = {
     TEST: 'cfa8e898d329ecc5be68db69195b3a369f86b929',
     DOC: '5d2a6aa435cfb9d1ce37867dfa52d5778b020bfd',
 }
-POST = {'.github/workflows/r47-ui-acceptance.yml': '449a663351e016a93cb3960166158c39a42dbd30', 'scripts/devtool/r47_mmrl_emulator_fix.py': 'af2728bc3b98f91b09dbccf1760abdab77085dea', 'scripts/devtool/test_r47_mmrl_emulator.py': '875eab6593734f26fa04ca9388fa730d3477854a', 'docs/devtool/R47_R5_MMRL_EMULATOR.md': '65db76306fdbbfb5c55866c34100a32ac99d9f0c'}
+POST = {'.github/workflows/r47-ui-acceptance.yml': '98edefb5029e495fa4a7706e3f94c2d6b1e1617c', 'scripts/devtool/r47_mmrl_emulator_fix.py': '82719b262cbed240ad269c40a0868922a28aba4c', 'scripts/devtool/test_r47_mmrl_emulator.py': '875eab6593734f26fa04ca9388fa730d3477854a', 'docs/devtool/R47_R5_MMRL_EMULATOR.md': '65db76306fdbbfb5c55866c34100a32ac99d9f0c'}
 
 OLD_KVM = '''      - name: Enable KVM on Linux hosted runner
         shell: bash

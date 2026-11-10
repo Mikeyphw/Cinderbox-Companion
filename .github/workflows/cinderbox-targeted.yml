@@ -1,0 +1,91 @@
+# Temporary removable targeted lane. Full qualification is the periodic/manual gate.
+name: Cinderbox — Targeted CI
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cinderbox-targeted-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  classify:
+    name: Exact-source change classification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    outputs:
+      needs_android: ${{ steps.plan.outputs.needs_android }}
+      head_sha: ${{ steps.plan.outputs.head_sha }}
+      base_sha: ${{ steps.plan.outputs.base_sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Classify exact PR or push diff
+        id: plan
+        shell: bash
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          base="${PR_BASE:-${PUSH_BEFORE:-}}"
+          if [[ ! "$base" =~ ^[0-9a-f]{40}$ || "$base" =~ ^0+$ ]]; then
+            base="$(git rev-parse HEAD^)"
+          fi
+          git cat-file -e "$base^{commit}"
+          python3 -B scripts/ci/cinderbox_ci_policy.py classify \
+            --base "$base" --head "$EXPECTED_SHA" --github-output "$GITHUB_OUTPUT"
+  source:
+    name: Targeted source and negative contracts
+    needs: classify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ needs.classify.outputs.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Run relevant source contracts
+        env:
+          BASE_SHA: ${{ needs.classify.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.classify.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          python3 -B scripts/ci/cinderbox_ci_policy.py run-targeted \
+            --base "$BASE_SHA" --head "$HEAD_SHA"
+  android:
+    name: Targeted Android compile and JVM (no emulator)
+    needs: [classify, source]
+    if: needs.classify.outputs.needs_android == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ needs.classify.outputs.head_sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Compile and test production Android debug on exact source
+        shell: bash
+        env:
+          HEAD_SHA: ${{ needs.classify.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0'
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:testDebugUnitTest :app:assembleDebug

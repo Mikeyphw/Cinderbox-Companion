@@ -1,24 +1,5 @@
 name: Cinderbox UX-08B — native SMAPI, recovery, and profile deep routes
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedGameScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedModsScreen.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedDeepToolsScreen.kt'
-      - 'app/src/androidTest/java/com/sdvsync/qualification/UX08BDeepToolsDeviceTest.kt'
-      - 'scripts/devtool/ux08b_*'
-      - 'scripts/devtool/test_ux08b_gate.py'
-      - '.github/workflows/cinderbox-ux08b-deep-routes.yml'
-      - 'docs/security/M3_RELEASE_POLICY.json'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/MainActivity.kt'
-      - 'app/src/main/java/com/sdvsync/ui/screens/ApprovedDeepToolsScreen.kt'
-      - 'app/src/androidTest/java/com/sdvsync/qualification/UX08BDeepToolsDeviceTest.kt'
-      - 'scripts/devtool/ux08b_*'
-      - '.github/workflows/cinderbox-ux08b-deep-routes.yml'
   workflow_dispatch:
 permissions:
   contents: read

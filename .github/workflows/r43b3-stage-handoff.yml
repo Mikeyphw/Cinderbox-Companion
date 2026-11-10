@@ -1,24 +1,5 @@
 name: R43B3 Verified Stage Handoff Source Contracts
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/download/R43BVerifiedStageBridge.kt'
-      - 'app/src/main/java/com/sdvsync/download/GameDownloadRecovery.kt'
-      - 'app/src/main/java/com/sdvsync/download/R43BUpdateAdmission.kt'
-      - 'app/src/test/java/com/sdvsync/download/R43BUpdateStageSessionTest.kt'
-      - 'scripts/devtool/r43b3_*.py'
-      - '.devtool.toml'
-      - '.github/workflows/r43b3-stage-handoff.yml'
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/download/R43BVerifiedStageBridge.kt'
-      - 'app/src/main/java/com/sdvsync/download/GameDownloadRecovery.kt'
-      - 'app/src/main/java/com/sdvsync/download/R43BUpdateAdmission.kt'
-      - 'app/src/test/java/com/sdvsync/download/R43BUpdateStageSessionTest.kt'
-      - 'scripts/devtool/r43b3_*.py'
-      - '.devtool.toml'
-      - '.github/workflows/r43b3-stage-handoff.yml'
   workflow_dispatch:
 permissions:
   contents: read

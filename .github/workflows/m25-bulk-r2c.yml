@@ -1,24 +1,5 @@
 name: M25-03 R2C Isolated Bulk Commit Integration
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/m25-bulk-r2c.yml'
-      - 'app/src/main/java/com/sdvsync/mods/ModFileManager.kt'
-      - 'app/src/androidTest/java/com/sdvsync/mods/ModBulkControlledFixtureDeviceTest.kt'
-      - 'scripts/devtool/m25_bulk_r2b_gate.py'
-      - 'scripts/devtool/m25_bulk_r2c_gate.py'
-      - 'scripts/devtool/m25_r2c_emulator.sh'
-      - 'docs/devtool/M25_03_R2C_ISOLATED_APPROVAL.md'
-  push:
-    branches: [master]
-    paths:
-      - '.github/workflows/m25-bulk-r2c.yml'
-      - 'app/src/main/java/com/sdvsync/mods/ModFileManager.kt'
-      - 'app/src/androidTest/java/com/sdvsync/mods/ModBulkControlledFixtureDeviceTest.kt'
-      - 'scripts/devtool/m25_bulk_r2b_gate.py'
-      - 'scripts/devtool/m25_bulk_r2c_gate.py'
-      - 'scripts/devtool/m25_r2c_emulator.sh'
-      - 'docs/devtool/M25_03_R2C_ISOLATED_APPROVAL.md'
   workflow_dispatch:
 permissions:
   contents: read

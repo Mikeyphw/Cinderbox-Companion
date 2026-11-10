@@ -1,21 +1,5 @@
 name: M25-03 R2A Journaled Bulk Fixture Qualification
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/m25-bulk-transaction.yml'
-      - 'app/src/main/java/com/sdvsync/mods/ModBulkTransaction.kt'
-      - 'app/src/main/java/com/sdvsync/mods/ModProfileTransaction.kt'
-      - 'app/src/test/java/com/sdvsync/mods/ModBulkTransactionTest.kt'
-      - 'scripts/devtool/m25_bulk_gate.py'
-      - 'docs/devtool/M25_03_R2A_JOURNALED_BULK_FIXTURE.md'
-  push:
-    branches: [master]
-    paths:
-      - '.github/workflows/m25-bulk-transaction.yml'
-      - 'app/src/main/java/com/sdvsync/mods/ModBulkTransaction.kt'
-      - 'app/src/test/java/com/sdvsync/mods/ModBulkTransactionTest.kt'
-      - 'scripts/devtool/m25_bulk_gate.py'
-      - 'docs/devtool/M25_03_R2A_JOURNALED_BULK_FIXTURE.md'
   workflow_dispatch:
 permissions:
   contents: read

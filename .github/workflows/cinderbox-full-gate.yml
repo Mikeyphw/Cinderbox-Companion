@@ -1,0 +1,64 @@
+# All heavy workflows are manual except this master-only periodic qualification router.
+name: Cinderbox — Periodic Full Gate Router
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cinderbox-full-gate-router
+  cancel-in-progress: false
+jobs:
+  plan:
+    name: Full gate cadence and risk policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    outputs:
+      due: ${{ steps.plan.outputs.due }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Count first-parent merges since last successful exact-source gate
+        id: plan
+        shell: bash
+        env:
+          GATE_INTERVAL: ${{ vars.CINDERBOX_FULL_GATE_INTERVAL || '5' }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          args=()
+          if [[ "$EVENT_NAME" == 'workflow_dispatch' ]]; then args+=(--force); fi
+          python3 -B scripts/ci/cinderbox_ci_policy.py gate-plan \
+            --head "$GITHUB_SHA" --interval "$GATE_INTERVAL" \
+            --github-output "$GITHUB_OUTPUT" "${args[@]}"
+  qualify:
+    name: Full gate — source-pinned Android and emulator workflows
+    needs: plan
+    if: needs.plan.outputs.due == 'true'
+    permissions:
+      contents: write
+      actions: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Dispatch and verify six heavy workflows on exact master SHA
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GATE_INTERVAL: ${{ vars.CINDERBOX_FULL_GATE_INTERVAL || '5' }}
+          EVENT_NAME: ${{ github.event_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          args=()
+          if [[ "$EVENT_NAME" == 'workflow_dispatch' ]]; then args+=(--force); fi
+          python3 -B scripts/ci/cinderbox_ci_policy.py gate-dispatch \
+            --head "$GITHUB_SHA" --interval "$GATE_INTERVAL" "${args[@]}"

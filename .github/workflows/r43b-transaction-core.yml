@@ -1,21 +1,6 @@
 name: R43B Isolated Swap Core Source Contracts
 
 on:
-  pull_request:
-    paths:
-      - 'app/src/main/java/com/sdvsync/download/R43BUpdateSwap.kt'
-      - 'app/src/test/java/com/sdvsync/download/R43BUpdateSwapTest.kt'
-      - 'scripts/devtool/r43b_*.py'
-      - '.devtool.toml'
-      - '.github/workflows/r43b-transaction-core.yml'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/main/java/com/sdvsync/download/R43BUpdateSwap.kt'
-      - 'app/src/test/java/com/sdvsync/download/R43BUpdateSwapTest.kt'
-      - 'scripts/devtool/r43b_*.py'
-      - '.devtool.toml'
-      - '.github/workflows/r43b-transaction-core.yml'
   workflow_dispatch:
 
 permissions:

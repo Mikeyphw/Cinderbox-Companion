@@ -1,16 +1,5 @@
 name: Cinderbox UX-09D02 — real offline routes and screenshot evidence
 on:
-  pull_request:
-    paths:
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/Ux09D02RealRouteEvidenceTest.kt'
-      - 'scripts/devtool/ux09d02_*'
-      - '.github/workflows/cinderbox-ux09d02-real-offline-evidence.yml'
-  push:
-    branches: [master]
-    paths:
-      - 'app/src/androidTest/java/com/sdvsync/ui/ux/Ux09D02RealRouteEvidenceTest.kt'
-      - 'scripts/devtool/ux09d02_*'
-      - '.github/workflows/cinderbox-ux09d02-real-offline-evidence.yml'
   workflow_dispatch:
 permissions:
   contents: read
