@@ -18,11 +18,14 @@ METHODS = (
     'pairingReadOnlyAndNonceReplayFails',
     'revokeInvalidatesTokenAndStopsListening',
     'incorrectCodesLockOutPairing',
+    'exactFileHandoffRequiresLocalOptInAndNeverStartsDownload',
+    'invalidIdentityReplayAndConcurrentDuplicateAreFailClosed',
+    'inboxSurvivesBridgeShutdownWithoutReenqueuingAnything',
 )
 CLASS = 'com.sdvsync.mods.CbNx03PairingDeviceTest'
 
 
-def event(name: str, status: int, klass: str = CLASS, numtests: int = 4) -> str:
+def event(name: str, status: int, klass: str = CLASS, numtests: int = len(METHODS)) -> str:
     return ''.join((
         f'INSTRUMENTATION_STATUS: class={klass}\n',
         'INSTRUMENTATION_STATUS: id=AndroidJUnitRunner\n',
@@ -34,7 +37,7 @@ def event(name: str, status: int, klass: str = CLASS, numtests: int = 4) -> str:
 
 def valid_log() -> str:
     return ''.join(event(n, 1) + event(n, 0) for n in METHODS) + (
-        'INSTRUMENTATION_RESULT: stream=\nTime: 0.3\n\nOK (4 tests)\n'
+        'INSTRUMENTATION_RESULT: stream=\nTime: 0.3\n\nOK (7 tests)\n'
         'INSTRUMENTATION_CODE: -1\n'
     )
 
@@ -56,7 +59,7 @@ with TemporaryDirectory(prefix='cbnx03-hf01-gate-') as tmp:
     good = valid_log()
     process, data = execute(good)
     assert process.returncode == 0 and data['status'] == 'PASS', 'CBNX03_HF01_VALID_ANDROID_EVENT_STREAM_REJECTED'
-    assert data['test_count'] == 4 and data['event_count'] == 8
+    assert data['test_count'] == 7 and data['event_count'] == 14
     assert data['test_results'] == {name: 'PASS' for name in METHODS}
     assert data['failure_reason_codes'] == []
 
@@ -67,12 +70,12 @@ with TemporaryDirectory(prefix='cbnx03-hf01-gate-') as tmp:
         ('missing success', good.replace(event(METHODS[1], 0), ''), '0'),
         ('method name drift', good.replace(event(METHODS[3], 0), event('OtherMethod', 0)), '0'),
         ('class drift', good.replace(event(METHODS[0], 0), event(METHODS[0], 0, klass='org.evil.Attack')), '0'),
-        ('numtests drift', good.replace(event(METHODS[0], 0), event(METHODS[0], 0, numtests=8)), '0'),
+        ('numtests drift', good.replace(event(METHODS[0], 0), event(METHODS[0], 0, numtests=9)), '0'),
         ('failure banner', good + 'FAILURES!!!\n', '0'),
-        ('missing success banner', good.replace('OK (4 tests)', 'OK (3 tests)'), '0'),
+        ('missing success banner', good.replace('OK (7 tests)', 'OK (3 tests)'), '0'),
         ('missing final runner code', good.replace('INSTRUMENTATION_CODE: -1', 'INSTRUMENTATION_CODE: 0'), '0'),
         ('shell exit failure', good, '1'),
-        ('single status per method stale fixture', ''.join(f'INSTRUMENTATION_STATUS: test={n}\n' for n in METHODS) + 'INSTRUMENTATION_CODE: -1\nOK (4 tests)\n', '0'),
+        ('single status per method stale fixture', ''.join(f'INSTRUMENTATION_STATUS: test={n}\n' for n in METHODS) + 'INSTRUMENTATION_CODE: -1\nOK (7 tests)\n', '0'),
     ]
     for title, raw, rc in negative:
         process, payload = execute(raw, rc)
@@ -80,7 +83,7 @@ with TemporaryDirectory(prefix='cbnx03-hf01-gate-') as tmp:
         assert payload['test_count'] == 0, 'CBNX03_HF01_PARTIAL_TESTS_MARKED_PASS:' + title
         assert payload['failure_reason_codes'], 'CBNX03_HF01_MISSING_SAFE_DIAGNOSTIC:' + title
     secret = 'nexus-key-example-private-canary-739'
-    process, data = execute(good.replace('OK (4 tests)', 'OK (4 tests)\nINSTRUMENTATION_RESULT: stream=' + secret))
+    process, data = execute(good.replace('OK (7 tests)', 'OK (7 tests)\nINSTRUMENTATION_RESULT: stream=' + secret))
     assert process.returncode == 0 and secret not in str(data) and secret not in process.stdout
 
     bridge = BRIDGE.read_text(encoding='utf8')

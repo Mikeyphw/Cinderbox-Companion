@@ -1,8 +1,9 @@
-name: CB-NX03 Read-only Firefox Pairing API36
+name: CB-NX03 Authenticated Pairing and Exact-file Inbox API36
 on:
   pull_request:
     paths:
       - 'app/src/main/java/com/sdvsync/mods/NexusPairingBridge.kt'
+      - 'app/src/main/java/com/sdvsync/mods/NexusPairingInbox.kt'
       - 'app/src/main/java/com/sdvsync/ui/screens/NexusPairingPanel.kt'
       - 'app/src/main/java/com/sdvsync/ui/screens/SettingsScreen.kt'
       - 'app/src/androidTest/java/com/sdvsync/mods/CbNx03PairingDeviceTest.kt'
@@ -34,6 +35,8 @@ jobs:
           test "$(git rev-parse HEAD)" = "$CBNX03_HEAD_SHA"
           python3 -B scripts/devtool/cbnx03_source_gate.py
           python3 -B scripts/devtool/cbnx03_hf01_negative_tests.py
+          python3 -B scripts/devtool/cbnx03b_source_gate.py
+          python3 -B scripts/devtool/cbnx03b_negative_tests.py
           python3 -B scripts/devtool/cbnx02_source_gate.py
           python3 -B scripts/devtool/cbnx01_gate.py
           bash -n scripts/devtool/cbnx03_emulator_ci.sh

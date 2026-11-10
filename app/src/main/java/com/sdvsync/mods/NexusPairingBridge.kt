@@ -31,11 +31,12 @@ internal object NexusPairingBridge {
     private var codeDeadline = 0L
     private var windowDeadline = 0L
     private var connected = false
+    private var permitHandoffs = false // Explicit per-window Android user consent; default OFF.
     private var guesses = 0
     private val challenges = LinkedHashMap<String, Long>()
     private val nonces = LinkedHashSet<String>()
     data class Snapshot(val listening: Boolean, val code: String?, val connected: Boolean,
-                        val remainingSeconds: Long)
+                        val remainingSeconds: Long, val handoffEnabled: Boolean)
 
     private fun now() = System.currentTimeMillis()
     private fun randomString(bytes: Int): String = ByteArray(bytes).also(random::nextBytes).let {
@@ -48,7 +49,8 @@ internal object NexusPairingBridge {
         val time = now()
         Snapshot(listener != null && !listener!!.isClosed && time < windowDeadline,
             code?.takeIf { time < codeDeadline && token == null }, connected,
-            ((windowDeadline - time).coerceAtLeast(0L) + 999L) / 1000L)
+            ((windowDeadline - time).coerceAtLeast(0L) + 999L) / 1000L,
+            permitHandoffs && token != null && time < windowDeadline)
     }
 
     fun start(context: Context): Snapshot = synchronized(guard) {
@@ -72,7 +74,13 @@ internal object NexusPairingBridge {
         snapshot()
     }
 
+    /** One-time, locally confirmed capability, never settable through HTTP. */
+    fun setHandoffEnabled(enabled: Boolean) = synchronized(guard) {
+        permitHandoffs = enabled && token != null && listener != null && now() < windowDeadline
+    }
+
     fun revoke() = synchronized(guard) {
+        permitHandoffs = false
         token = null
         connected = false
         nonces.clear()
@@ -88,6 +96,7 @@ internal object NexusPairingBridge {
         token = null
         code = null
         connected = false
+        permitHandoffs = false
         guesses = 0
         challenges.clear()
         nonces.clear()
@@ -220,7 +229,8 @@ internal object NexusPairingBridge {
                     }
                 }
                 method == "GET" && path == "/v1/state" ||
-                    method == "POST" && path == "/v1/revoke" -> {
+                    method == "POST" && path == "/v1/revoke" ||
+                    method == "POST" && path == "/v1/handoff" -> {
                     val supplied = headers["authorization"]?.removePrefix("Bearer ") ?: ""
                     val nonce = headers["x-cbnx-nonce"] ?: ""
                     if (token == null || !same(supplied, token!!) ||
@@ -229,27 +239,68 @@ internal object NexusPairingBridge {
                         if (nonces.size >= 128) { token = null; connected = false; nonces.clear() }
                         401 to JSONObject().put("error", "unauthorized")
                     } else {
-                        if (method == "POST") {
-                            token = null
-                            connected = false
-                            code = null
-                            nonces.clear()
-                            200 to JSONObject().put("revoked", true)
-                        } else {
-                            connected = true
-                            val jobs = JSONArray()
-                            ModDownloadJournal(context).list().take(60).forEach { job ->
-                                jobs.put(JSONObject().put("job_id", job.id.take(64))
-                                    .put("source", job.source.take(32))
-                                    .put("mod_id", job.modId.take(30))
-                                    .put("file_id", job.fileId.take(30))
-                                    .put("status", job.status.take(32))
-                                    .put("received", job.received.coerceAtLeast(0))
-                                    .put("total", job.total.coerceAtLeast(0)))
+                        when (path) {
+                            "/v1/revoke" -> {
+                                token = null
+                                connected = false
+                                code = null
+                                permitHandoffs = false
+                                nonces.clear()
+                                200 to JSONObject().put("revoked", true)
                             }
-                            200 to JSONObject().put("protocol", 1).put("proof_kind", "journal_only")
-                                .put("installed_inventory_qualified", false)
-                                .put("jobs", jobs)
+                            "/v1/handoff" -> {
+                                // HTTP cannot start a download, install, review, or filesystem change.
+                                // Browser submits ONLY the exact Nexus file identity for later local action.
+                                if (!permitHandoffs) {
+                                    403 to JSONObject().put("error", "handoff_disabled")
+                                } else {
+                                    val mod = body.optString("mod_id")
+                                    val file = body.optString("file_id")
+                                    val id = body.optString("request_id")
+                                    val outcome = runCatching {
+                                        NexusPairingInbox.admit(context, id, mod, file)
+                                    }.getOrNull()
+                                    when (outcome?.state) {
+                                        "pending_user_action", "already_pending", "already_seen" ->
+                                            202 to JSONObject().put("request_id", outcome.id)
+                                                .put("status", outcome.state)
+                                                .put("download_started", false)
+                                                .put("archive_staged", false)
+                                                .put("installed", false)
+                                        "invalid_identity" -> 400 to JSONObject().put("error", "invalid_identity")
+                                        "identity_conflict" -> 409 to JSONObject().put("error", "identity_conflict")
+                                        "inbox_full" -> 429 to JSONObject().put("error", "inbox_full")
+                                        else -> 503 to JSONObject().put("error", "inbox_unavailable")
+                                    }
+                                }
+                            }
+                            else -> {
+                                connected = true
+                                val jobs = JSONArray()
+                                ModDownloadJournal(context).list().take(60).forEach { job ->
+                                    jobs.put(JSONObject().put("job_id", job.id.take(64))
+                                        .put("source", job.source.take(32))
+                                        .put("mod_id", job.modId.take(30))
+                                        .put("file_id", job.fileId.take(30))
+                                        .put("status", job.status.take(32))
+                                        .put("received", job.received.coerceAtLeast(0))
+                                        .put("total", job.total.coerceAtLeast(0)))
+                                }
+                                val handoffs = JSONArray()
+                                // Only exact identities and local review states are returned.
+                                val inboxResult = runCatching { NexusPairingInbox.list(context) }
+                                inboxResult.getOrDefault(emptyList()).takeLast(40).forEach { entry ->
+                                        handoffs.put(JSONObject().put("request_id", entry.id)
+                                            .put("mod_id", entry.modId)
+                                            .put("file_id", entry.fileId)
+                                            .put("status", entry.status))
+                                    }
+                                200 to JSONObject().put("protocol", 1).put("proof_kind", "journal_only")
+                                    .put("installed_inventory_qualified", false)
+                                    .put("handoff_enabled", permitHandoffs)
+                                    .put("inbox_available", inboxResult.isSuccess)
+                                    .put("jobs", jobs).put("handoffs", handoffs)
+                            }
                         }
                     }
                 }
@@ -262,8 +313,9 @@ internal object NexusPairingBridge {
     private fun respond(output: BufferedOutputStream, code: Int, data: JSONObject, origin: String?) {
         val body = if (code == 204) ByteArray(0)
                    else data.toString().toByteArray(StandardCharsets.UTF_8)
-        val message = when(code) { 200 -> "OK"; 204 -> "No Content"; 400 -> "Bad Request";
-            401 -> "Unauthorized"; 403 -> "Forbidden"; 404 -> "Not Found";
+        val message = when(code) { 200 -> "OK"; 202 -> "Accepted"; 204 -> "No Content"; 400 -> "Bad Request";
+            401 -> "Unauthorized"; 403 -> "Forbidden"; 404 -> "Not Found"; 409 -> "Conflict";
+            429 -> "Too Many Requests";
             413 -> "Content Too Large"; 415 -> "Unsupported Media Type"; else -> "Unavailable" }
         val head = buildString {
             append("HTTP/1.1 $code $message\r\n")

@@ -96,4 +96,70 @@ class CbNx03PairingDeviceTest {
         assertEquals(403, request("POST", "/v1/pair",
             JSONObject().put("code", "123456789").put("challenge", challenge).toString()).first)
     }
+
+    private fun headers(token: String, nonce: String = java.util.UUID.randomUUID().toString().replace("-", "")) =
+        mapOf("Authorization" to "Bearer $token", "X-CBNX-Nonce" to nonce)
+
+    @Test fun exactFileHandoffRequiresLocalOptInAndNeverStartsDownload() {
+        NexusPairingBridge.start(context)
+        val token = pair()
+        val id = java.util.UUID.randomUUID().toString().replace("-", "")
+        val body = JSONObject().put("mod_id", "50535").put("file_id", "178239")
+            .put("request_id", id).toString()
+        assertEquals(403, request("POST", "/v1/handoff", body, headers(token)).first)
+        NexusPairingBridge.setHandoffEnabled(true)
+        val accepted = request("POST", "/v1/handoff", body, headers(token))
+        assertEquals(202, accepted.first)
+        assertEquals("pending_user_action", accepted.second.getString("status"))
+        assertFalse(accepted.second.getBoolean("download_started"))
+        assertFalse(accepted.second.getBoolean("archive_staged"))
+        assertFalse(accepted.second.getBoolean("installed"))
+        val state = request("GET", "/v1/state", headers = headers(token))
+        assertEquals(200, state.first)
+        assertTrue(state.second.getBoolean("handoff_enabled"))
+        assertTrue(state.second.getJSONArray("handoffs").toString().contains(id))
+        assertTrue(NexusPairingInbox.list(context).any { it.id == id && it.status == "PENDING" })
+        assertTrue(NexusPairingInbox.resolve(context, id, "DISMISSED"))
+    }
+
+    @Test fun invalidIdentityReplayAndConcurrentDuplicateAreFailClosed() {
+        NexusPairingBridge.start(context)
+        val token = pair()
+        NexusPairingBridge.setHandoffEnabled(true)
+        val id = java.util.UUID.randomUUID().toString().replace("-", "")
+        fun submit(mod: String, file: String, requestId: String) = request("POST", "/v1/handoff",
+            JSONObject().put("mod_id", mod).put("file_id", file).put("request_id", requestId).toString(),
+            headers(token))
+        assertEquals(400, submit("0", "178239", id).first)
+        assertEquals(400, submit("50535", "1/2", id).first)
+        assertEquals(400, submit("50535", "178239", "tiny").first)
+        val accepted = submit("50535", "178239", id)
+        assertEquals(202, accepted.first)
+        assertEquals("pending_user_action", accepted.second.getString("status"))
+        assertEquals("already_seen", submit("50535", "178239", id).second.getString("status"))
+        assertEquals(409, submit("50535", "190561", id).first)
+        val other = java.util.UUID.randomUUID().toString().replace("-", "")
+        assertEquals("already_pending", submit("50535", "178239", other).second.getString("status"))
+        assertEquals(id, NexusPairingInbox.list(context).first { it.id == id }.id)
+        assertTrue(NexusPairingInbox.resolve(context, id, "DISMISSED"))
+        assertEquals("already_seen", submit("50535", "178239", id).second.getString("status"))
+    }
+
+    @Test fun inboxSurvivesBridgeShutdownWithoutReenqueuingAnything() {
+        NexusPairingBridge.start(context)
+        val token = pair()
+        NexusPairingBridge.setHandoffEnabled(true)
+        val id = java.util.UUID.randomUUID().toString().replace("-", "")
+        val body = JSONObject().put("mod_id", "50535").put("file_id", "190561")
+            .put("request_id", id).toString()
+        assertEquals(202, request("POST", "/v1/handoff", body, headers(token)).first)
+        NexusPairingBridge.stop()
+        assertFalse(NexusPairingBridge.snapshot().handoffEnabled)
+        assertTrue(NexusPairingInbox.list(context).any { it.id == id && it.status == "PENDING" })
+        assertTrue(NexusPairingInbox.resolve(context, id, "OPENED"))
+        assertTrue(NexusPairingInbox.list(context).any { it.id == id && it.status == "OPENED" })
+        // No ModDownloadJournal job can be produced by this request-only bridge.
+        assertFalse(ModDownloadJournal(context).list().any { it.name == id })
+    }
+
 }

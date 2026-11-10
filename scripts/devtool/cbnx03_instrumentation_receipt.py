@@ -20,6 +20,9 @@ methods = (
     'pairingReadOnlyAndNonceReplayFails',
     'revokeInvalidatesTokenAndStopsListening',
     'incorrectCodesLockOutPairing',
+    'exactFileHandoffRequiresLocalOptInAndNeverStartsDownload',
+    'invalidIdentityReplayAndConcurrentDuplicateAreFailClosed',
+    'inboxSurvivesBridgeShutdownWithoutReenqueuingAnything',
 )
 allowed = set(methods)
 expected_class = 'com.sdvsync.mods.CbNx03PairingDeviceTest'
@@ -42,7 +45,7 @@ for line in raw.splitlines():
         klass = block.get('class')
         if method:
             method_events += 1
-            if method not in allowed or klass != expected_class or block.get('numtests') != '4':
+            if method not in allowed or klass != expected_class or block.get('numtests') != '7':
                 unknown_count += 1
             elif code == '1':
                 start[method] += 1
@@ -58,12 +61,12 @@ def fail(code, condition):
         reason_codes.append(code)
 
 fail('unexpected_method_or_class', unknown_count != 0)
-fail('invalid_runner_event_count', method_events != 8)
+fail('invalid_runner_event_count', method_events != 14)
 fail('missing_or_duplicate_start', any(start[n] != 1 for n in methods))
 fail('missing_or_duplicate_success', any(passed[n] != 1 for n in methods))
 fail('runner_reported_failure', any(failed[n] for n in methods) or
      'FAILURES!!!' in raw or 'INSTRUMENTATION_FAILED' in raw)
-fail('runner_summary_mismatch', 'OK (4 tests)' not in raw or
+fail('runner_summary_mismatch', 'OK (7 tests)' not in raw or
      'INSTRUMENTATION_CODE: -1' not in raw)
 fail('runner_process_failure', a.exit != '0')
 fail('source_or_apk_hash_invalid', not re.fullmatch(r'[0-9a-f]{40}', a.source) or
@@ -77,7 +80,7 @@ receipt = {
     'qualification': 'CBNX03_API36_SYNTHETIC_READ_ONLY',
     'status': 'PASS' if ok else 'FAIL',
     'source_sha': a.source, 'run_id': a.run,
-    'test_count': 4 if ok else 0,
+    'test_count': 7 if ok else 0,
     'test_methods': list(methods) if ok else [],
     'test_results': results,
     'event_count': method_events,
@@ -94,4 +97,4 @@ print('CBNX03_HF01_RECEIPT_STATUS=' + receipt['status'])
 if not ok:
     print('CBNX03_HF01_SAFE_FAILURE_CODES=' + ','.join(reason_codes))
     raise SystemExit('CBNX03_HOSTED_INSTRUMENTATION_REFUSED')
-print('CBNX03_HF01_API36_EXACT_FOUR_TESTS_PASS')
+print('CBNX03B_API36_EXACT_SEVEN_TESTS_PASS')
