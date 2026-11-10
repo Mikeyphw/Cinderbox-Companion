@@ -148,8 +148,20 @@ class CbNx04AuthorityDeviceTest {
 
     @Test fun expiredOrClockInvalidSmapiCacheCannotShowAnUpdate() = fixture { root ->
         manifest(root, "Enabled", "50535")
-        val expired = NexusPairingAuthority.snapshot(listOf(job()), root, 15_000_000L,
-            reviews(root), smapi(999_000L))
+        // The previous fixture used 15_000_000 - 999_000 = 14_001_000 ms,
+        // which is LESS than four hours and therefore wrongly expected STALE.
+        // Test the exact inclusive boundary and the first expired millisecond.
+        val checkedAt = 999_000L
+        val fourHours = 4L * 60L * 60L * 1000L
+        assertEquals(14_400_000L, fourHours)
+        assertEquals(fourHours, NexusUpdateEvidence.FRESH_MS)
+        val atBoundary = NexusPairingAuthority.snapshot(listOf(job()), root,
+            checkedAt + fourHours, reviews(root), smapi(checkedAt))
+        assertEquals("SMAPI_CACHE_FRESH", atBoundary.getString("remote_update_check"))
+        assertEquals("NEWER", item(atBoundary).getString("update_state"))
+        assertEquals("1.3.0", item(atBoundary).getString("candidate_version"))
+        val expired = NexusPairingAuthority.snapshot(listOf(job()), root,
+            checkedAt + fourHours + 1L, reviews(root), smapi(checkedAt))
         assertEquals("SMAPI_CACHE_STALE", expired.getString("remote_update_check"))
         assertEquals("UNKNOWN", item(expired).getString("update_state"))
         assertFalse(item(expired).has("candidate_version"))
@@ -157,6 +169,7 @@ class CbNx04AuthorityDeviceTest {
             reviews(root), smapi(1_000_001L))
         assertEquals("CLOCK_INVALID", clock.getString("remote_update_check"))
         assertEquals("UNKNOWN", item(clock).getString("update_state"))
+        assertFalse(item(clock).has("candidate_version"))
     }
 
     @Test fun versionOrIdentifierMismatchCannotPromoteCachedCandidate() = fixture { root ->

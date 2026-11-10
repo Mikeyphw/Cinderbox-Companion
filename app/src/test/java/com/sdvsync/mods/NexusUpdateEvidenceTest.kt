@@ -28,6 +28,26 @@ class NexusUpdateEvidenceTest {
         assertEquals("UNKNOWN", NexusUpdateEvidence.classify(snap(1L), "author.mod", "1.2.0", now).status)
     }
 
+    @Test fun fourHoursIsInclusiveAndNextMillisecondIsStale() {
+        val checkedAt = 999_000L
+        val fourHours = 4L * 60L * 60L * 1000L
+        assertEquals(14_400_000L, fourHours)
+        assertEquals(fourHours, NexusUpdateEvidence.FRESH_MS)
+        val atBoundary = snap(at = checkedAt)
+        assertEquals("SMAPI_CACHE_FRESH", NexusUpdateEvidence.freshness(
+            atBoundary, checkedAt + fourHours))
+        val permitted = NexusUpdateEvidence.classify(atBoundary, "author.mod", "1.2.0",
+            checkedAt + fourHours)
+        assertEquals("NEWER", permitted.status)
+        assertEquals("1.3.0", permitted.candidate)
+        assertEquals("SMAPI_CACHE_STALE", NexusUpdateEvidence.freshness(
+            atBoundary, checkedAt + fourHours + 1L))
+        val denied = NexusUpdateEvidence.classify(atBoundary, "author.mod", "1.2.0",
+            checkedAt + fourHours + 1L)
+        assertEquals("UNKNOWN", denied.status)
+        assertNull(denied.candidate)
+    }
+
     @Test fun installedVersionMismatchFailsClosed() {
         assertEquals("UNKNOWN", NexusUpdateEvidence.classify(snap(version = "1.2.1"),
             "author.mod", "1.2.0", now).status)

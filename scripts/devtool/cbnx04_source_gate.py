@@ -66,4 +66,31 @@ for method in methods:
     assert "'"+method+"'" in receipt, 'CBNX04_MISSING_RECEIPT_METHOD:'+method
 assert 'method_events != 30' in receipt and "block.get('numtests') != '15'" in receipt
 assert "'test_count': 15 if ok else 0" in receipt
+# CBNX04C HF01: the canonical API36 freshness fixture must test REAL elapsed
+# arithmetic, not merely a timestamp with a large-looking absolute value.
+expiry = tests.split('@Test fun expiredOrClockInvalidSmapiCacheCannotShowAnUpdate()', 1)
+assert len(expiry) == 2, 'CBNX04C_EXPIRY_TEST_NOT_FOUND'
+expiry_body = expiry[1].split('\n    @Test ', 1)[0]
+for required in (
+    'val checkedAt = 999_000L',
+    'val fourHours = 4L * 60L * 60L * 1000L',
+    'assertEquals(14_400_000L, fourHours)',
+    'assertEquals(fourHours, NexusUpdateEvidence.FRESH_MS)',
+    'checkedAt + fourHours, reviews(root), smapi(checkedAt)',
+    'checkedAt + fourHours + 1L, reviews(root), smapi(checkedAt)',
+    '"SMAPI_CACHE_FRESH"', '"SMAPI_CACHE_STALE"',
+    '"CLOCK_INVALID"', '"NEWER"', '"UNKNOWN"',
+    'assertFalse(item(expired).has("candidate_version"))',
+    'assertFalse(item(clock).has("candidate_version"))',
+):
+    assert required in expiry_body, 'CBNX04C_STALE_TIMESTAMP_FIXTURE:' + required
+assert 'root, 15_000_000L,' not in expiry_body, 'CBNX04C_BAD_OLD_EXPIRY_TIMESTAMP'
+unit = source('app/src/test/java/com/sdvsync/mods/NexusUpdateEvidenceTest.kt')
+assert 'fun fourHoursIsInclusiveAndNextMillisecondIsStale()' in unit
+assert 'checkedAt + fourHours + 1L' in unit
+assert 'checkedAt + fourHours)' in unit
+assert 'assertEquals(fourHours, NexusUpdateEvidence.FRESH_MS)' in unit
+assert len(re.findall(r'@Test\s+fun\s+[A-Za-z_0-9]+\s*\(', unit)) == 6
+print('CBNX04C_HF01_ACTUAL_ELAPSED_BOUNDARY_SOURCE_CONTRACT_PASS')
+
 print('CBNX04C_CANONICAL_FRESH_SMAPI_FIFTEEN_METHOD_ROSTER_PASS')
