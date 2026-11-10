@@ -47,3 +47,20 @@ for forged in (good.replace(event(method,'0'),event(method,'0','CBNX03_SAFE_CAUS
     assert result['safe_pairing_failure_causes']=={}
     assert secret not in json.dumps(result)+out
 print('CBNX04_HF03_BIND_CAUSE_MUTATIONS_PASS allowed=7 forged=2 privacy=PASS')
+
+# Kotlin call-shape source regression. The original trailing-lambda call binds
+# to `pause` and leaves the mandatory `bind` parameter unspecified.
+bridge_path=ROOT/'app/src/main/java/com/sdvsync/mods/NexusPairingBridge.kt'
+binder_path=ROOT/'app/src/main/java/com/sdvsync/mods/NexusLoopbackBindPolicy.kt'
+bridge=bridge_path.read_text()
+binder=binder_path.read_text()
+
+def binding_contract(src):
+    return ('NexusLoopbackBindPolicy.acquire(bind = {' in src and
+            'NexusLoopbackBindPolicy.acquire {' not in src and
+            '        })\n        listener = socket' in src and
+            'fun <T> acquire(bind: () -> T, pause:' in binder)
+assert binding_contract(bridge), 'CBNX04_FIX02_STALE_KOTLIN_BIND_CALL'
+assert not binding_contract(bridge.replace('acquire(bind = {', 'acquire {', 1)), 'CBNX04_FIX02_TRAILING_LAMBDA_MUTANT_NOT_REJECTED'
+assert not binding_contract(bridge.replace('        })\n        listener = socket', '        }\n        listener = socket', 1)), 'CBNX04_FIX02_MISSING_CLOSURE_MUTANT_NOT_REJECTED'
+print('CBNX04_HF03_FIX02_BINDING_MUTATIONS_PASS trailing=1 closure=1')

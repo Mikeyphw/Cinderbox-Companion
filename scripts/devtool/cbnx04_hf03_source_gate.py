@@ -13,7 +13,10 @@ binder=src(mods+'NexusLoopbackBindPolicy.kt')
 device=src('app/src/androidTest/java/com/sdvsync/mods/CbNx03PairingDeviceTest.kt')
 unit=src('app/src/test/java/com/sdvsync/mods/NexusLoopbackBindPolicyTest.kt')
 receipt=src('scripts/devtool/cbnx03_instrumentation_receipt.py')
-assert 'NexusLoopbackBindPolicy.acquire {' in bridge
+assert 'NexusLoopbackBindPolicy.acquire(bind = {' in bridge, 'CBNX04_HF03_MISSING_NAMED_BIND_ARGUMENT'
+assert 'NexusLoopbackBindPolicy.acquire {' not in bridge, 'CBNX04_HF03_STALE_TRAILING_LAMBDA'
+assert 'fun <T> acquire(bind: () -> T, pause:' in binder, 'CBNX04_HF03_BIND_SIGNATURE_MOVED'
+assert '        })\n        listener = socket' in bridge, 'CBNX04_HF03_BIND_LAMBDA_NOT_CLOSED'
 assert 'candidate.reuseAddress = true' in bridge
 assert 'candidate.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 4)' in bridge
 assert 'candidate.close()' in bridge
@@ -36,4 +39,4 @@ for workflow in ('cbnx03-pairing.yml','cbnx04-authority.yml'):
     for marker in ('cbnx04_hf03_source_gate.py','cbnx04_hf03_negative_tests.py',
                    ':app:testDebugUnitTest', ':app:assembleDebugAndroidTest'):
         assert marker in w, workflow +':'+marker
-print('CBNX04_HF03_BIND_RETRY_AND_STALE_CONTRACT_PASS methods=7 unit=4')
+print('CBNX04_HF03_FIX02_NAMED_BIND_AND_STALE_CONTRACT_PASS methods=7 unit=4')

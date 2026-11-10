@@ -66,7 +66,7 @@ internal object NexusPairingBridge {
         // An AndroidJUnit/Android lifecycle restart can briefly leave the loopback
         // port in use even after closing the previous listener. Retry ONLY address
         // reuse conflicts, with a strict upper bound; never bind to all interfaces.
-        val socket = NexusLoopbackBindPolicy.acquire {
+        val socket = NexusLoopbackBindPolicy.acquire(bind = {
             ServerSocket().also { candidate ->
                 try {
                     candidate.reuseAddress = true
@@ -77,7 +77,7 @@ internal object NexusPairingBridge {
                     throw error
                 }
             }
-        }
+        })
         listener = socket
         windowDeadline = now() + WINDOW_MS
         codeDeadline = now() + CODE_MS
