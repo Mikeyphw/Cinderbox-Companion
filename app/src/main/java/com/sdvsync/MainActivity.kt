@@ -249,8 +249,11 @@ class MainActivity : ComponentActivity() {
                     "Mod #${parsed.modId}"
                 }
                 Log.i(NXM_DIAG_TAG, "NXM_DOWNLOAD_MANAGER_REQUESTED")
-                downloadManager.startDownload(url, modName, parsed.modId, "nexus", parsed.fileId)
-                // The manager may still reject a request; this is NOT archive-staging proof.
+                val admission = downloadManager.startDownload(url, modName, parsed.modId, "nexus", parsed.fileId)
+                launch(Dispatchers.Main) {
+                    nxmNotice = admission.userMessage // Fixed, credential-free admission outcome.
+                }
+                // A successful admission is NOT archive-staging or installation proof.
                 Log.i(NXM_DIAG_TAG, "NXM_MANAGER_RETURNED_NOT_STAGED_PROOF")
             } catch (e: Exception) {
                 Log.i(NXM_DIAG_TAG, "NXM_RESOLUTION_OR_DOWNLOAD_FAILURE")

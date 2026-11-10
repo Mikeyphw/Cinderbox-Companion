@@ -23,6 +23,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python3 -B scripts/devtool/cbnx02_source_gate.py
+          python3 -B scripts/devtool/cbnx02b_hf02_negative_tests.py
           python3 -B scripts/devtool/cbnx01_gate.py
           python3 -B scripts/devtool/ux08a_gate.py
           python3 -B scripts/devtool/ux05bd_gate.py

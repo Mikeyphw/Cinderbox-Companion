@@ -100,7 +100,7 @@ require(MOD+'ModDownloadService.kt', [
     'ACTION_PAUSE_JOB', 'ACTION_RESUME_JOB', 'ACTION_CANCEL_JOB',
     'ACTION_MOVE_UP', 'ACTION_MOVE_DOWN', 'activeCall?.cancel()',
     'journal.resumePaused(id)', 'journal.moveQueued(id, delta)',
-    'synchronized(workLock) { activePhase = "INSTALLING" }',
+    'activePhase = "INSTALLING"',
     'journal.markJobInterrupted(it)', 'ModReviewQueue(filesDir).enqueue('])
 require(SCREENS+'ModDownloadsScreen.kt', [
     'cbnx02b.queue.pause', 'cbnx02b.queue.resume',
@@ -117,3 +117,65 @@ require('app/src/androidTest/java/com/sdvsync/ui/screens/CbNx02BQueueControlsUiD
     'interruptedCardCannotResumeWithoutNewNexusLink'])
 assert 'putExtra(EXTRA_URL, url)' in service, 'CBNX02B_EXISTING_EPHEMERAL_URL_HANDOFF_LOST'
 print('CBNX02_DOWNLOAD_UX_SOURCE_PASS_ANDROID_RUNTIME_PENDING')
+
+# CB-NX02B HF02: atomic admission, no stale-worker state downgrade, and real API36 roster.
+manager=require(MOD+'ModDownloadManager.kt', ['journal.admit(', 'ModDownloadAdmission',
+    'StoragePreflight.requireWritable(context.cacheDir)', 'if (!admission.accepted)',
+    'ModDownloadService.start(context, url, modName, modId, source, fileId, id)'])
+assert 'journal.list().any' not in manager, 'CBNX02B_HF02_NONATOMIC_MANAGER_ADMISSION'
+ledger=require(MOD+'ModDownloadJournal.kt', [
+    'private val lock = Any()', 'fun admit(', 'synchronized(lock)', 'protectedStatuses',
+    '"PAUSED", "VERIFY_REQUIRED", "REVIEW_REQUIRED", "BLOCKED"',
+    'hasUnresolvedReviewIdentity(', 'return@synchronized ModDownloadAdmission(reason = "VERIFY_REQUIRED")' if False else '"VERIFY_REQUIRED" -> "VERIFY_REQUIRED"',
+    'write(rows)', 'fun isQueuedIdentity(', 'private fun allowed(',
+    '"VERIFY_REQUIRED", "INSTALLED", "COMPLETED"', 'if (!allowed(old.status, status))'])
+assert ledger.index('fun admit(') < ledger.index('fun create('), 'CBNX02B_HF02_ADMISSION_CONTRACT_MISSING'
+admit=ledger[ledger.index('fun admit('):ledger.index('fun create(')]
+assert 'synchronized(lock)' in admit and 'val duplicate = rows.firstOrNull' in admit and 'write(rows)' in admit
+assert admit.index('val duplicate = rows.firstOrNull') < admit.index('write(rows)'), 'CBNX02B_HF02_TOCTOU'
+assert 'rows.count { it.status in protectedStatuses }' in ledger, 'CBNX02B_HF02_HISTORY_TRUNCATION_RISK'
+assert '"VALIDATING", "INSTALLING" -> row.copy(status = "VERIFY_REQUIRED"' in ledger
+assert 'journal.isQueuedIdentity(next.id, next.source, next.modId, next.fileId)' in service
+assert 'for (job in queue) journal.markJobInterrupted(job.id)' in service
+assert 'for (job in queue) journal.cancelIfActive(job.id' not in service[service.index('override fun onDestroy()'):service.index('private suspend fun runTransfer')]
+assert 'if (!journal.update(item.id, "DOWNLOADING"' in service
+assert 'check(journal.update(item.id, "INSTALLING"' in service
+require('app/src/androidTest/java/com/sdvsync/mods/CbNx02BAdmissionDeviceTest.kt', [
+    'allProtectedNexusStatesRefuseDuplicateAdmission', 'multipleJournalInstancesAdmitSameFileOnlyOnce',
+    'durableReviewReceiptBlocksAdmissionEvenWithoutJournalRow', 'crashDuringInstallationIsVerifyOnlyEvenWithApprovalOff',
+    'terminalAndUncertainStatesRejectLateWorkerWrites'])
+runner=require('scripts/devtool/cbnx02_emulator_ci.sh', [
+    'CbNx02DownloadUxDeviceTest,com.sdvsync.ui.screens.CbNx02DownloadsUiDeviceTest,com.sdvsync.ui.screens.CbNx02BQueueControlsUiDeviceTest,com.sdvsync.mods.CbNx02BAdmissionDeviceTest',
+    'scripts/devtool/cbnx02_instrumentation_receipt.py'])
+receipt=require('scripts/devtool/cbnx02_instrumentation_receipt.py', [
+    'ROSTER = {', 'len(EXPECTED)', 'set(passed) == EXPECTED',
+    'CbNx02BQueueControlsUiDeviceTest', 'CbNx02BAdmissionDeviceTest',
+    "'physical_device_qualified': False", "'live_nexus_qualified': False"])
+assert 'OK (8 tests)' not in receipt and "'test_count':8" not in receipt
+print('CBNX02B_HF02_SOURCE_GATE_PASS_API36_PENDING')
+
+# Hosted targeted source lane also runs mutation/receipt negative tests; no Android dependency.
+import runpy
+runpy.run_path(str(ROOT/'scripts/devtool/cbnx02b_hf02_negative_tests.py'), run_name='__main__')
+
+assert '"PAUSED", "INTERRUPTED", "FAILED"' not in text(MOD+'ModQueueControlPolicy.kt'), 'CBNX02B_HF02_PAUSED_REBIND_BYPASS'
+
+assert 'private const val ACTION_CANCEL_ALL' in service
+assert 'private fun cancelAllTransfers()' in service
+assert 'fun stop(context: Context) = control(context, ACTION_CANCEL_ALL, "")' in service
+assert 'context.stopService(Intent(context, ModDownloadService::class.java))' not in service
+
+assert 'source.equals("nexus", ignoreCase = true) && source != "nexus"' in ledger
+
+# Nexus NXM and manual-review paths must surface refused admissions and preserve receipts.
+require('app/src/main/java/com/sdvsync/MainActivity.kt', [
+    'val admission = downloadManager.startDownload(url, modName, parsed.modId, "nexus", parsed.fileId)',
+    'nxmNotice = admission.userMessage'])
+require('app/src/main/java/com/sdvsync/ui/viewmodels/ModDetailViewModel.kt', [
+    'if (!admission.accepted)', 'error = admission.userMessage'])
+reviewvm=require('app/src/main/java/com/sdvsync/ui/viewmodels/ModManagerViewModel.kt', [
+    'record.source == reviewReceipt.source', 'record.modId == reviewReceipt.modId',
+    'record.fileId == reviewReceipt.fileId',
+    'row.status in setOf("REVIEW_REQUIRED", "BLOCKED")',
+    'check(ModDownloadJournal(context).update(receipt.jobId, "INSTALLED"',
+    '"Cannot discard uncertain installation evidence"'])

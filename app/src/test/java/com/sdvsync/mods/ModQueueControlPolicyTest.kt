@@ -32,7 +32,7 @@ class ModQueueControlPolicyTest {
 
     @Test fun freshLinkIsTiedToOriginalExactNexusIdentity() {
         assertTrue(ModQueueControlPolicy.freshLinkAllowed("nexus", "50535", "178239", "INTERRUPTED"))
-        assertTrue(ModQueueControlPolicy.freshLinkAllowed("nexus", "50535", "178239", "PAUSED"))
+        assertFalse(ModQueueControlPolicy.freshLinkAllowed("nexus", "50535", "178239", "PAUSED"))
         assertFalse(ModQueueControlPolicy.freshLinkAllowed("nexus", "50535", "178239", "INSTALLED"))
         assertFalse(ModQueueControlPolicy.freshLinkAllowed("nexus", "50535", "0", "FAILED"))
         assertFalse(ModQueueControlPolicy.freshLinkAllowed("nexus", "../1", "5", "FAILED"))

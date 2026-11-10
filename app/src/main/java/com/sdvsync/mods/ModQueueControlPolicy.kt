@@ -10,5 +10,5 @@ object ModQueueControlPolicy {
         (delta == -1 || delta == 1) && index >= 0 && index < count && index + delta in 0 until count
     fun freshLinkAllowed(source: String, modId: String, fileId: String, status: String): Boolean =
         source == "nexus" && positiveId.matches(modId) && positiveId.matches(fileId) &&
-            status in setOf("PAUSED", "INTERRUPTED", "FAILED", "CANCELLED")
+            status in setOf("INTERRUPTED", "FAILED", "CANCELLED")
 }

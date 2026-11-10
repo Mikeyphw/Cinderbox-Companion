@@ -41,7 +41,7 @@ class CbNx02BQueueControlsUiDeviceTest {
         assertEquals(1, cancelled); assertEquals(1, paused)
     }
 
-    @Test fun pausedCardShowsExplicitRestartAndFreshAuthorization() {
+    @Test fun pausedCardCanResumeWithoutSecondAdmission() {
         var resumed = 0; var fresh = 0
         rule.setContent { MaterialTheme {
             DownloadRecordCard(record("PAUSED"), ModDownloadState.IDLE,
@@ -49,8 +49,8 @@ class CbNx02BQueueControlsUiDeviceTest {
                 onResume = { resumed++ }, onRetryExact = { fresh++ })
         } }
         rule.onNodeWithTag("cbnx02b.queue.resume").performScrollTo().performClick()
-        rule.onNodeWithTag("cbnx02b.queue.retry-exact").performScrollTo().performClick()
-        assertEquals(1, resumed); assertEquals(1, fresh)
+        rule.onNodeWithTag("cbnx02b.queue.retry-exact").assertDoesNotExist()
+        assertEquals(1, resumed); assertEquals(0, fresh)
     }
 
     @Test fun interruptedCardCannotResumeWithoutNewNexusLink() {
