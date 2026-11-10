@@ -38,6 +38,15 @@ class ModDownloadManager(private val context: Context) {
         }
     }
 
+    // Each user control carries only a local opaque job UUID. No bearer URL in intents.
+    fun pause(id: String) { ModDownloadService.pause(context, id) }
+    fun resume(id: String) { ModDownloadService.resume(context, id) }
+    fun cancelOne(id: String) { ModDownloadService.cancelOne(context, id) }
+    fun move(id: String, delta: Int) {
+        require(delta == -1 || delta == 1)
+        ModDownloadService.move(context, id, delta)
+    }
+
     fun cancelDownload() { ModDownloadService.stop(context) }
     fun resetProgress() { _progress.value = ModDownloadProgress() }
 }

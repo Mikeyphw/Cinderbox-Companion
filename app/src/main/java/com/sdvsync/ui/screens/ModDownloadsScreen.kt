@@ -18,7 +18,10 @@ import com.sdvsync.mods.ModDownloadJournal
 import com.sdvsync.mods.ModDownloadManager
 import com.sdvsync.mods.ModDownloadPreferences
 import com.sdvsync.mods.ModDownloadRecord
+import com.sdvsync.mods.ModQueueControlPolicy
 import com.sdvsync.mods.ModReviewQueue
+import com.sdvsync.mods.api.NexusBrowserHandoff
+import com.sdvsync.mods.api.NexusBrowserLauncher
 import com.sdvsync.mods.models.ModDownloadState
 import com.sdvsync.ui.theme.CinderboxDarkTokens as Dark
 import org.koin.compose.koinInject
@@ -66,11 +69,12 @@ fun ModDownloadsScreen(
     var filter by remember { mutableStateOf("All") }
     var preferenceError by remember { mutableStateOf(false) }
 
-    val attention = records.count { it.status in setOf("REVIEW_REQUIRED", "BLOCKED", "FAILED") }
+    val attention = records.count { it.status in setOf("REVIEW_REQUIRED", "BLOCKED", "FAILED", "INTERRUPTED", "VERIFY_REQUIRED") }
+    val pausedCount = records.count { it.status == "PAUSED" }
     val current = records.count { it.status in setOf("QUEUED", "DOWNLOADING", "VALIDATING", "INSTALLING") }
     val visible = records.filter { record -> when (filter) {
-        "Active" -> record.status in setOf("QUEUED", "DOWNLOADING", "VALIDATING", "INSTALLING")
-        "Attention" -> record.status in setOf("REVIEW_REQUIRED", "BLOCKED", "FAILED")
+        "Active" -> record.status in setOf("QUEUED", "DOWNLOADING", "VALIDATING", "INSTALLING", "PAUSED")
+        "Attention" -> record.status in setOf("REVIEW_REQUIRED", "BLOCKED", "FAILED", "INTERRUPTED", "VERIFY_REQUIRED")
         "Finished" -> record.status in setOf("INSTALLED", "COMPLETED", "CANCELLED", "DISCARDED")
         else -> true
     } }
@@ -131,7 +135,7 @@ fun ModDownloadsScreen(
         TextButton(onClick = onBack) { Text("‹ Back") }
         Text("Downloads", style = MaterialTheme.typography.headlineMedium,
             color = Dark.Ink, fontWeight = FontWeight.Bold)
-        Text("$current active · $attention need attention · $reviewCount awaiting review",
+        Text("$current active · $pausedCount paused · $attention need attention · $reviewCount awaiting review",
             style = MaterialTheme.typography.bodyMedium, color = Dark.Muted)
 
         if (reviewCount > 0) {
@@ -189,7 +193,17 @@ fun ModDownloadsScreen(
             DownloadRecordCard(record, progress.state, showReview, onOpenMod,
                 onCancel = { manager.cancelDownload() },
                 isReviewHead = record.id == reviewHead.jobId,
-                fromNotification = record.id == selectedJobId)
+                fromNotification = record.id == selectedJobId,
+                onPause = { manager.pause(record.id) },
+                onResume = { manager.resume(record.id) },
+                onCancelOne = { manager.cancelOne(record.id) },
+                onMoveUp = { manager.move(record.id, -1) },
+                onMoveDown = { manager.move(record.id, 1) },
+                onRetryExact = {
+                    NexusBrowserHandoff.createUrl(record.modId, record.fileId)?.let { url ->
+                        NexusBrowserLauncher.open(context, url)
+                    }
+                })
         }
         if (records.any { it.status in setOf("INSTALLED", "COMPLETED", "CANCELLED", "FAILED", "DISCARDED") }) {
             OutlinedButton(onClick = { journal.clearHistory() }, modifier = Modifier.fillMaxWidth()) {
@@ -205,7 +219,10 @@ fun ModDownloadsScreen(
 @Composable
 internal fun DownloadRecordCard(record: ModDownloadRecord, current: ModDownloadState,
     onReview: () -> Unit, onOpenMod: (String) -> Unit, onCancel: () -> Unit,
-    isReviewHead: Boolean = true, fromNotification: Boolean = false) {
+    isReviewHead: Boolean = true, fromNotification: Boolean = false,
+    onPause: () -> Unit = {}, onResume: () -> Unit = {},
+    onCancelOne: () -> Unit = {}, onMoveUp: () -> Unit = {},
+    onMoveDown: () -> Unit = {}, onRetryExact: () -> Unit = {}) {
     val active = record.status in setOf("QUEUED", "DOWNLOADING", "VALIDATING", "INSTALLING")
     val needsReview = record.status in setOf("REVIEW_REQUIRED", "BLOCKED")
     val fraction = if (record.total > 0) (record.received.toFloat() / record.total)
@@ -227,6 +244,18 @@ internal fun DownloadRecordCard(record: ModDownloadRecord, current: ModDownloadS
                 color = Dark.Forest, style = MaterialTheme.typography.labelMedium)
             if (record.detail.isNotBlank()) Text(record.detail, color = Dark.Muted,
                 style = MaterialTheme.typography.bodySmall)
+            if (record.status == "PAUSED") {
+                Text("Resume only works during this app session, restarts from zero, and may require fresh Nexus authorization.",
+                    style = MaterialTheme.typography.bodySmall, color = Dark.Muted)
+            }
+            if (record.status == "INTERRUPTED") {
+                Text("Authorization is not retained after a restart. Reopen the exact file in Firefox.",
+                    style = MaterialTheme.typography.bodySmall, color = Dark.Muted)
+            }
+            if (record.status == "VERIFY_REQUIRED") {
+                Text("Installation outcome needs inspection. Check installed Mods and the operation center before retrying.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
             if (active && record.status == "DOWNLOADING") {
                 if (fraction != null) LinearProgressIndicator(progress = { fraction },
                     modifier = Modifier.fillMaxWidth())
@@ -235,7 +264,8 @@ internal fun DownloadRecordCard(record: ModDownloadRecord, current: ModDownloadS
                     else "${record.received / 1024} KiB received",
                     color = Dark.Muted, style = MaterialTheme.typography.labelSmall)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 if (needsReview && isReviewHead) Button(onClick = onReview,
                     modifier = Modifier.testTag("cbnx02.downloads.review-item")) {
@@ -250,6 +280,35 @@ internal fun DownloadRecordCard(record: ModDownloadRecord, current: ModDownloadS
                 }
                 if (record.status == "DOWNLOADING" && current == ModDownloadState.DOWNLOADING) {
                     TextButton(onClick = onCancel) { Text("Cancel all transfers") }
+                }
+                if (record.status == "QUEUED") {
+                    TextButton(onClick = onMoveUp, modifier = Modifier.testTag("cbnx02b.queue.up")) {
+                        Text("Move up")
+                    }
+                    TextButton(onClick = onMoveDown, modifier = Modifier.testTag("cbnx02b.queue.down")) {
+                        Text("Move down")
+                    }
+                }
+                if (record.status in setOf("QUEUED", "DOWNLOADING")) {
+                    TextButton(onClick = onPause, modifier = Modifier.testTag("cbnx02b.queue.pause")) {
+                        Text("Pause")
+                    }
+                }
+                if (record.status == "PAUSED") {
+                    TextButton(onClick = onResume, modifier = Modifier.testTag("cbnx02b.queue.resume")) {
+                        Text("Resume from start")
+                    }
+                }
+                if (record.status in setOf("QUEUED", "DOWNLOADING", "PAUSED")) {
+                    TextButton(onClick = onCancelOne, modifier = Modifier.testTag("cbnx02b.queue.cancel-one")) {
+                        Text("Cancel this")
+                    }
+                }
+                if (record.source == "nexus" &&
+                    ModQueueControlPolicy.freshLinkAllowed(record.source, record.modId, record.fileId, record.status)) {
+                    TextButton(onClick = onRetryExact, modifier = Modifier.testTag("cbnx02b.queue.retry-exact")) {
+                        Text("Fresh link in Firefox")
+                    }
                 }
             }
         }

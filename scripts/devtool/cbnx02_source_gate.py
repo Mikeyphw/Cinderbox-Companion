@@ -83,4 +83,37 @@ policy=json.loads(text('docs/security/M3_RELEASE_POLICY.json'))
 for field in ('release_enabled','publication_enabled', 'automatic_device_install',
               'device_qualification_complete'):
     assert policy[field] is False, 'CBNX02_RELEASE_POLICY_CHANGED:'+field
+# CB-NX02B: per-item controls are bounded by local job IDs, and crash recovery
+# never reuses an expiring Nexus credential or assumes that installation finished.
+require(MOD+'ModQueueControlPolicy.kt', [
+    'fun canPause(', 'fun canCancel(', 'fun canResumeInSession(',
+    'fun validMove(', 'fun freshLinkAllowed(', 'positiveId.matches(modId)',
+    'positiveId.matches(fileId)'])
+require(MOD+'ModDownloadJournal.kt', [
+    '"PAUSED"', '"INTERRUPTED"', '"VERIFY_REQUIRED"',
+    'fun moveQueued(', 'fun resumePaused(', 'fun markJobInterrupted(',
+    'if (old.none { it.status in active || it.status == "PAUSED" })',
+    'Outcome unknown. Inspect installed Mods', 'queuePosition'])
+assert '"VALIDATING", "INSTALLING" -> row.copy(status = "VERIFY_REQUIRED"' in ledger, 'CBNX02B_MISSING_UNCERTAIN_INSTALL_RECOVERY'
+assert '"QUEUED", "DOWNLOADING", "PAUSED" -> row.copy(status = "INTERRUPTED"' in ledger, 'CBNX02B_MISSING_TRANSFER_REAUTH_RECOVERY'
+require(MOD+'ModDownloadService.kt', [
+    'ACTION_PAUSE_JOB', 'ACTION_RESUME_JOB', 'ACTION_CANCEL_JOB',
+    'ACTION_MOVE_UP', 'ACTION_MOVE_DOWN', 'activeCall?.cancel()',
+    'journal.resumePaused(id)', 'journal.moveQueued(id, delta)',
+    'synchronized(workLock) { activePhase = "INSTALLING" }',
+    'journal.markJobInterrupted(it)', 'ModReviewQueue(filesDir).enqueue('])
+require(SCREENS+'ModDownloadsScreen.kt', [
+    'cbnx02b.queue.pause', 'cbnx02b.queue.resume',
+    'cbnx02b.queue.cancel-one', 'cbnx02b.queue.up',
+    'cbnx02b.queue.down', 'cbnx02b.queue.retry-exact',
+    'NexusBrowserHandoff.createUrl(record.modId, record.fileId)',
+    'NexusBrowserLauncher.open(context, url)',
+    'record.status == "VERIFY_REQUIRED"'])
+require('app/src/test/java/com/sdvsync/mods/ModQueueControlPolicyTest.kt', [
+    '@Test fun activeAndQueuedCanPauseButInstallationCannot()',
+    '@Test fun freshLinkIsTiedToOriginalExactNexusIdentity()'])
+require('app/src/androidTest/java/com/sdvsync/ui/screens/CbNx02BQueueControlsUiDeviceTest.kt', [
+    'queuedCardMovesAndCancelsOnlyItsOwnJob',
+    'interruptedCardCannotResumeWithoutNewNexusLink'])
+assert 'putExtra(EXTRA_URL, url)' in service, 'CBNX02B_EXISTING_EPHEMERAL_URL_HANDOFF_LOST'
 print('CBNX02_DOWNLOAD_UX_SOURCE_PASS_ANDROID_RUNTIME_PENDING')
