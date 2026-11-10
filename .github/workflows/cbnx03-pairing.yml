@@ -1,0 +1,90 @@
+name: CB-NX03 Read-only Firefox Pairing API36
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/sdvsync/mods/NexusPairingBridge.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/NexusPairingPanel.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/SettingsScreen.kt'
+      - 'app/src/androidTest/java/com/sdvsync/mods/CbNx03PairingDeviceTest.kt'
+      - 'scripts/devtool/cbnx03_*'
+      - '.github/workflows/cbnx03-pairing.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-jvm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      CBNX03_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Pinned source and Android JVM compilation
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CBNX03_HEAD_SHA"
+          python3 -B scripts/devtool/cbnx03_source_gate.py
+          python3 -B scripts/devtool/cbnx02_source_gate.py
+          python3 -B scripts/devtool/cbnx01_gate.py
+          bash -n scripts/devtool/cbnx03_emulator_ci.sh
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+  hosted-api36:
+    needs: source-jvm
+    runs-on: ubuntu-24.04
+    timeout-minutes: 95
+    env:
+      CBNX03_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Build exact-source synthetic test APKs
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CBNX03_HEAD_SHA"
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: KVM API36
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'system-images;android-36;google_apis;x86_64'
+      - name: Synthetic localhost-only pairing, never game data
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          disk-size: 3072M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash scripts/devtool/cbnx03_emulator_ci.sh
+      - name: Upload redacted receipt only
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: cbnx03-api36-synthetic-pairing
+          path: ${{ runner.temp }}/cbnx03-api36/STATUS.json
+          if-no-files-found: warn
+          retention-days: 14

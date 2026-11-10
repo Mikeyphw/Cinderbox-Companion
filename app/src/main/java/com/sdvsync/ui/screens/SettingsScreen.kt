@@ -490,6 +490,10 @@ fun SettingsScreen(
             }
             SettingsSectionGap()
 
+            // CB-NX03A: optional, short-lived, read-only Firefox pairing.
+            NexusPairingPanel()
+            SettingsSectionGap()
+
             // Mods - Nexus API Key
             NexusApiKeySection(
                 hasKey = state.hasNexusApiKey,
