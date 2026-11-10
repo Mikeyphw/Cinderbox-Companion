@@ -46,7 +46,7 @@ for forged in (good.replace(event(method,'0'),event(method,'0','CBNX03_SAFE_CAUS
     assert result['safe_pairing_failure_cause'] is None
     assert result['safe_pairing_failure_causes']=={}
     assert secret not in json.dumps(result)+out
-print('CBNX04_HF03_BIND_CAUSE_MUTATIONS_PASS allowed=7 forged=2 privacy=PASS')
+print('CBNX04B_BIND_CAUSE_MUTATIONS_PASS allowed=7 forged=2 privacy=PASS')
 
 # Kotlin call-shape source regression. The original trailing-lambda call binds
 # to `pause` and leaves the mandatory `bind` parameter unspecified.
@@ -64,3 +64,18 @@ assert binding_contract(bridge), 'CBNX04_FIX02_STALE_KOTLIN_BIND_CALL'
 assert not binding_contract(bridge.replace('acquire(bind = {', 'acquire {', 1)), 'CBNX04_FIX02_TRAILING_LAMBDA_MUTANT_NOT_REJECTED'
 assert not binding_contract(bridge.replace('        })\n        listener = socket', '        }\n        listener = socket', 1)), 'CBNX04_FIX02_MISSING_CLOSURE_MUTANT_NOT_REJECTED'
 print('CBNX04_HF03_FIX02_BINDING_MUTATIONS_PASS trailing=1 closure=1')
+
+# CB-NX04B migration: this regression check must track the CURRENT canonical
+# archive-provenance authority suite; no obsolete seven-method authority contract.
+authority_receipt = (ROOT/'scripts/devtool/cbnx04_instrumentation_receipt.py').read_text()
+authority_source = (ROOT/'app/src/main/java/com/sdvsync/mods/NexusPairingAuthority.kt').read_text()
+archive_source = (ROOT/'app/src/main/java/com/sdvsync/mods/NexusArchiveProvenance.kt').read_text()
+assert 'CBNX04B_API36_SYNTHETIC_ARCHIVE_EVIDENCE' in authority_receipt
+assert 'method_events != 20' in authority_receipt
+assert "'test_count': 10 if ok else 0" in authority_receipt
+assert '.put("archive_checksum_qualified", verified)' in authority_source
+assert 'NexusArchiveProvenance.inspect(records, privateReviewRoot)' in authority_source
+assert 'MessageDigest.getInstance("SHA-256")' in archive_source
+assert 'record.modId != mod || record.fileId != file' in archive_source
+assert 'method_events != 14' not in authority_receipt
+print('CBNX04B_MIGRATED_HF03_NEGATIVE_TESTS_CANONICAL_PASS')

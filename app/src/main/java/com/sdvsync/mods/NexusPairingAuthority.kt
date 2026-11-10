@@ -77,8 +77,10 @@ internal object NexusPairingAuthority {
     }
 
     /** No paths, UniqueIDs, cookies, archive hashes, tokens or arbitrary provider text in HTTP. */
-    fun snapshot(records: List<ModDownloadRecord>, modsDir: File, observedAtMs: Long): JSONObject {
+    fun snapshot(records: List<ModDownloadRecord>, modsDir: File, observedAtMs: Long,
+                 privateReviewRoot: File? = null): JSONObject {
         val inventory = readInventory(modsDir)
+        val archiveProof = NexusArchiveProvenance.inspect(records, privateReviewRoot)
         val output = JSONArray()
         val jobs = records.filter { it.source == "nexus" &&
             positiveId.matches(it.modId) && positiveId.matches(it.fileId) }
@@ -87,7 +89,7 @@ internal object NexusPairingAuthority {
         val reportableDownload = setOf("VALIDATING", "REVIEW_REQUIRED", "BLOCKED", "INSTALLING", "INSTALLED")
         val linked = if (inventory.qualified) inventory.linked else emptyMap()
 
-        fun append(modId: String, fileId: String, status: String, journalDownloaded: Boolean) {
+        fun append(modId: String, fileId: String, status: String, journalDownloaded: Boolean, jobId: String?) {
             if (output.length() >= MAX_EXPORTED_ITEMS) return
             val key = "$modId/$fileId"
             if (!used.add(key)) return
@@ -100,11 +102,20 @@ internal object NexusPairingAuthority {
                 entries.single().enabled -> "PRESENT"
                 else -> "DISABLED_PRESENT"
             }
+            val verified = archiveProof.available && jobId != null &&
+                archiveProof.confirmedJobIds.contains(jobId)
+            val proofState = when {
+                !archiveProof.available -> "UNAVAILABLE"
+                verified -> "VERIFIED_AT_SCAN"
+                else -> "NO_RETAINED_ARCHIVE"
+            }
             val row = JSONObject()
                 .put("mod_id", modId).put("file_id", fileId)
                 .put("journal_state", status)
                 .put("journal_transfer_reported", journalDownloaded)
-                .put("archive_checksum_qualified", false)
+                .put("archive_checksum_qualified", verified)
+                .put("archive_proof_state", proofState)
+                .put("archive_proof_scope", "LOCAL_ZIP_VS_APP_RECEIPT")
                 .put("installed_mod_state", manifestState)
                 .put("exact_file_installed", "UNKNOWN")
                 // No comparable Nexus file-version observation is available here.
@@ -115,10 +126,10 @@ internal object NexusPairingAuthority {
             output.put(row)
         }
         for (job in jobs) {
-            append(job.modId, job.fileId, job.status, job.status in reportableDownload)
+            append(job.modId, job.fileId, job.status, job.status in reportableDownload, job.id)
         }
         for (id in linked.keys.sortedWith(compareBy<String> { it.length }.thenBy { it })) {
-            if (positiveId.matches(id)) append(id, "", "NO_EXACT_FILE_RECEIPT", false)
+            if (positiveId.matches(id)) append(id, "", "NO_EXACT_FILE_RECEIPT", false, null)
         }
         return JSONObject()
             .put("schema", 1)

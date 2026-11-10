@@ -45,4 +45,19 @@ for bad in (good.replace('INSTRUMENTATION_STATUS: test='+methods[0],
             good.replace(ev(methods[1],'0'),'',1),
             good.replace('OK (7 tests)','FAILURES!!!')):
     code,rec,_=run(bad);assert code!=0 and rec['status']=='FAIL'
-print('CBNX04_HF02_EXACT_FAILURE_STAGE_MUTATIONS_PASS stages='+str(n)+' forged=3 privacy=PASS')
+print('CBNX04B_PAIRING_FAILURE_MUTATIONS_PASS stages='+str(n)+' forged=3 privacy=PASS')
+
+# CB-NX04B migration: this regression check must track the CURRENT canonical
+# archive-provenance authority suite; no obsolete seven-method authority contract.
+authority_receipt = (ROOT/'scripts/devtool/cbnx04_instrumentation_receipt.py').read_text()
+authority_source = (ROOT/'app/src/main/java/com/sdvsync/mods/NexusPairingAuthority.kt').read_text()
+archive_source = (ROOT/'app/src/main/java/com/sdvsync/mods/NexusArchiveProvenance.kt').read_text()
+assert 'CBNX04B_API36_SYNTHETIC_ARCHIVE_EVIDENCE' in authority_receipt
+assert 'method_events != 20' in authority_receipt
+assert "'test_count': 10 if ok else 0" in authority_receipt
+assert '.put("archive_checksum_qualified", verified)' in authority_source
+assert 'NexusArchiveProvenance.inspect(records, privateReviewRoot)' in authority_source
+assert 'MessageDigest.getInstance("SHA-256")' in archive_source
+assert 'record.modId != mod || record.fileId != file' in archive_source
+assert 'method_events != 14' not in authority_receipt
+print('CBNX04B_MIGRATED_HF02_NEGATIVE_TESTS_CANONICAL_PASS')

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CB-NX04 HF03: bind retry is bounded, all historical contracts retained."""
+"""CB-NX04B current bind and authority-provenance security contract."""
 from pathlib import Path
 import re
 ROOT=Path(__file__).resolve().parents[2]
@@ -39,4 +39,19 @@ for workflow in ('cbnx03-pairing.yml','cbnx04-authority.yml'):
     for marker in ('cbnx04_hf03_source_gate.py','cbnx04_hf03_negative_tests.py',
                    ':app:testDebugUnitTest', ':app:assembleDebugAndroidTest'):
         assert marker in w, workflow +':'+marker
-print('CBNX04_HF03_FIX02_NAMED_BIND_AND_STALE_CONTRACT_PASS methods=7 unit=4')
+print('CBNX04B_NAMED_BIND_AND_CANONICAL_CONTRACT_PASS methods=7 unit=4')
+
+# CB-NX04B migration: this regression check must track the CURRENT canonical
+# archive-provenance authority suite; no obsolete seven-method authority contract.
+authority_receipt = (ROOT/'scripts/devtool/cbnx04_instrumentation_receipt.py').read_text()
+authority_source = (ROOT/'app/src/main/java/com/sdvsync/mods/NexusPairingAuthority.kt').read_text()
+archive_source = (ROOT/'app/src/main/java/com/sdvsync/mods/NexusArchiveProvenance.kt').read_text()
+assert 'CBNX04B_API36_SYNTHETIC_ARCHIVE_EVIDENCE' in authority_receipt
+assert 'method_events != 20' in authority_receipt
+assert "'test_count': 10 if ok else 0" in authority_receipt
+assert '.put("archive_checksum_qualified", verified)' in authority_source
+assert 'NexusArchiveProvenance.inspect(records, privateReviewRoot)' in authority_source
+assert 'MessageDigest.getInstance("SHA-256")' in archive_source
+assert 'record.modId != mod || record.fileId != file' in archive_source
+assert 'method_events != 14' not in authority_receipt
+print('CBNX04B_MIGRATED_HF03_SOURCE_GATE_CANONICAL_PASS')

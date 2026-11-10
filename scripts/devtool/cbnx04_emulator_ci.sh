@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CB-NX04A read-only local evidence tests, private synthetic fixtures, no real Nexus credentials.
+# CB-NX04B canonical local provenance tests, private synthetic fixtures, no real Nexus credentials.
 set -euo pipefail
 : "${CBNX04_HEAD_SHA:?}" "${RUNNER_TEMP:?}" "${GITHUB_RUN_ID:?}"
 [[ "$(git rev-parse HEAD)" == "$CBNX04_HEAD_SHA" ]] || exit 2
@@ -33,4 +33,4 @@ python3 -B scripts/devtool/cbnx04_instrumentation_receipt.py \
   --log "$raw" --exit "$status" --source "$CBNX04_HEAD_SHA" \
   --run "$GITHUB_RUN_ID" --app-sha "$app_sha" --test-sha "$test_sha" \
   --output "$out/STATUS.json"
-echo CBNX04_API36_SYNTHETIC_AUTHORITY_PASS_NO_LIVE_NEXUS_PROOF
+echo CBNX04B_API36_SYNTHETIC_ARCHIVE_PROOF_PASS_NO_LIVE_NEXUS_PROOF

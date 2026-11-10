@@ -30,4 +30,21 @@ for needed in ('missing_or_duplicate_start','missing_or_duplicate_success',
 for w in workflows:
     assert 'cbnx04_hf02_source_gate.py' in w and 'cbnx04_hf02_negative_tests.py' in w
     assert ':app:assembleDebugAndroidTest' in w
-print('CBNX04_HF02_SEVEN_METHOD_STALE_CONTRACT_PASS')
+print('CBNX04B_PAIRING_SECURITY_AND_CANONICAL_CONTRACT_PASS')
+
+ROOT=root
+
+# CB-NX04B migration: this regression check must track the CURRENT canonical
+# archive-provenance authority suite; no obsolete seven-method authority contract.
+authority_receipt = (ROOT/'scripts/devtool/cbnx04_instrumentation_receipt.py').read_text()
+authority_source = (ROOT/'app/src/main/java/com/sdvsync/mods/NexusPairingAuthority.kt').read_text()
+archive_source = (ROOT/'app/src/main/java/com/sdvsync/mods/NexusArchiveProvenance.kt').read_text()
+assert 'CBNX04B_API36_SYNTHETIC_ARCHIVE_EVIDENCE' in authority_receipt
+assert 'method_events != 20' in authority_receipt
+assert "'test_count': 10 if ok else 0" in authority_receipt
+assert '.put("archive_checksum_qualified", verified)' in authority_source
+assert 'NexusArchiveProvenance.inspect(records, privateReviewRoot)' in authority_source
+assert 'MessageDigest.getInstance("SHA-256")' in archive_source
+assert 'record.modId != mod || record.fileId != file' in archive_source
+assert 'method_events != 14' not in authority_receipt
+print('CBNX04B_MIGRATED_HF02_SOURCE_GATE_CANONICAL_PASS')

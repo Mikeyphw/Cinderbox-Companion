@@ -37,9 +37,11 @@ internal object NexusPairingBridge {
     private val nonces = LinkedHashSet<String>()
     // CB-NX04 HF01: return /v1/state promptly even on slow/unavailable external storage.
     // Exact-file/install status remains UNKNOWN until a completed read-only scan.
+    private val activePrivateReviewRoot = java.util.concurrent.atomic.AtomicReference<java.io.File?>(null)
     private val authorityCache = NexusPairingAuthorityCache { records, observedAt ->
         NexusPairingAuthority.snapshot(records,
-            java.io.File(com.sdvsync.cinderbox.CinderboxPaths.MODS_DIR), observedAt).toString()
+            java.io.File(com.sdvsync.cinderbox.CinderboxPaths.MODS_DIR), observedAt,
+            activePrivateReviewRoot.get()).toString()
     }
     data class Snapshot(val listening: Boolean, val code: String?, val connected: Boolean,
                         val remainingSeconds: Long, val handoffEnabled: Boolean)
@@ -61,6 +63,7 @@ internal object NexusPairingBridge {
 
     fun start(context: Context): Snapshot = synchronized(guard) {
         stopLocked()
+        activePrivateReviewRoot.set(context.applicationContext.filesDir)
         // Explicit pre-bind reuse prevents transient Android emulator TIME_WAIT bind failures.
         // Bind remains IPv4 loopback-only; never expose this listener on a LAN interface.
         // An AndroidJUnit/Android lifecycle restart can briefly leave the loopback
@@ -100,6 +103,7 @@ internal object NexusPairingBridge {
         token = null
         connected = false
         nonces.clear()
+        activePrivateReviewRoot.set(null)
         authorityCache.invalidate()
         // A new pairing requires deliberate local user action and a fresh code.
         code = null
@@ -117,6 +121,7 @@ internal object NexusPairingBridge {
         guesses = 0
         challenges.clear()
         nonces.clear()
+        activePrivateReviewRoot.set(null)
         authorityCache.invalidate()
         windowDeadline = 0L
         codeDeadline = 0L

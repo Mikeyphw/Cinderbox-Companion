@@ -10,6 +10,7 @@ def source(path):
 mods='app/src/main/java/com/sdvsync/mods/'
 authority=source(mods+'NexusPairingAuthority.kt')
 bridge=source(mods+'NexusPairingBridge.kt')
+proof=source(mods+'NexusArchiveProvenance.kt')
 runner=source('scripts/devtool/cbnx04_emulator_ci.sh')
 receipt=source('scripts/devtool/cbnx04_instrumentation_receipt.py')
 workflow=source('.github/workflows/cbnx04-authority.yml')
@@ -20,7 +21,7 @@ for marker in ('internal object NexusPairingAuthority', 'fun snapshot(records:',
                'folder.name.startsWith(".")', 'getOrPut(nexusId)', 'uniqueId.matches(id)',
                '"UNAVAILABLE"', '"QUALIFIED"', '"AMBIGUOUS"', '"DISABLED_PRESENT"',
                '.put("exact_file_installed", "UNKNOWN")', '.put("update_state", "UNKNOWN")',
-               '.put("archive_checksum_qualified", false)', '.put("remote_update_check", "NOT_PERFORMED")',
+               '.put("archive_checksum_qualified", verified)', '.put("remote_update_check", "NOT_PERFORMED")',
                'records.filter { it.source == "nexus"', 'val reportableDownload = setOf('):
     assert marker in authority, 'CBNX04_EVIDENCE_CONTRACT_MISSING:'+marker
 for forbidden in ('listInstalledMods(', 'renameTo(', 'deleteRecursively(', 'startDownload(',
@@ -28,6 +29,22 @@ for forbidden in ('listInstalledMods(', 'renameTo(', 'deleteRecursively(', 'star
                   'setHandoffEnabled(', 'Environment.getExternalStorageDirectory('):
     assert forbidden not in authority, 'CBNX04_READONLY_MUTATION_REGRESSION:'+forbidden
 assert 'NexusPairingAuthority.snapshot(' in bridge and 'ModDownloadJournal(context).list()' in bridge
+assert 'NexusArchiveProvenance.inspect(records, privateReviewRoot)' in authority
+assert 'activePrivateReviewRoot.get()' in bridge and 'activePrivateReviewRoot.set(null)' in bridge
+for word in ('MessageDigest.getInstance("SHA-256")', 'Files.isSymbolicLink',
+             'expected = props.getProperty("sha256")', 'record.modId != mod',
+             'record.fileId != file', 'actual != expected', 'confirmed.add(id)',
+             'archive.length() != originalLength', 'LOCAL_ZIP_VS_APP_RECEIPT'):
+    assert word in proof or word in authority, 'CBNX04B_PROOF_SECURITY_CONTRACT_MISSING:'+word
+for forbidden in ('renameTo(', 'deleteRecursively(', 'installFromZip(', 'startDownload(',
+                  'getDownloadUrl(', 'post(', 'SharedPreferences('):
+    assert forbidden not in proof, 'CBNX04B_ARCHIVE_PROOF_MUTATING:'+forbidden
+assert 'archive_proof_state' in authority and 'VERIFIED_AT_SCAN' in authority
+assert 'exact_file_installed", "UNKNOWN"' in authority
+assert "'qualification': 'CBNX04B_API36_SYNTHETIC_ARCHIVE_EVIDENCE'" in receipt
+assert 'method_events != 14' not in receipt, 'CBNX04B_STALE_EVENT_ROSTER'
+assert "'test_count': 7 if ok else 0" not in receipt, 'CBNX04B_STALE_TEST_COUNT'
+
 assert 'CinderboxPaths.MODS_DIR' in bridge
 assert '"installed_inventory_qualified", false' in bridge, 'CBNX03_BACKWARD_COMPATIBILITY_LOST'
 assert '"proof_kind", "journal_only"' in bridge
@@ -35,9 +52,9 @@ assert 'CbNx04AuthorityDeviceTest' in runner and 'api-level: 36' in workflow
 assert 'cbnx04_source_gate.py' in workflow and 'cbnx04_negative_tests.py' in workflow
 assert 'cbnx04_emulator_ci.sh' in workflow and 'cbnx04_instrumentation_receipt.py' in runner
 methods=tuple(re.findall(r'@Test\s+fun\s+([A-Za-z_0-9]+)\s*\(',tests))
-assert len(methods)==7 and len(set(methods))==7, 'CBNX04_EMULATOR_ROSTER_DRIFT'
+assert len(methods)==10 and len(set(methods))==10, 'CBNX04_EMULATOR_ROSTER_DRIFT'
 for method in methods:
     assert "'"+method+"'" in receipt, 'CBNX04_MISSING_RECEIPT_METHOD:'+method
-assert 'method_events != 14' in receipt and "block.get('numtests') != '7'" in receipt
-assert "'test_count': 7 if ok else 0" in receipt
-print('CBNX04_READONLY_EVIDENCE_SOURCE_AND_SEVEN_METHOD_ROSTER_PASS')
+assert 'method_events != 20' in receipt and "block.get('numtests') != '10'" in receipt
+assert "'test_count': 10 if ok else 0" in receipt
+print('CBNX04B_CANONICAL_ARCHIVE_PROVENANCE_TEN_METHOD_ROSTER_PASS')
