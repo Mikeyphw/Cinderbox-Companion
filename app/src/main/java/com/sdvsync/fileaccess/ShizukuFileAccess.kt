@@ -27,17 +27,20 @@ class ShizukuFileAccess : FileAccessStrategy {
 
         @Volatile
         private var fileService: IFileService? = null
+        @Volatile private var gameServiceDisconnected = false
 
         private val serviceConnection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
                 if (binder != null && binder.pingBinder()) {
                     fileService = IFileService.Stub.asInterface(binder)
+                    gameServiceDisconnected = false
                     AppLogger.d(TAG, "FileService connected")
                 }
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
                 fileService = null
+                gameServiceDisconnected = true
                 AppLogger.d(TAG, "FileService disconnected")
             }
         }
@@ -107,16 +110,77 @@ class ShizukuFileAccess : FileAccessStrategy {
 
         fun isServiceBound(): Boolean = fileService != null
 
-        /** Optional, explicit, read-only game observation; no arbitrary shell input. */
-        suspend fun queryGameStatus(): Int? {
-            if (!isAvailable()) return null
-            if (fileService == null) bindService()
-            return withTimeoutOrNull(2500L) {
-                while (fileService == null) {
-                    if (!isAvailable()) return@withTimeoutOrNull null
-                    delay(75L)
+        /** Backwards-compatible nullable result for the existing Shizuku-first/root fallback. */
+        suspend fun queryGameStatus(): Int? = queryGameStatusDiagnostic().processCode
+
+        /**
+         * Manually requested read-only diagnosis. At most two service binding attempts.
+         * Never asks for permission itself, exposes exceptions or authorizes mod changes.
+         */
+        suspend fun queryGameStatusDiagnostic(): ShizukuGameDiagnostic {
+            if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
+                return ShizukuGameDiagnostic.BINDER_NOT_READY
+            }
+            val permission = runCatching { Shizuku.checkSelfPermission() }
+                .getOrElse { return ShizukuGameDiagnostic.PERMISSION_CHECK_FAILED }
+            if (permission != PackageManager.PERMISSION_GRANTED) {
+                return ShizukuGameDiagnostic.PERMISSION_DENIED
+            }
+            val existing = fileService
+            if (existing != null && runCatching { existing.asBinder().pingBinder() }
+                    .getOrDefault(false)) return readGameStatusFromService(existing)
+            fileService = null
+
+            var lastFailure = ShizukuGameDiagnostic.SERVICE_TIMEOUT
+            repeat(2) { attempt ->
+                // Shizuku dispatches service connection callbacks on the main looper.
+                // Binding is asynchronous; repeating is bounded and does not unbind or kill
+                // the service used by save operations elsewhere in Cinderbox.
+                try {
+                    Shizuku.bindUserService(userServiceArgs, serviceConnection)
+                } catch (_: Exception) {
+                    lastFailure = ShizukuGameDiagnostic.SERVICE_BIND_FAILED
+                    if (attempt == 1) return lastFailure
+                    delay(150L)
+                    return@repeat
                 }
-                runCatching { fileService?.queryGameProcessStatus() }.getOrNull()
+                val connected = if (attempt == 0) {
+                    withTimeoutOrNull(2500L) { awaitGameService() }
+                } else {
+                    withTimeoutOrNull(1500L) { awaitGameService() }
+                }
+                if (connected != null) return readGameStatusFromService(connected)
+                lastFailure = when {
+                    !runCatching { Shizuku.pingBinder() }.getOrDefault(false) ->
+                        ShizukuGameDiagnostic.BINDER_NOT_READY
+                    gameServiceDisconnected -> ShizukuGameDiagnostic.SERVICE_DISCONNECTED
+                    else -> ShizukuGameDiagnostic.SERVICE_TIMEOUT
+                }
+                if (attempt == 1 || !ShizukuDiagnosticPolicy.shouldRetryConnection(lastFailure)) {
+                    return lastFailure
+                }
+                delay(150L)
+            }
+            return lastFailure
+        }
+
+        private suspend fun awaitGameService(): IFileService? {
+            while (true) {
+                val current = fileService
+                if (current != null && runCatching { current.asBinder().pingBinder() }
+                        .getOrDefault(false)) return current
+                if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) return null
+                delay(75L)
+            }
+        }
+
+        private suspend fun readGameStatusFromService(service: IFileService): ShizukuGameDiagnostic {
+            return try {
+                val code = withContext(Dispatchers.IO) { service.queryGameProcessStatus() }
+                ShizukuDiagnosticPolicy.fromProcessCode(code)
+            } catch (_: Exception) {
+                fileService = null
+                ShizukuGameDiagnostic.REMOTE_CALL_FAILED
             }
         }
     }
