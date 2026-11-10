@@ -3,6 +3,9 @@ on:
   pull_request:
     paths:
       - 'app/src/main/java/com/sdvsync/mods/NexusPairingBridge.kt'
+      - 'app/src/main/java/com/sdvsync/mods/NexusPairingAuthorityCache.kt'
+      - 'app/src/test/java/com/sdvsync/mods/NexusPairingAuthorityCacheTest.kt'
+      - 'scripts/devtool/cbnx04_hf01_*'
       - 'app/src/main/java/com/sdvsync/mods/NexusPairingInbox.kt'
       - 'app/src/main/java/com/sdvsync/ui/screens/NexusPairingPanel.kt'
       - 'app/src/main/java/com/sdvsync/ui/screens/SettingsScreen.kt'
@@ -37,6 +40,8 @@ jobs:
           python3 -B scripts/devtool/cbnx03_hf01_negative_tests.py
           python3 -B scripts/devtool/cbnx03b_source_gate.py
           python3 -B scripts/devtool/cbnx03b_negative_tests.py
+          python3 -B scripts/devtool/cbnx04_hf01_source_gate.py
+          python3 -B scripts/devtool/cbnx04_hf01_negative_tests.py
           python3 -B scripts/devtool/cbnx02_source_gate.py
           python3 -B scripts/devtool/cbnx01_gate.py
           bash -n scripts/devtool/cbnx03_emulator_ci.sh

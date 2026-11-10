@@ -35,6 +35,12 @@ internal object NexusPairingBridge {
     private var guesses = 0
     private val challenges = LinkedHashMap<String, Long>()
     private val nonces = LinkedHashSet<String>()
+    // CB-NX04 HF01: return /v1/state promptly even on slow/unavailable external storage.
+    // Exact-file/install status remains UNKNOWN until a completed read-only scan.
+    private val authorityCache = NexusPairingAuthorityCache { records, observedAt ->
+        NexusPairingAuthority.snapshot(records,
+            java.io.File(com.sdvsync.cinderbox.CinderboxPaths.MODS_DIR), observedAt).toString()
+    }
     data class Snapshot(val listening: Boolean, val code: String?, val connected: Boolean,
                         val remainingSeconds: Long, val handoffEnabled: Boolean)
 
@@ -84,6 +90,7 @@ internal object NexusPairingBridge {
         token = null
         connected = false
         nonces.clear()
+        authorityCache.invalidate()
         // A new pairing requires deliberate local user action and a fresh code.
         code = null
         challenges.clear()
@@ -100,6 +107,7 @@ internal object NexusPairingBridge {
         guesses = 0
         challenges.clear()
         nonces.clear()
+        authorityCache.invalidate()
         windowDeadline = 0L
         codeDeadline = 0L
     }
@@ -277,7 +285,8 @@ internal object NexusPairingBridge {
                             else -> {
                                 connected = true
                                 val jobs = JSONArray()
-                                ModDownloadJournal(context).list().take(60).forEach { job ->
+                                val records = ModDownloadJournal(context).list()
+                                records.take(60).forEach { job ->
                                     jobs.put(JSONObject().put("job_id", job.id.take(64))
                                         .put("source", job.source.take(32))
                                         .put("mod_id", job.modId.take(30))
@@ -297,16 +306,18 @@ internal object NexusPairingBridge {
                                     }
                                 // Independent local SMAPI inventory is opt-in and read-only.
                                 // Do NOT call ModFileManager.listInstalledMods(): it can rename folders.
-                                val authority = runCatching { NexusPairingAuthority.snapshot(
-                                    ModDownloadJournal(context).list(),
-                                    java.io.File(com.sdvsync.cinderbox.CinderboxPaths.MODS_DIR), now()) }
+                                // Never hold the pairing mutex while scanning external Mods/.
+                                // Starting a scan is cheap; no filesystem work occurs here.
+                                val cached = authorityCache.getOrLaunch(
+                                    records, ModDownloadJournal.revision.value, time)
+                                val authority = if (cached != null) JSONObject(cached) else
+                                    JSONObject().put("schema", 1)
+                                        .put("scope", "LOCAL_SMAPI_AND_JOURNAL")
+                                        .put("inventory_state", "REFRESHING")
+                                        .put("remote_update_check", "NOT_PERFORMED")
+                                        .put("items", JSONArray())
                                 200 to JSONObject().put("protocol", 1).put("proof_kind", "journal_only")
-                                    .put("authority", authority.getOrElse {
-                                        JSONObject().put("schema", 1).put("scope", "LOCAL_SMAPI_AND_JOURNAL")
-                                            .put("inventory_state", "UNAVAILABLE")
-                                            .put("remote_update_check", "NOT_PERFORMED")
-                                            .put("items", JSONArray())
-                                    })
+                                    .put("authority", authority)
                                     // Legacy field stays false for CB-NX03 clients; authoritative
                                     // CB-NX04 inventory has its OWN explicit qualification field.
                                     .put("installed_inventory_qualified", false)

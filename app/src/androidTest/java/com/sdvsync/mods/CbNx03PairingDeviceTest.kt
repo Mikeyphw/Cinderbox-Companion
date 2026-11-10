@@ -62,16 +62,31 @@ class CbNx03PairingDeviceTest {
         assertEquals(403, request("GET", "/v1/hello", headers = mapOf("hOsT" to "evil.example")).first)
     }
 
+    // Safe fixed-step failure labels; never include tokens, NXM URLs or response bodies.
+    private fun <T> atStage(stage: String, block: () -> T): T = try {
+        block()
+    } catch (e: AssertionError) {
+        throw AssertionError("CBNX03_SAFE_STAGE_$stage", e)
+    } catch (e: Exception) {
+        throw AssertionError("CBNX03_SAFE_STAGE_$stage", e)
+    }
+
     @Test fun pairingReadOnlyAndNonceReplayFails() {
-        NexusPairingBridge.start(context)
-        val token = pair()
+        atStage("START") { NexusPairingBridge.start(context) }
+        val token = atStage("PAIR") { pair() }
         val headers = mapOf("Authorization" to "Bearer $token", "X-CBNX-Nonce" to "ABCDEFGHIJKLMNOPQRSTUV")
-        val state = request("GET", "/v1/state", headers = headers)
-        assertEquals(200, state.first)
-        assertEquals("journal_only", state.second.getString("proof_kind"))
-        assertFalse(state.second.getBoolean("installed_inventory_qualified"))
-        assertEquals(401, request("GET", "/v1/state", headers = headers).first)
-        assertEquals(404, request("POST", "/v1/install", "{}", headers).first)
+        val state = atStage("STATE_FETCH") { request("GET", "/v1/state", headers = headers) }
+        atStage("STATE_ASSERT") {
+            assertEquals(200, state.first)
+            assertEquals("journal_only", state.second.getString("proof_kind"))
+            assertFalse(state.second.getBoolean("installed_inventory_qualified"))
+        }
+        atStage("NONCE_REPLAY") {
+            assertEquals(401, request("GET", "/v1/state", headers = headers).first)
+        }
+        atStage("NO_INSTALL_ENDPOINT") {
+            assertEquals(404, request("POST", "/v1/install", "{}", headers).first)
+        }
     }
 
     @Test fun revokeInvalidatesTokenAndStopsListening() {

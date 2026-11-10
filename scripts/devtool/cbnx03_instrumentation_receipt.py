@@ -86,6 +86,11 @@ receipt = {
     'event_count': method_events,
     'unexpected_event_count': unknown_count,
     'failure_reason_codes': reason_codes,
+    # Fixed enumeration from the one failing test only. No raw exception/response/secret.
+    'safe_pairing_failure_stage': next((code for code in
+        ('START', 'PAIR', 'STATE_FETCH', 'STATE_ASSERT', 'NONCE_REPLAY', 'NO_INSTALL_ENDPOINT')
+        if failed['pairingReadOnlyAndNonceReplayFails'] and
+        'CBNX03_SAFE_STAGE_' + code in raw), None),
     'app_sha256': a.app_sha, 'test_apk_sha256': a.test_sha,
     'emulator_only': True, 'live_firefox_qualified': False,
     'physical_device_qualified': False, 'live_nexus_qualified': False,

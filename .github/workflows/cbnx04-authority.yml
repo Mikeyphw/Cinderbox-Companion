@@ -4,6 +4,9 @@ on:
     paths:
       - 'app/src/main/java/com/sdvsync/mods/NexusPairingAuthority.kt'
       - 'app/src/main/java/com/sdvsync/mods/NexusPairingBridge.kt'
+      - 'app/src/main/java/com/sdvsync/mods/NexusPairingAuthorityCache.kt'
+      - 'app/src/test/java/com/sdvsync/mods/NexusPairingAuthorityCacheTest.kt'
+      - 'scripts/devtool/cbnx04_hf01_*'
       - 'app/src/androidTest/java/com/sdvsync/mods/CbNx04AuthorityDeviceTest.kt'
       - 'scripts/devtool/cbnx04_*'
       - '.github/workflows/cbnx04-authority.yml'
@@ -37,6 +40,8 @@ jobs:
           python3 -B scripts/devtool/cbnx03b_negative_tests.py
           python3 -B scripts/devtool/cbnx04_source_gate.py
           python3 -B scripts/devtool/cbnx04_negative_tests.py
+          python3 -B scripts/devtool/cbnx04_hf01_source_gate.py
+          python3 -B scripts/devtool/cbnx04_hf01_negative_tests.py
           python3 -B scripts/devtool/cbnx02_source_gate.py
           python3 -B scripts/devtool/cbnx01_gate.py
           bash -n scripts/devtool/cbnx04_emulator_ci.sh
