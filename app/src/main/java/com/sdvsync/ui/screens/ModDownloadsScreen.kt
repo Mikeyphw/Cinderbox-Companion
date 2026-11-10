@@ -20,10 +20,12 @@ import com.sdvsync.mods.ModDownloadPreferences
 import com.sdvsync.mods.ModDownloadRecord
 import com.sdvsync.mods.ModDownloadEvidencePolicy
 import com.sdvsync.mods.NexusPairingAuthority
+import com.sdvsync.mods.NexusPairingBridge
 import com.sdvsync.mods.NexusArchiveProvenance
 import com.sdvsync.cinderbox.CinderboxPaths
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.sdvsync.mods.ModQueueControlPolicy
@@ -46,6 +48,13 @@ fun ModDownloadsScreen(
     selectedJobId: String? = null
 ) {
     val context = LocalContext.current
+    var companionState by remember { mutableStateOf(NexusPairingBridge.snapshot()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            companionState = NexusPairingBridge.snapshot()
+            delay(2000L)
+        }
+    }
     val journal = remember(context) { ModDownloadJournal(context) }
     val manager: ModDownloadManager = koinInject()
     val reviewModel: ModManagerViewModel = koinViewModel()
@@ -225,6 +234,21 @@ fun ModDownloadsScreen(
             color = Dark.Ink, fontWeight = FontWeight.Bold)
         Text("$current active · $pausedCount paused · $attention need attention · $reviewCount awaiting review",
             style = MaterialTheme.typography.bodyMedium, color = Dark.Muted)
+        Surface(color = Dark.Paper, border = BorderStroke(1.dp, Dark.Line),
+            shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()
+                .testTag("cbnx05b.downloads.companion")) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Firefox companion", style = MaterialTheme.typography.titleSmall, color = Dark.Ink)
+                Text(when {
+                    !companionState.listening -> "Disconnected · browser downloads still available"
+                    companionState.connected && companionState.handoffEnabled -> "Connected · exact-file requests allowed"
+                    companionState.connected -> "Connected · handoff requests turned off"
+                    else -> "Pairing window open · not yet connected"
+                }, style = MaterialTheme.typography.bodySmall, color = Dark.Muted)
+                Text("Pair or revoke in Settings. Choose a download destination in Firefox.",
+                    style = MaterialTheme.typography.bodySmall, color = Dark.Muted)
+            }
+        }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = !showUpdates, onClick = { showUpdates = false },

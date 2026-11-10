@@ -81,6 +81,7 @@ internal object NexusPairingBridge {
 
     fun start(context: Context): Snapshot = synchronized(guard) {
         stopLocked()
+        check(NexusPairingInbox.initializeForLocalPairing(context)) { "Inbox unavailable" }
         activePrivateReviewRoot.set(context.applicationContext.filesDir)
         // Explicit pre-bind reuse prevents transient Android emulator TIME_WAIT bind failures.
         // Bind remains IPv4 loopback-only; never expose this listener on a LAN interface.

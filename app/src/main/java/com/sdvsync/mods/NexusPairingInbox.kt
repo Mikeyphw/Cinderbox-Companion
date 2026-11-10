@@ -13,6 +13,7 @@ internal object NexusPairingInbox {
     private val lock = Any()
     private const val PREFS = "cbnx03b_pairing_inbox"
     private const val KEY = "requests_v1"
+    private const val EVER_INITIALIZED = "store_initialized_v2"
     private const val MAX_PENDING = 8
     private const val MAX_HISTORY = 32
     private const val HISTORY_MS = 24 * 60 * 60 * 1000L
@@ -26,6 +27,9 @@ internal object NexusPairingInbox {
 
     private fun read(context: Context): List<Entry> {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(EVER_INITIALIZED, false)) {
+            check(prefs.contains(KEY)) { "Missing previously initialized inbox" }
+        }
         val raw = checkNotNull(prefs.getString(KEY, "[]")) { "Missing inbox" }
         val array = JSONArray(raw)
         check(array.length() <= MAX_HISTORY + MAX_PENDING) { "Oversized inbox" }
@@ -51,7 +55,33 @@ internal object NexusPairingInbox {
             .put("id", e.id).put("mod_id", e.modId).put("file_id", e.fileId)
             .put("status", e.status).put("created_at", e.createdAt)) }
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY, array.toString()).commit()
+            .edit().putString(KEY, array.toString()).putBoolean(EVER_INITIALIZED, true).commit()
+    }
+
+    /** Pairing is a user-triggered initialization, not a silent data reset. */
+    fun initializeForLocalPairing(context: Context): Boolean = synchronized(lock) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val existing = if (prefs.contains(KEY)) read(context) else {
+            if (prefs.getBoolean(EVER_INITIALIZED, false)) return@synchronized false
+            emptyList()
+        }
+        if (prefs.getBoolean(EVER_INITIALIZED, false)) true else commit(context, existing)
+    }
+
+    /**
+     * Verified UI history. A never-written/missing store is UNKNOWN, not clean history.
+     * Legacy bridge admission remains capable of initializing a new inbox via an
+     * explicit, locally permitted request. Corrupt storage is never overwritten.
+     */
+    fun verifiedHistory(context: Context): List<Entry> = synchronized(lock) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        check(prefs.contains(KEY)) { "Inbox history unavailable" }
+        val now = System.currentTimeMillis()
+        check(now > 0L) { "Invalid clock" }
+        read(context).filter { entry ->
+            entry.status == "PENDING" ||
+                (entry.createdAt <= now && now - entry.createdAt <= HISTORY_MS)
+        }
     }
 
     /** Never silently reset corrupted storage: fail closed instead of admitting duplicates. */
