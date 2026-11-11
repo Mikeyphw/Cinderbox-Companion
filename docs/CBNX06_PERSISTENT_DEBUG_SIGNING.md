@@ -51,3 +51,19 @@ same-repository PRs. Restrict who can push to the feature branch and do not
 make this a `pull_request_target` workflow. Fork PRs have no secrets and are
 expected to refuse. Use an environment with required reviewers if stronger
 signing-secret protection is required.
+
+## CB-NX06 HF04 — Build Tools signer-format compatibility
+
+The 2026-11-11 hosted run `43023079302` completed `:app:assembleDebug`
+successfully, but the post-build parser refused `APK_SIGNER_COUNT_NOT_ONE`.
+Newer `apksigner --print-certs --verbose` variants may label signer digest lines
+`V2 Signer: certificate SHA-256 digest:` (and `V3.0 Signer:`) instead of
+`Signer #1 certificate SHA-256 digest:`. HF04 accepts either *exact* label
+family and refuses duplicate records, unrecognized signer labels, inconsistent
+scheme identities, missing v2 verification, or any certificate not matching
+the existing installed `com.sdvsync` identity. An `apksigner` nonzero exit
+remains a hard failure. No signing secret or APK identity requirement changed.
+
+HF04 does not prove which formatter the hosted tool used until the new hosted
+build's artifact and certificate attestation succeed. APK installation, real
+Nexus, rollback, and release remain independently unqualified.

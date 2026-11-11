@@ -20,7 +20,6 @@ EXPECTED_PACKAGE = "com.sdvsync"
 HEX40 = re.compile(r"[0-9a-f]{40}\Z")
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 KEYTOOL_SHA256 = re.compile(r"(?m)^\s*SHA256:\s*([0-9a-fA-F:]{64,95})\s*$")
-APK_SIGNERS = re.compile(r"(?m)^Signer #(\d+) certificate SHA-256 digest:\s*([0-9a-fA-F]{64})\s*$")
 APK_V2 = re.compile(r"(?m)^Verified using v2 scheme \(APK Signature Scheme v2\): true\s*$")
 MAX_APK_BYTES = 1_073_741_824
 
@@ -59,13 +58,66 @@ def keytool_fingerprint(output: str) -> str:
 
 
 def apk_fingerprint(output: str) -> str:
-    matches = APK_SIGNERS.findall(output)
-    if len(matches) != 1 or matches[0][0] != "1":
-        raise Refused("APK_SIGNER_COUNT_NOT_ONE")
-    if not APK_V2.search(output):
-        raise Refused("APK_V2_SIGNATURE_NOT_VERIFIED")
-    return require_cert_match(matches[0][1].lower())
+    """Accept known apksigner certificate *labels*, not weaker verification.
 
+    Android Build Tools <=36 reports `Signer #1 certificate ...` while newer
+    tools may report scheme-specific `V2 Signer: certificate ...` lines. Each
+    signer record is counted (including duplicates), not deduplicated by digest.
+    `apksigner verify` must also exit 0, and v2 must explicitly verify true.
+    """
+    if len(APK_V2.findall(output)) != 1:
+        raise Refused("APK_V2_SIGNATURE_NOT_VERIFIED")
+
+    # AOSP has historically printed this line with `--verbose`. When present,
+    # it is an additional strict count check, never a substitute for digest.
+    declared = re.findall(r"(?m)^Number of signers: ([0-9]+)\s*$", output)
+    if len(declared) > 1 or (declared and declared != ["1"]):
+        raise Refused("APK_SIGNER_COUNT_NOT_ONE")
+
+    legacy = re.compile(
+        r"^Signer #([1-9][0-9]*) certificate SHA-256 digest: ([0-9a-fA-F]{64})$"
+    )
+    scheme = re.compile(
+        r"^(V(?:1|2|3|3\.0|3\.1) Signer): certificate SHA-256 digest: ([0-9a-fA-F]{64})$"
+    )
+    legacy_records = []
+    scheme_records = []
+    for line in output.splitlines():
+        line = line.strip()
+        # SourceStamp is not an APK application signer. Do not use it as proof.
+        if line.startswith("Source Stamp Signer certificate SHA-256 digest:"):
+            continue
+        if "certificate SHA-256 digest:" not in line:
+            continue
+        old = legacy.fullmatch(line)
+        new = scheme.fullmatch(line)
+        if old:
+            legacy_records.append((old.group(1), old.group(2)))
+        elif new:
+            scheme_records.append((new.group(1), new.group(2)))
+        else:
+            # Unknown or malformed signer metadata is *never* silently ignored.
+            raise Refused("APK_CERTIFICATE_SIGNER_LABEL_UNRECOGNIZED")
+
+    if legacy_records and scheme_records:
+        raise Refused("APK_SIGNER_FORMATS_MIXED")
+    if legacy_records:
+        if len(legacy_records) != 1 or legacy_records[0][0] != "1":
+            raise Refused("APK_SIGNER_COUNT_NOT_ONE")
+        return require_cert_match(legacy_records[0][1].lower())
+
+    v2 = [cert for name, cert in scheme_records if name == "V2 Signer"]
+    if len(v2) != 1:
+        raise Refused("APK_SIGNER_COUNT_NOT_ONE")
+    names = [name for name, _ in scheme_records]
+    if len(names) != len(set(names)):
+        raise Refused("APK_SIGNER_COUNT_NOT_ONE")
+    # Different certificates across schemes, e.g. v2 and v3, would not
+    # establish a single installed-app identity. This is fail-closed.
+    certificates = [require_cert_match(cert.lower()) for _, cert in scheme_records]
+    if len(set(certificates)) != 1:
+        raise Refused("APK_SCHEME_CERTIFICATES_INCONSISTENT")
+    return certificates[0]
 
 def digest(path: Path) -> str:
     h = hashlib.sha256()
