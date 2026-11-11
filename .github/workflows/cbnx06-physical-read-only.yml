@@ -45,7 +45,7 @@ jobs:
           python3 -B scripts/devtool/cbnx03b_source_gate.py
       - name: Load persistent CI debug key and pin certificate before Gradle
         env:
-          CBNX06_DEBUG_KEYSTORE_B64: ${{ secrets.CINDERBOX_DEBUG_KEYSTORE_BASE64 }}
+          CBNX06_DEBUG_KEYSTORE_B64: ${{ secrets.CINDERBOX_DEBUG_KEYSTORE_B64 }}
           CINDERBOX_DEBUG_STORE_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_STORE_PASSWORD }}
           CINDERBOX_DEBUG_KEY_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_KEY_PASSWORD }}
         run: |

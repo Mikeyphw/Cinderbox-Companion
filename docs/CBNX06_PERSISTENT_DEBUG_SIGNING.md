@@ -9,10 +9,10 @@ or any fallback signing identity.
 
 ## Provisioning (one-time, by repository owner)
 
-Store the following GitHub Actions **repository secrets** under
+Use the following existing GitHub Actions **repository secrets** under
 `Mikeyphw/Cinderbox-Companion` → Settings → Secrets and variables → Actions:
 
-- `CINDERBOX_DEBUG_KEYSTORE_BASE64`: base64 of the **existing** PKCS#12
+- `CINDERBOX_DEBUG_KEYSTORE_B64`: base64 of the **existing** PKCS#12
   private-key keystore containing alias `androiddebugkey`, with the signing
   certificate matching the installed application.
 - `CINDERBOX_DEBUG_STORE_PASSWORD`: that PKCS#12 keystore password.

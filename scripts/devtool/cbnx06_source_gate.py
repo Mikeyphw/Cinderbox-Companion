@@ -54,6 +54,10 @@ for required in ('cbnx06_debug_artifact.py',
                  '--output-dir "$RUNNER_TEMP/cbnx06-debug"',
                  '--source-sha "$CBNX06_EXPECTED_HEAD"'):
     assert required in w, 'CBNX06_HF01_WORKFLOW_STALE:'+required
+# HF03: pin CI to the already-provisioned debug signing secret.
+assert 'secrets.CINDERBOX_DEBUG_KEYSTORE_B64' in w, 'CBNX06_EXISTING_KEYSTORE_SECRET_NOT_REFERENCED'
+assert 'secrets.CINDERBOX_DEBUG_KEYSTORE_BASE64' not in w, 'CBNX06_UNKNOWN_KEYSTORE_SECRET_REFERENCED'
+assert "CINDERBOX_REQUIRE_PERSISTENT_DEBUG_SIGNING: 'true'" in w, 'CBNX06_PERSISTENT_SIGNING_NOT_MANDATORY'
 assert 'test -s app/build/outputs/apk/debug/app-debug.apk' not in w, 'CBNX06_HF01_OLD_FIXED_APK_PATH'
 assert len(re.findall(r'^    def test_', artifact_tests,re.M))>=14, 'CBNX06_HF01_TEST_ROSTER_STALE'
 ast.parse(a);ast.parse(t);ast.parse(artifact);ast.parse(artifact_tests)
