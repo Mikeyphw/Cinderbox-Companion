@@ -1,0 +1,65 @@
+name: CB-NX06 Physical Acceptance Evidence Contract and Debug APK
+on:
+  pull_request:
+    paths:
+      - 'scripts/devtool/cbnx06_physical_acceptance.py'
+      - 'scripts/devtool/cbnx06_physical_acceptance_tests.py'
+      - 'scripts/devtool/cbnx06_source_gate.py'
+      - 'docs/CBNX06_PHYSICAL_ACCEPTANCE.md'
+      - '.github/workflows/cbnx06-physical-read-only.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-and-exact-debug-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      CBNX06_EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Exact head, source policy, and all 25 synthetic negative cases
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CBNX06_EXPECTED_HEAD"
+          python3 -B scripts/devtool/cbnx06_source_gate.py
+          python3 -B scripts/devtool/cbnx06_physical_acceptance_tests.py
+          python3 -B scripts/devtool/cbnx01_gate.py
+          python3 -B scripts/devtool/cbnx03b_source_gate.py
+      - name: Build exact-source unsigned-release debug APK (no device qualification)
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CBNX06_EXPECTED_HEAD"
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:assembleDebug
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          mkdir -p "$RUNNER_TEMP/cbnx06-debug"
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/cbnx06-debug/app-debug.apk"
+          (cd "$RUNNER_TEMP/cbnx06-debug" && sha256sum app-debug.apk > SHA256SUMS)
+          CBNX06_APK_SHA="$(cut -d ' ' -f 1 "$RUNNER_TEMP/cbnx06-debug/SHA256SUMS")"
+          CBNX06_APK_SHA="$CBNX06_APK_SHA" python3 - <<'PY'
+          import json,os,pathlib
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'cbnx06-debug'/'SOURCE_ATTESTATION.json'
+          out.write_text(json.dumps({'schema':'cbnx06-hosted-debug-apk-v1',
+            'source_sha':os.environ['CBNX06_EXPECTED_HEAD'],
+            'apk_sha256':os.environ['CBNX06_APK_SHA'],
+            'physical_arm64_qualified':False,'live_firefox_qualified':False,
+            'live_nexus_qualified':False,'release_qualified':False},
+            indent=2,sort_keys=True)+'\n')
+          PY
+      - name: Upload debug APK for explicit separate device inspection
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: cbnx06-exact-source-debug-apk
+          path: ${{ runner.temp }}/cbnx06-debug/
+          if-no-files-found: error
+          retention-days: 7
