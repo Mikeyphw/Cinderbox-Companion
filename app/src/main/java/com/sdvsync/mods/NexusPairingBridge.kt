@@ -1,6 +1,7 @@
 package com.sdvsync.mods
 
 import android.content.Context
+import com.sdvsync.BuildConfig
 import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,7 +20,8 @@ import java.util.LinkedHashSet
 
 /** CB-NX03A: opt-in, in-process, read-only browser pairing. No install/control endpoint exists. */
 internal object NexusPairingBridge {
-    const val PORT = 38471
+    const val PORT = 38471 // production constant, preserved for existing tests
+    val ACTIVE_PORT: Int get() = if (BuildConfig.CBNX_LAB) 38472 else PORT
     private const val WINDOW_MS = 10 * 60_000L
     private const val CODE_MS = 2 * 60_000L
     private const val CHALLENGE_MS = 60_000L
@@ -92,7 +94,7 @@ internal object NexusPairingBridge {
             ServerSocket().also { candidate ->
                 try {
                     candidate.reuseAddress = true
-                    candidate.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 4)
+                    candidate.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), ACTIVE_PORT), 4)
                     candidate.soTimeout = 1000
                 } catch (error: Exception) {
                     runCatching { candidate.close() }
@@ -215,7 +217,7 @@ internal object NexusPairingBridge {
         // Browser background sends Origin absent or moz-extension://<unique-id>.
         // Web pages cannot opt into CORS or use this endpoint with credentials.
         val allowedOrigin = origin == null || Regex("moz-extension://[0-9a-fA-F-]{36}").matches(origin)
-        if (!allowedOrigin || headers["host"] != "127.0.0.1:$PORT" ||
+        if (!allowedOrigin || headers["host"] != "127.0.0.1:$ACTIVE_PORT" ||
             headers.containsKey("transfer-encoding")) {
             respond(output, 403, JSONObject().put("error", "refused"), null)
             return

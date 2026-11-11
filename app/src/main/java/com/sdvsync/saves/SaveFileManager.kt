@@ -1,6 +1,7 @@
 package com.sdvsync.saves
 
 import com.sdvsync.cinderbox.CinderboxPaths
+import com.sdvsync.BuildConfig
 import com.sdvsync.fileaccess.FileAccessStrategy
 import com.sdvsync.logging.AppLogger
 import java.io.File
@@ -8,9 +9,9 @@ import java.io.File
 class SaveFileManager(private val metadataParser: SaveMetadataParser, private val resolveLocation: () -> SaveLocation) {
     companion object {
         private const val TAG = "SaveFileManager"
-        const val SDV_SAVE_PATH =
+        val SDV_SAVE_PATH = if (BuildConfig.CBNX_LAB) CinderboxPaths.SAVES_DIR else
             "/storage/emulated/0/Android/data/com.chucklefish.stardewvalley/files/Saves"
-        const val CINDERBOX_SAVE_PATH = CinderboxPaths.SAVES_DIR
+        val CINDERBOX_SAVE_PATH = CinderboxPaths.SAVES_DIR
     }
 
     /** True when SAF points to a staging directory instead of the game folder. */

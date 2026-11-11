@@ -2,6 +2,8 @@ package com.sdvsync.mods
 
 import android.content.Context
 import com.sdvsync.cinderbox.CinderboxPaths
+import com.sdvsync.cinderbox.CinderboxLabBoundary
+import com.sdvsync.BuildConfig
 import com.sdvsync.logging.AppLogger
 import com.sdvsync.mods.models.InstallResult
 import com.sdvsync.mods.models.InstalledMod
@@ -25,6 +27,10 @@ class ModFileManager(
     companion object {
         private const val TAG = "ModFileManager"
         private const val DISABLED_SUFFIX = ".disabled"
+    }
+
+    init {
+        if (BuildConfig.CBNX_LAB) CinderboxLabBoundary.requireModsRoot(modsDir)
     }
 
     private val safety = ModSafety(context.filesDir, modsDir)

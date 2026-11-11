@@ -1,6 +1,7 @@
 package com.sdvsync.fileaccess
 
 import android.content.Context
+import com.sdvsync.BuildConfig
 import android.os.Build
 import android.os.Environment
 import androidx.core.content.edit
@@ -19,10 +20,11 @@ class FileAccessDetector(private val context: Context) {
     }
 
     /** Auto-detection never asks for superuser privileges. */
-    fun isRootExplicitlyEnabled(): Boolean = getPreferredStrategy().equals("root", ignoreCase = true)
+    fun isRootExplicitlyEnabled(): Boolean = !BuildConfig.CBNX_LAB && getPreferredStrategy().equals("root", ignoreCase = true)
 
     /** Default order prioritizes the user-granted SAF tree over global/privileged access. */
     fun detectBestStrategy(): FileAccessStrategy {
+        if (BuildConfig.CBNX_LAB) return ManualFileAccess()
         SAFFileAccess.createInstance(context)?.let {
             AppLogger.d(TAG, "detectBestStrategy: selected ${it.name}")
             return it
@@ -44,6 +46,7 @@ class FileAccessDetector(private val context: Context) {
      * Resolve strategy: use user preference if set and available, else auto-detect.
      */
     fun resolveStrategy(): FileAccessStrategy {
+        if (BuildConfig.CBNX_LAB) return ManualFileAccess()
         val preferred = getPreferredStrategy() ?: return detectBestStrategy()
         val available = availableMethods()
         if (available.any { it.equals(preferred, ignoreCase = true) }) {
@@ -57,7 +60,7 @@ class FileAccessDetector(private val context: Context) {
     /**
      * Get a specific strategy by name.
      */
-    fun getStrategy(name: String): FileAccessStrategy = when (name.lowercase()) {
+    fun getStrategy(name: String): FileAccessStrategy = if (BuildConfig.CBNX_LAB) ManualFileAccess() else when (name.lowercase()) {
         "root" -> if (isRootExplicitlyEnabled() && RootFileAccess.isAvailable()) {
             RootFileAccess()
         } else {
@@ -74,6 +77,7 @@ class FileAccessDetector(private val context: Context) {
      * Check which access methods are currently available.
      */
     fun availableMethods(): List<String> {
+        if (BuildConfig.CBNX_LAB) return listOf("Manual")
         val methods = mutableListOf<String>()
         if (SAFFileAccess.isAvailable(context)) methods.add("SAF")
         if (isAllFilesUsable()) methods.add("All Files")
@@ -97,17 +101,21 @@ class FileAccessDetector(private val context: Context) {
             }
     }
 
-    fun isCinderboxMode(): Boolean = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+    fun isCinderboxMode(): Boolean = if (BuildConfig.CBNX_LAB) true else context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         .getBoolean(KEY_CINDERBOX_MODE, true)
 
     fun setCinderboxMode(enabled: Boolean) {
+        if (BuildConfig.CBNX_LAB) {
+            check(enabled) { "LAB_CINDERBOX_MODE_CANNOT_BE_DISABLED" }
+            return
+        }
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
             .edit { putBoolean(KEY_CINDERBOX_MODE, enabled) }
     }
 
     // AllFilesAccess.isAvailable() probes the official SDV dir, which Android 14+ blocks.
-    fun isAllFilesUsable(): Boolean = AllFilesAccess.isAvailable() ||
-        (isCinderboxMode() && AllFilesAccess.isPermissionGranted())
+    fun isAllFilesUsable(): Boolean = !BuildConfig.CBNX_LAB && (AllFilesAccess.isAvailable() ||
+        (isCinderboxMode() && AllFilesAccess.isPermissionGranted()))
 
     fun isCinderboxMigrationDontAsk(): Boolean = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         .getBoolean(KEY_LAYOUT_DONT_ASK, false)
@@ -145,6 +153,7 @@ class FileAccessDetector(private val context: Context) {
      * and requires this permission on Android 11+.
      */
     fun needsStoragePermission(cinderboxMode: Boolean = isCinderboxMode()): Boolean {
+        if (BuildConfig.CBNX_LAB) return false
         if (Build.VERSION.SDK_INT < 30) return false
         if (!cinderboxMode) return false
         if (Environment.isExternalStorageManager()) return false

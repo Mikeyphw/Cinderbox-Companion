@@ -1,0 +1,62 @@
+name: CB-NX06 Full Cinderbox Isolated Lab (no production APK install)
+on:
+  pull_request:
+    paths:
+      - 'app/build.gradle.kts'
+      - 'app/src/main/java/com/sdvsync/**'
+      - 'app/src/cbnxLab/**'
+      - 'scripts/devtool/cbnx06_full_lab_*.py'
+      - 'docs/CBNX06_FULL_CINDERBOX_LAB.md'
+      - '.github/workflows/cbnx06-full-cinderbox-lab.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  full-cinderbox-lab-hosted:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CBNX_LAB_EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Exact head, full lab source policy, mutation negatives and previous contracts
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CBNX_LAB_EXPECTED_SOURCE"
+          python3 -B scripts/devtool/cbnx06_full_lab_gate.py
+          python3 -B scripts/devtool/cbnx06_full_lab_tests.py
+          python3 -B scripts/devtool/cbnx06_source_gate.py
+          python3 -B scripts/devtool/cbnx06_physical_acceptance_tests.py
+          python3 -B scripts/devtool/cbnx06_hf01_artifact_tests.py
+          python3 -B scripts/devtool/cbnx06_persistent_debug_signing_tests.py
+          python3 -B scripts/devtool/cbnx01_gate.py
+      - name: Hosted Gradle build of complete Cinderbox UI in isolated app variant
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CBNX_LAB_EXPECTED_SOURCE"
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:assembleCbnxLab
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
+          aapt="$(find "$ANDROID_HOME/build-tools" -type f -name aapt -print | sort -V | tail -n 1)"
+          test -n "$apksigner" && test -n "$aapt"
+          python3 -B scripts/devtool/cbnx06_full_lab_artifact.py \
+            --debug-dir app/build/outputs/apk/cbnxLab \
+            --output-dir "$RUNNER_TEMP/cbnx06-full-lab" \
+            --source-sha "$CBNX_LAB_EXPECTED_SOURCE" \
+            --apksigner "$apksigner" --aapt "$aapt"
+      - name: Publish only identity-attested laboratory APK (never production)
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: cbnx06-full-cinderbox-lab-apk
+          path: ${{ runner.temp }}/cbnx06-full-lab/
+          if-no-files-found: error
+          retention-days: 7

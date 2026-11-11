@@ -18,6 +18,7 @@ android {
         targetSdk = 35
         versionCode = 14
         versionName = "0.1.1"
+        buildConfigField("boolean", "CBNX_LAB", "false")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -60,6 +61,16 @@ android {
             if (requireStableDebugSigner) {
                 signingConfig = signingConfigs.getByName("ciDebug")
             }
+        }
+        // Side-by-side full Cinderbox lab; normal debug/release builds are unchanged.
+        create("cbnxLab") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".cbnx06lab"
+            versionNameSuffix = "-cbnxlab"
+            isDebuggable = true
+            signingConfig = signingConfigs.getByName("debug")
+            buildConfigField("boolean", "CBNX_LAB", "true")
+            matchingFallbacks += listOf("debug")
         }
         release {
             isMinifyEnabled = true

@@ -42,7 +42,8 @@ internal fun NexusPairingPanel() {
     }
     Column(Modifier.fillMaxWidth().testTag("cbnx03.pairing.panel"),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Firefox companion", style = MaterialTheme.typography.titleMedium)
+        Text(if (BuildConfig.CBNX_LAB) "Firefox companion · ISOLATED LAB (127.0.0.1:38472)" else "Firefox companion",
+            style = MaterialTheme.typography.titleMedium)
         Text("Optional read-only queue status and explicit exact-file requests. No Nexus login, tokens or mod installation access is shared.",
             style = MaterialTheme.typography.bodySmall)
         when {

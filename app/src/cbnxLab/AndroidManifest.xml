@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- No broad storage, package installation, privileged or legacy media permissions. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <application android:label="Cinderbox LAB" android:allowBackup="false" android:usesCleartextTraffic="false">
+        <!-- Replace, rather than merge, filters: no external download-link or arbitrary file interception. -->
+        <activity android:name=".MainActivity" android:exported="true"
+            android:launchMode="singleTop" android:theme="@style/Theme.SDVSync" tools:node="replace">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <service android:name=".steam.SteamBackgroundService" tools:node="remove" />
+        <service android:name=".autosync.AutoSyncService" tools:node="remove" />
+        <service android:name=".download.GameDownloadService" tools:node="remove" />
+        <receiver android:name=".widget.SyncStatusWidgetReceiver" tools:node="remove" />
+        <provider android:name="rikka.shizuku.ShizukuProvider" tools:node="remove" />
+        <provider android:name="androidx.core.content.FileProvider" tools:node="remove" />
+    </application>
+</manifest>
