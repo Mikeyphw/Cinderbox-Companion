@@ -38,7 +38,9 @@ internal object NexusLab03Evidence {
 
     @Synchronized fun previewSynthetic(context: Context): Preview {
         check(BuildConfig.CBNX_LAB && context.packageName == LAB_PACKAGE) { "LAB03_NOT_ISOLATED_BUILD" }
-        val directory = File(context.filesDir, FOLDER)
+        // Match the canonical root established by CinderboxLabBoundary.initialize().
+        // Android may expose filesDir through a /data/user/0 alias.
+        val directory = File(context.filesDir.canonicalFile, FOLDER)
         CinderboxLabBoundary.requirePrivate(directory)
         check(directory.mkdirs() || directory.isDirectory) { "LAB03_PRIVATE_DIRECTORY_UNAVAILABLE" }
         check(!Files.isSymbolicLink(directory.toPath())) { "LAB03_LINKED_DIRECTORY" }

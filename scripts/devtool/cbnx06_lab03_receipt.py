@@ -22,10 +22,25 @@ def verify(raw, code, source, run, apk, test_apk):
 CASES=('syntheticArchivePreviewDoesNotModifyLabMods',
        'labPairingRequiresConsentAndRecordsOnlyExactInboxRequest')
 
+# Only source-code *basenames* from this fixed allowlist, and numeric line numbers,
+# may escape the private instrumentation logs. Never publish full stack traces,
+# exception messages, tokens, filesystem paths or Nexus data.
+_SAFE_STACK_FRAME = re.compile(
+    r'\b(NexusLab03Evidence|CbNxLab03DeviceTest|ModFileManager|'
+    r'CinderboxLabBoundary|ModBatchTransaction|ModSafety)\.kt:([1-9][0-9]{0,3})\b')
+
+def safe_failure_location(raw):
+    marker='INSTRUMENTATION_STATUS: stack='
+    pos=raw.find(marker)
+    if pos<0:return 'UNAVAILABLE'
+    # A bounded snippet from AndroidJUnitRunner's reported stack only.
+    m=_SAFE_STACK_FRAME.search(raw[pos:pos+8192])
+    return (m.group(1)+':'+m.group(2)) if m else 'UNAVAILABLE'
+
 def case_status(raw, exit_code, expected):
     assert expected in CASES
     if len(raw) >= 524288:
-        return {'test':expected,'status':'NOT_QUALIFIED','failure_code':'LOG_BUDGET'}
+        return {'test':expected,'status':'NOT_QUALIFIED','failure_code':'LOG_BUDGET','failure_site':'UNAVAILABLE'}
     names=re.findall(r'(?m)^INSTRUMENTATION_STATUS: test=(\w+)\r?$',raw)
     passed=(exit_code==0 and len(names)==2 and names.count(expected)==2 and
             'OK (1 test)' in raw and 'INSTRUMENTATION_CODE: -1' in raw and
@@ -39,7 +54,8 @@ def case_status(raw, exit_code, expected):
     elif exit_code!=0: failure='COMMAND_FAILED'
     elif len(names)!=2 or names.count(expected)!=2: failure='TEST_EVENTS_MISSING'
     else: failure='TEST_SUMMARY_MISSING'
-    return {'test':expected,'status':'PASS' if passed else 'NOT_QUALIFIED','failure_code':failure}
+    return {'test':expected,'status':'PASS' if passed else 'NOT_QUALIFIED','failure_code':failure,
+            'failure_site':'NONE' if passed else safe_failure_location(raw)}
 
 def verify_split(raw_preview, code_preview, raw_pair, code_pair, source, run, apk, test_apk):
     assert re.fullmatch(r'[0-9a-f]{40}',source) and re.fullmatch(r'[0-9a-f]{64}',apk) and re.fullmatch(r'[0-9a-f]{64}',test_apk)
@@ -63,7 +79,7 @@ def main():
         a.raw_pair.read_text(errors='replace'),a.exit_pair,a.source,a.run,a.apk,a.test_apk)
     a.output.write_text(json.dumps(data,sort_keys=True,indent=2)+'\n')
     for c in data['cases']:
-        print('CBNX06_LAB03A_HF02_CASE='+c['test']+' STATUS='+c['status']+' REASON='+c['failure_code'])
+        print('CBNX06_LAB03A_HF04_CASE='+c['test']+' STATUS='+c['status']+' REASON='+c['failure_code']+' SITE='+c['failure_site'])
     if data['status']!='PASS':sys.exit('CBNX06_LAB03A_EMULATOR_NOT_QUALIFIED')
     print('CBNX06_LAB03A_INSTRUMENTATION_RECEIPT_PASS')
 if __name__=='__main__':main()

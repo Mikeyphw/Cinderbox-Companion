@@ -24,6 +24,31 @@ class Negatives(unittest.TestCase):
         p=self.root/FILES[key];s=p.read_text();self.assertEqual(s.count(old),1,old)
         p.write_text(s.replace(old,new,1))
         with self.assertRaisesRegex(Refused,reason):check(self.root)
+    def test_hf04_reject_noncanonical_lab_evidence_path(self):
+        # Regression: Android may expose filesDir using a platform alias while
+        # the lab boundary intentionally pins its canonical private-home root.
+        self.mutate('evidence',
+            'File(context.filesDir.canonicalFile, FOLDER)',
+            'File(context.filesDir, FOLDER)',
+            'LAB03A_HF04_NONCANONICAL_EVIDENCE_ROOT')
+    def test_hf04_failure_site_strictly_redacted(self):
+        from cbnx06_lab03_receipt import safe_failure_location,case_status,CASES
+        raw=('INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: '
+             'TOKEN_SECRET /storage/emulated/0/private.zip\n'
+             '    at com.sdvsync.mods.NexusLab03Evidence.previewSynthetic(NexusLab03Evidence.kt:57)\n'
+             'FAILURES!!!\n')
+        self.assertEqual(safe_failure_location(raw),'NexusLab03Evidence:57')
+        verdict=case_status(raw,1,CASES[0])
+        self.assertEqual(verdict['failure_code'],'TEST_ASSERTION_FAILED')
+        self.assertEqual(verdict['failure_site'],'NexusLab03Evidence:57')
+        self.assertNotIn('TOKEN_SECRET',repr(verdict))
+        self.assertNotIn('/storage/',repr(verdict))
+        fake='INSTRUMENTATION_STATUS: stack=TOKEN_SECRET /storage/secret.kt:91\nFAILURES!!!'
+        self.assertEqual(safe_failure_location(fake),'UNAVAILABLE')
+        self.assertEqual(case_status('timeout',124,CASES[0])['failure_site'],'UNAVAILABLE')
+        success=('INSTRUMENTATION_STATUS: test='+CASES[0]+'\n')*2
+        success+='OK (1 test)\nINSTRUMENTATION_CODE: -1'
+        self.assertEqual(case_status(success,0,CASES[0])['failure_site'],'NONE')
     def test_no_package_guard(self):self.mutate('evidence','BuildConfig.CBNX_LAB && context.packageName == LAB_PACKAGE','true','EVIDENCE_GUARD_MISSING')
     def test_no_private_boundary(self):self.mutate('evidence','CinderboxLabBoundary.requirePrivate(archiveFile)','// removed','EVIDENCE_GUARD_MISSING')
     def test_no_mod_boundary(self):self.mutate('evidence','CinderboxLabBoundary.requireModsRoot(mods)','// removed','EVIDENCE_GUARD_MISSING')
