@@ -1,6 +1,7 @@
 package com.sdvsync.steam
 
 import android.content.Context
+import com.sdvsync.BuildConfig
 import com.sdvsync.logging.AppLogger
 import com.sdvsync.steam.transport.StableWebSocketConnection
 import `in`.dragonbra.javasteam.networking.steam3.IConnectionFactory
@@ -227,6 +228,7 @@ class SteamClientManager(context: Context, sessionStore: SteamSessionStore) {
     }
 
     suspend fun connect() = connectMutex.withLock {
+        check(!BuildConfig.CBNX_LAB) { "CBNX_LAB_STEAM_TRANSPORT_BLOCKED" }
         if (_connectionState.value == ConnectionState.CONNECTING ||
             _connectionState.value == ConnectionState.CONNECTED ||
             _connectionState.value == ConnectionState.LOGGED_IN
@@ -284,6 +286,7 @@ class SteamClientManager(context: Context, sessionStore: SteamSessionStore) {
     }
 
     private fun startConnection(candidate: ServerRecord): Boolean = synchronized(transportLifecycleLock) {
+        check(!BuildConfig.CBNX_LAB) { "CBNX_LAB_STEAM_TRANSPORT_BLOCKED" }
         if (disconnectLatch.isPending || _connectionState.value == ConnectionState.DISCONNECTING) {
             return@synchronized false
         }

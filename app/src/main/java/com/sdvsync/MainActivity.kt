@@ -156,6 +156,12 @@ class MainActivity : ComponentActivity() {
                 Box(Modifier.fillMaxSize()) {
                     SdvSyncNavGraph(navController, highlightedDownloadJobId)
                     SnackbarHost(hostState = snackbar, modifier = Modifier.align(Alignment.BottomCenter))
+                    if (BuildConfig.CBNX_LAB) Text(
+                        text = "CINDERBOX LAB - PRIVATE GAME DATA",
+                        modifier = Modifier.align(Alignment.TopCenter)
+                            .testTag("cbnx06.lab.persistent-banner"),
+                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall
+                    )
                 }
                 LaunchedEffect(openDownloadsRequested) {
                     if (openDownloadsRequested) {

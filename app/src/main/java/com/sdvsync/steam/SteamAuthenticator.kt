@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import com.sdvsync.R
+import com.sdvsync.BuildConfig
 import com.sdvsync.logging.AppLogger
 import `in`.dragonbra.javasteam.enums.EResult
 import `in`.dragonbra.javasteam.protobufs.steamclient.SteammessagesAuthSteamclient.EAuthSessionGuardType
@@ -133,16 +134,19 @@ class SteamAuthenticator(
     }
 
     fun onAppForeground() {
+        if (BuildConfig.CBNX_LAB) return
         SteamDiagnostics.trace("app_foreground")
         requestSavedSessionRecovery("app_foreground_recovery")
     }
 
     fun onAppBackground() {
+        if (BuildConfig.CBNX_LAB) return
         SteamDiagnostics.trace("app_background")
     }
 
     @Synchronized
     private fun requestSavedSessionRecovery(reason: String) {
+        if (BuildConfig.CBNX_LAB) return
         if (isUserDisconnect || !sessionStore.hasSession() || clientManager.isLoggedIn) return
         if (autoReconnectJob?.isActive == true) {
             reconnectWakeups.trySend(Unit)
@@ -289,6 +293,7 @@ class SteamAuthenticator(
     }
 
     suspend fun login(username: String, password: String) {
+        check(!BuildConfig.CBNX_LAB) { "CBNX_LAB_STEAM_AUTH_FORBIDDEN" }
         runAuthAttempt(AuthAttemptKind.CREDENTIALS) { attempt ->
             AppLogger.i(TAG, "Login attempt for user: ${username.take(2)}***")
             setState(attempt, AuthState.Connecting)
@@ -299,6 +304,7 @@ class SteamAuthenticator(
     }
 
     suspend fun loginWithQR() {
+        check(!BuildConfig.CBNX_LAB) { "CBNX_LAB_STEAM_AUTH_FORBIDDEN" }
         runAuthAttempt(AuthAttemptKind.QR) { attempt ->
             AppLogger.i(TAG, "QR login attempt")
             setState(attempt, AuthState.Connecting)
@@ -318,6 +324,7 @@ class SteamAuthenticator(
     }
 
     suspend fun loginWithSavedSession() {
+        check(!BuildConfig.CBNX_LAB) { "CBNX_LAB_STEAM_AUTH_FORBIDDEN" }
         if (clientManager.isLoggedIn) {
             AppLogger.d(TAG, "Saved session resume skipped because Steam is already logged in")
             return

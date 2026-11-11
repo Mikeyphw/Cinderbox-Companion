@@ -145,7 +145,7 @@ fun SettingsScreen(
         selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
     )
 
-    if (confirmRoot) {
+    if (!BuildConfig.CBNX_LAB && confirmRoot) {
         AlertDialog(
             onDismissRequest = { confirmRoot = false },
             title = { Text("Enable Root file access?") },
@@ -160,7 +160,7 @@ fun SettingsScreen(
         )
     }
 
-    if (state.showStoragePermissionPrompt) {
+    if (!BuildConfig.CBNX_LAB && state.showStoragePermissionPrompt) {
         StoragePermissionDialog(
             onPermissionResult = { viewModel.onStoragePermissionResult() },
             onDismiss = { viewModel.dismissStoragePermissionPrompt() }
@@ -323,7 +323,8 @@ fun SettingsScreen(
                             colors = filterChipColors,
                             shape = RectangleShape
                         )
-                        // Root is never auto-probed. Selecting this chip is explicit opt-in.
+                        if (!BuildConfig.CBNX_LAB) {
+                            // Root is never auto-probed. Selecting this chip is explicit opt-in.
                         FilterChip(
                             selected = state.preferredStrategy.equals("root", ignoreCase = true),
                             onClick = { confirmRoot = true },
@@ -331,6 +332,7 @@ fun SettingsScreen(
                             colors = filterChipColors,
                             shape = RectangleShape
                         )
+                        }
                         state.availableModes.filterNot { it.equals("root", ignoreCase = true) }.forEach { mode ->
                             FilterChip(
                                 selected = state.preferredStrategy.equals(mode, ignoreCase = true),
@@ -352,17 +354,19 @@ fun SettingsScreen(
             }
 
             // Shizuku status
-            Spacer(Modifier.height(12.dp))
-            ShizukuStatusSection(
+            if (!BuildConfig.CBNX_LAB) {
+                Spacer(Modifier.height(12.dp))
+                ShizukuStatusSection(
                 installed = state.shizukuInstalled,
                 running = state.shizukuRunning,
                 permissionGranted = state.shizukuPermissionGranted,
                 onRequestPermission = { viewModel.requestShizukuPermission() },
                 onBindService = { viewModel.bindShizukuService() }
             )
+            }
 
             // All Files Access
-            if (state.allFilesEligible) {
+            if (!BuildConfig.CBNX_LAB && state.allFilesEligible) {
                 Spacer(Modifier.height(12.dp))
                 AllFilesAccessSection(
                     permissionGranted = state.allFilesPermissionGranted,
@@ -380,7 +384,7 @@ fun SettingsScreen(
             }
 
             // SAF
-            if (state.safEligible) {
+            if (!BuildConfig.CBNX_LAB && state.safEligible) {
                 Spacer(Modifier.height(12.dp))
                 SAFAccessSection(
                     configured = state.safConfigured,
