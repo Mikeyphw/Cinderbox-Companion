@@ -6,7 +6,7 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
-    <application android:label="Cinderbox LAB" android:allowBackup="false" android:usesCleartextTraffic="false">
+    <application android:label="Cinderbox LAB" tools:replace="android:label" android:allowBackup="false" android:usesCleartextTraffic="false">
         <!-- Replace, rather than merge, filters: no external download-link or arbitrary file interception. -->
         <activity android:name=".MainActivity" android:exported="true"
             android:launchMode="singleTop" android:theme="@style/Theme.SDVSync" tools:node="replace">

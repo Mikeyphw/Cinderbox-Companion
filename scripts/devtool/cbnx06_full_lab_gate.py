@@ -105,6 +105,8 @@ def check(base: Path = ROOT) -> None:
     require(application is not None, 'LAB_MANIFEST_APPLICATION_MISSING')
     require(application.attrib.get(ANDROID+'label')=='Cinderbox LAB' and
             application.attrib.get(ANDROID+'allowBackup')=='false', 'LAB_UI_OR_BACKUP_IDENTITY_MISSING')
+    require(application.attrib.get(TOOLS+'replace')=='android:label',
+            'LAB_LABEL_MERGE_PRIORITY_MISSING')
     activity=application.find('activity')
     require(activity is not None and activity.attrib.get(ANDROID+'name')=='.MainActivity'
             and activity.attrib.get(TOOLS+'node')=='replace', 'LAB_ACTIVITY_NOT_REPLACED')
@@ -141,6 +143,9 @@ def check(base: Path = ROOT) -> None:
         txt=files[0].read_text()
         for token in tokens:
             require(token in txt, 'LAB_GUARD_MISSING:'+filename+':'+token)
+    production_bind = 'candidate.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 4)'
+    require(production_bind in (kotlin/'mods/NexusPairingBridge.kt').read_text(),
+            'LAB_PRODUCTION_LOOPBACK_BIND_CONTRACT_MISSING')
     # Transitive audit: any NEW absolute production root is a STOP, not an
     # invitation to silently allowlist it. Existing production literal is only
     # reachable through branch-protected CinderboxLabBoundary/SaveFileManager.

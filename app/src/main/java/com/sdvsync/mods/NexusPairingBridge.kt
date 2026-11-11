@@ -94,7 +94,12 @@ internal object NexusPairingBridge {
             ServerSocket().also { candidate ->
                 try {
                     candidate.reuseAddress = true
-                    candidate.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), ACTIVE_PORT), 4)
+                    if (BuildConfig.CBNX_LAB) {
+                        candidate.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), ACTIVE_PORT), 4)
+                    } else {
+                        // Preserve the existing production loopback binding contract.
+                        candidate.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 4)
+                    }
                     candidate.soTimeout = 1000
                 } catch (error: Exception) {
                     runCatching { candidate.close() }

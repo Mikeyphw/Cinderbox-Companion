@@ -51,6 +51,11 @@ class NegativeSources(unittest.TestCase):
     def test_wrong_lab_package_suffix(self):self.refuses('app/build.gradle.kts','.cbnx06lab','.prod', 'LAB_GRADLE_BUILD_VARIANT_INCOMPLETE')
     def test_lab_build_config_removed(self):self.refuses('app/build.gradle.kts','"CBNX_LAB", "true"','"CBNX_LAB", "false"','LAB_GRADLE_BUILD_VARIANT_INCOMPLETE')
     def test_missing_manifest_storage_deny(self):self.refuses('app/src/cbnxLab/AndroidManifest.xml','android.permission.MANAGE_EXTERNAL_STORAGE','android.permission.ACCESS_NETWORK_STATE','LAB_PRIVILEGED_PERMISSION_NOT_REMOVED')
+    def test_manifest_lab_label_merge_override(self):
+        self.refuses('app/src/cbnxLab/AndroidManifest.xml',
+                     'tools:replace="android:label"',
+                     'tools:replace="android:allowBackup"',
+                     'LAB_LABEL_MERGE_PRIORITY_MISSING')
     def test_nxm_interception(self):self.refuses('app/src/cbnxLab/AndroidManifest.xml','android.intent.action.MAIN','android.intent.action.VIEW','LAB_NXM_VIEW_INTERCEPTION')
     def test_more_than_one_filter(self):self.refuses('app/src/cbnxLab/AndroidManifest.xml','</intent-filter>','</intent-filter><intent-filter/>','LAB_UNEXPECTED_INTENT_FILTERS')
     def test_disable_activity_manifest_override(self):self.refuses('app/src/cbnxLab/AndroidManifest.xml','tools:node="replace"','tools:node="merge"','LAB_ACTIVITY_NOT_REPLACED')
@@ -61,6 +66,11 @@ class NegativeSources(unittest.TestCase):
     def test_missing_private_mod_root(self):self.refuses('app/src/main/java/com/sdvsync/mods/ModFileManager.kt','CinderboxLabBoundary.requireModsRoot(modsDir)','//unchecked','LAB_GUARD_MISSING')
     def test_bypass_save_redirection(self):self.refuses('app/src/main/java/com/sdvsync/saves/SaveFileManager.kt','if (BuildConfig.CBNX_LAB) CinderboxPaths.SAVES_DIR else','if (false) CinderboxPaths.SAVES_DIR else','LAB_GUARD_MISSING')
     def test_pairing_production_port_reuse(self):self.refuses('app/src/main/java/com/sdvsync/mods/NexusPairingBridge.kt','if (BuildConfig.CBNX_LAB) 38472 else PORT','if (BuildConfig.CBNX_LAB) PORT else PORT','LAB_GUARD_MISSING')
+    def test_production_loopback_bind_must_remain(self):
+        self.refuses('app/src/main/java/com/sdvsync/mods/NexusPairingBridge.kt',
+                     'candidate.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 4)',
+                     'candidate.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), ACTIVE_PORT), 4)',
+                     'LAB_PRODUCTION_LOOPBACK_BIND_CONTRACT_MISSING')
     def test_comment_only_real_root_is_not_runtime_path(self):
         p = self.root/'app/src/main/java/com/sdvsync/mods/Documentation.kt'
         p.write_text('// Production documentation: /storage/emulated/0/StardewValley\n/* Nested docs /* note */ /storage/emulated/0/StardewValley */\nval uri = "http://127.0.0.1/ok"\n')
