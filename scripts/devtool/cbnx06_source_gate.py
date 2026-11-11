@@ -11,6 +11,8 @@ w=(root/'.github/workflows/cbnx06-physical-read-only.yml').read_text()
 a=(root/'scripts/devtool/cbnx06_physical_acceptance.py').read_text()
 t=(root/'scripts/devtool/cbnx06_physical_acceptance_tests.py').read_text()
 d=(root/'docs/CBNX06_PHYSICAL_ACCEPTANCE.md').read_text()
+artifact=(root/'scripts/devtool/cbnx06_debug_artifact.py').read_text()
+artifact_tests=(root/'scripts/devtool/cbnx06_hf01_artifact_tests.py').read_text()
 for path,txt in [('acceptance',a),('tests',t),('workflow',w)]:
     assert txt and len(txt)>500, 'CBNX06_MISSING_SOURCE:'+path
 for token in ("ACK = 'I_AUTHORIZE_READ_ONLY_DEVICE_PROBE'",'run-as',
@@ -31,12 +33,28 @@ for forbidden in ('adb install','adb uninstall','su -c','pm clear','pm grant',
 for token in ('python3 -B scripts/devtool/cbnx06_physical_acceptance_tests.py',
               'python3 -B scripts/devtool/cbnx06_source_gate.py',
               ':app:assembleDebug',"cbnx06-exact-source-debug-apk",
-              'SOURCE_ATTESTATION.json','retention-days: 7',
-              "physical_arm64_qualified':False","live_nexus_qualified':False"):
+              'retention-days: 7'):
     assert token in w,'CBNX06_HOSTED_CONTRACT_STALE:'+token
 for token in ('--resume-only', '--full-mods-hash','run-as', 'physical device',
               'Nexus', 'Firefox', 'NO auto-install', 'rollback'):
     assert token.lower() in d.lower(),'CBNX06_DOC_INCOMPLETE:'+token
 assert len(re.findall(r'^    def test_',t,re.M))==25,'CBNX06_EXPECTED_25_TESTS'
-ast.parse(a);ast.parse(t)
+# HF01: do not assume app-debug.apk is the Gradle output. app/build.gradle.kts
+# sets outputFileName to CinderboxCompanion-v$versionName.apk. Match the
+# authoritative Gradle metadata and emit a stable attested artifact filename.
+for required in ('metadata_path = debug_dir / "output-metadata.json"', 'variantName', 'applicationId',
+                 'outputFile', 'CinderboxCompanion-v', 'MULTIPLE_OR_UNEXPECTED_APKS',
+                 'GRADLE_OUTPUT_FILENAME_MISMATCH', 'COPIED_APK_SHA256_MISMATCH',
+                 'SOURCE_ATTESTATION.json', 'SHA256SUMS',
+                 'source_sha', 'physical_arm64_qualified', 'release_qualified'):
+    assert required in artifact, 'CBNX06_HF01_ARTIFACT_SELECTOR_STALE:'+required
+for required in ('cbnx06_debug_artifact.py',
+                 'python3 -B scripts/devtool/cbnx06_hf01_artifact_tests.py',
+                 '--debug-dir app/build/outputs/apk/debug',
+                 '--output-dir "$RUNNER_TEMP/cbnx06-debug"',
+                 '--source-sha "$CBNX06_EXPECTED_HEAD"'):
+    assert required in w, 'CBNX06_HF01_WORKFLOW_STALE:'+required
+assert 'test -s app/build/outputs/apk/debug/app-debug.apk' not in w, 'CBNX06_HF01_OLD_FIXED_APK_PATH'
+assert len(re.findall(r'^    def test_', artifact_tests,re.M))>=14, 'CBNX06_HF01_TEST_ROSTER_STALE'
+ast.parse(a);ast.parse(t);ast.parse(artifact);ast.parse(artifact_tests)
 print('CBNX06_READ_ONLY_SOURCE_AND_HOSTED_ARTIFACT_CONTRACT_PASS')

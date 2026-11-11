@@ -5,6 +5,8 @@ on:
       - 'scripts/devtool/cbnx06_physical_acceptance.py'
       - 'scripts/devtool/cbnx06_physical_acceptance_tests.py'
       - 'scripts/devtool/cbnx06_source_gate.py'
+      - 'scripts/devtool/cbnx06_debug_artifact.py'
+      - 'scripts/devtool/cbnx06_hf01_artifact_tests.py'
       - 'docs/CBNX06_PHYSICAL_ACCEPTANCE.md'
       - '.github/workflows/cbnx06-physical-read-only.yml'
   workflow_dispatch:
@@ -33,6 +35,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$CBNX06_EXPECTED_HEAD"
           python3 -B scripts/devtool/cbnx06_source_gate.py
           python3 -B scripts/devtool/cbnx06_physical_acceptance_tests.py
+          python3 -B scripts/devtool/cbnx06_hf01_artifact_tests.py
           python3 -B scripts/devtool/cbnx01_gate.py
           python3 -B scripts/devtool/cbnx03b_source_gate.py
       - name: Build exact-source unsigned-release debug APK (no device qualification)
@@ -41,21 +44,10 @@ jobs:
           test "$(git rev-parse HEAD)" = "$CBNX06_EXPECTED_HEAD"
           chmod +x gradlew
           ./gradlew --no-daemon --max-workers=2 :app:assembleDebug
-          test -s app/build/outputs/apk/debug/app-debug.apk
-          mkdir -p "$RUNNER_TEMP/cbnx06-debug"
-          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/cbnx06-debug/app-debug.apk"
-          (cd "$RUNNER_TEMP/cbnx06-debug" && sha256sum app-debug.apk > SHA256SUMS)
-          CBNX06_APK_SHA="$(cut -d ' ' -f 1 "$RUNNER_TEMP/cbnx06-debug/SHA256SUMS")"
-          CBNX06_APK_SHA="$CBNX06_APK_SHA" python3 - <<'PY'
-          import json,os,pathlib
-          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'cbnx06-debug'/'SOURCE_ATTESTATION.json'
-          out.write_text(json.dumps({'schema':'cbnx06-hosted-debug-apk-v1',
-            'source_sha':os.environ['CBNX06_EXPECTED_HEAD'],
-            'apk_sha256':os.environ['CBNX06_APK_SHA'],
-            'physical_arm64_qualified':False,'live_firefox_qualified':False,
-            'live_nexus_qualified':False,'release_qualified':False},
-            indent=2,sort_keys=True)+'\n')
-          PY
+          python3 -B scripts/devtool/cbnx06_debug_artifact.py \
+            --debug-dir app/build/outputs/apk/debug \
+            --output-dir "$RUNNER_TEMP/cbnx06-debug" \
+            --source-sha "$CBNX06_EXPECTED_HEAD"
       - name: Upload debug APK for explicit separate device inspection
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
