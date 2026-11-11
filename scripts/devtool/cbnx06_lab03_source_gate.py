@@ -72,6 +72,16 @@ def check(root=ROOT):
                    '38472','getBoolean("download_started")',
                    'getBoolean("archive_staged")','NexusPairingInbox.resolve('):
         require(anchor in t,'LAB03A_DEVICE_COVERAGE_MISSING:'+anchor)
+    # LAB03A HF01: the lab-only tests have to compile against the inherited
+    # debug synthetic worker class, without importing its debug-only manifest.
+    require('getByName("cbnxLab").java.srcDir("src/debug/java")' in texts['gradle'],
+            'LAB03A_HF01_INHERITED_DEBUG_SYNTHETIC_WORKER_NOT_SHARED')
+    # A copied durability check accidentally appeared here, outside its helper
+    # scope. The real private archive durability witness must remain in evidence.
+    require('check(archiveFile.isFile' not in t and 'sha256(archiveFile.readBytes())' not in t,
+            'LAB03A_HF01_UNBOUND_KOTLIN_ARCHIVE_LOCALS')
+    require(t.count('@Test fun ') == 2, 'LAB03A_HF01_UNEXPECTED_INSTRUMENTATION_ROSTER')
+    print('CBNX06_LAB03A_HF01_COMPILE_CONTRACT_PASS')
     print('CBNX06_LAB03A_SYNTHETIC_PAIRING_SOURCE_GATE_PASS')
 if __name__=='__main__':
     try:check()

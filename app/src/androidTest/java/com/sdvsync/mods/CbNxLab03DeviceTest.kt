@@ -66,8 +66,6 @@ class CbNxLab03DeviceTest {
     @Test fun syntheticArchivePreviewDoesNotModifyLabMods() {
         assertTrue(BuildConfig.CBNX_LAB)
         assertEquals("com.sdvsync.cbnx06lab", context.packageName)
-        check(archiveFile.isFile && archiveFile.length() == expected.size.toLong() &&
-            sha256(archiveFile.readBytes()) == digest) { "LAB03_ARCHIVE_DURABILITY_MISMATCH" }
         val mods = File(CinderboxPaths.MODS_DIR)
         CinderboxLabBoundary.requireModsRoot(mods)
         val before = mods.listFiles()?.map { it.name to it.length() }?.sortedBy { it.first }

@@ -85,6 +85,14 @@ android {
         }
     }
 
+    // LAB03A HF01: inherited AndroidTest classes reference the M20 synthetic
+    // worker present in src/debug/java. Reuse only its source (not the debug
+    // manifest, service registration, storage permissions, or credentials).
+    // This does not change ordinary debug or release build source sets.
+    sourceSets {
+        getByName("cbnxLab").java.srcDir("src/debug/java")
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11

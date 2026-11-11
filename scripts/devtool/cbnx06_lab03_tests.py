@@ -36,6 +36,17 @@ class Negatives(unittest.TestCase):
     def test_gradle_test_variant(self):self.mutate('gradle','-PcbnxLabAndroidTest=true','-PdebugLab=true','NO_ANCHOR') if False else self.mutate('gradle','if (providers.gradleProperty("cbnxLabAndroidTest").orNull == "true") "cbnxLab" else "debug"','"debug"','TEST_BUILD_VARIANT_MISSING')
     def test_ci_test_task(self):self.mutate('workflow',':app:assembleCbnxLabAndroidTest',':app:assembleDebugAndroidTest','HOSTED_GATE_MISSING')
     def test_android_test_roster(self):self.mutate('test','@Test fun labPairingRequiresConsentAndRecordsOnlyExactInboxRequest()','@Test fun skippedPairing()','DEVICE_COVERAGE_MISSING')
+    def test_invalid_copied_archive_check_refused(self):
+        self.mutate('test',
+            '        val mods = File(CinderboxPaths.MODS_DIR)',
+            '        check(archiveFile.isFile && sha256(archiveFile.readBytes()) == digest)\n'
+            '        val mods = File(CinderboxPaths.MODS_DIR)',
+            'LAB03A_HF01_UNBOUND_KOTLIN_ARCHIVE_LOCALS')
+    def test_missing_synthetic_worker_build_source_refused(self):
+        self.mutate('gradle',
+            'getByName("cbnxLab").java.srcDir("src/debug/java")',
+            'getByName("cbnxLab").java.srcDir("src/none/java")',
+            'LAB03A_HF01_INHERITED_DEBUG_SYNTHETIC_WORKER_NOT_SHARED')
     def test_raw_log_not_proof(self):
         s='INSTRUMENTATION_STATUS: test=syntheticArchivePreviewDoesNotModifyLabMods\nOK (2 tests)\nINSTRUMENTATION_CODE: 0'
         r=verify(s,0,'a'*40,'123','b'*64,'c'*64)
