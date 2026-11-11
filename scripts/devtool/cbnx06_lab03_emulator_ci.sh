@@ -19,14 +19,22 @@ app_sha=$(sha256sum "${app[0]}" | cut -d' ' -f1)
 test_sha=$(sha256sum "${test_apk[0]}" | cut -d' ' -f1)
 adb -s "$serial" install -t "${app[0]}" >/dev/null
 adb -s "$serial" install -t "${test_apk[0]}" >/dev/null
-raw="$out/.raw-instrumentation.log"
-trap 'rm -f "$raw"' EXIT
+# Split the two existing tests to record WHICH test failed; no test skipped.
+raw="$out/.raw-preview.log"
+raw_pair="$out/.raw-pairing.log"
+trap 'rm -f -- "$raw" "$raw_pair"' EXIT
 set +e
-adb -s "$serial" shell am instrument -w -r -e class com.sdvsync.mods.CbNxLab03DeviceTest \
+timeout 90s adb -s "$serial" shell am instrument -w -r -e class \
+  'com.sdvsync.mods.CbNxLab03DeviceTest#syntheticArchivePreviewDoesNotModifyLabMods' \
   com.sdvsync.cbnx06lab.test/androidx.test.runner.AndroidJUnitRunner > "$raw" 2>&1
 status=$?
+timeout 90s adb -s "$serial" shell am instrument -w -r -e class \
+  'com.sdvsync.mods.CbNxLab03DeviceTest#labPairingRequiresConsentAndRecordsOnlyExactInboxRequest' \
+  com.sdvsync.cbnx06lab.test/androidx.test.runner.AndroidJUnitRunner > "$raw_pair" 2>&1
+pair_status=$?
 set -e
 python3 -B scripts/devtool/cbnx06_lab03_receipt.py --raw "$raw" --exit "$status" \
+  --raw-pair "$raw_pair" --exit-pair "$pair_status" \
   --source "$CBNX_LAB03_HEAD_SHA" --run "$GITHUB_RUN_ID" \
   --apk "$app_sha" --test-apk "$test_sha" --output "$out/STATUS.json"
-echo CBNX06_LAB03A_EMULATOR_SYNTHETIC_PAIRING_AND_PREVIEW_PASS
+echo CBNX06_LAB03A_HF02_ISOLATED_INSTRUMENTATION_PASS

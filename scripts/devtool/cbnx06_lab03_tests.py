@@ -47,6 +47,26 @@ class Negatives(unittest.TestCase):
             'getByName("cbnxLab").java.srcDir("src/debug/java")',
             'getByName("cbnxLab").java.srcDir("src/none/java")',
             'LAB03A_HF01_INHERITED_DEBUG_SYNTHETIC_WORKER_NOT_SHARED')
+    def test_hf02_case_isolation_and_redaction(self):
+        from cbnx06_lab03_receipt import case_status,CASES
+        ok=lambda x:('INSTRUMENTATION_STATUS: test='+x+'\n')*2+'OK (1 test)\nINSTRUMENTATION_CODE: 0'
+        self.assertEqual(case_status(ok(CASES[0]),0,CASES[0])['status'],'PASS')
+        self.assertEqual(case_status(ok(CASES[1]),0,CASES[0])['failure_code'],'TEST_EVENTS_MISSING')
+        redacted=case_status('INSTRUMENTATION_STATUS: stack=TOKEN_SECRET\nFAILURES!!!',1,CASES[0])
+        self.assertEqual(redacted['failure_code'],'TEST_ASSERTION_FAILED')
+        self.assertNotIn('TOKEN_SECRET',repr(redacted))
+        self.assertEqual(case_status('timeout',124,CASES[0])['failure_code'],'TEST_TIMEOUT')
+    def test_hf02_split_aggregate_requires_both_cases(self):
+        from cbnx06_lab03_receipt import verify_split,CASES
+        ok=lambda x:('INSTRUMENTATION_STATUS: test='+x+'\n')*2+'OK (1 test)\nINSTRUMENTATION_CODE: 0'
+        a=verify_split(ok(CASES[0]),0,ok(CASES[1]),0,'a'*40,'123','b'*64,'c'*64)
+        self.assertEqual(a['status'],'PASS');self.assertEqual(a['tests_passed'],2)
+        self.assertFalse(a['physical_qualified']);self.assertFalse(a['live_nexus_qualified'])
+        b=verify_split(ok(CASES[0]),0,'FAILURES!!!',1,'a'*40,'123','b'*64,'c'*64)
+        self.assertEqual(b['status'],'NOT_QUALIFIED');self.assertEqual(b['tests_passed'],1)
+    def test_hf02_raw_cleanup_guard(self):
+        self.mutate('runner', 'trap \'rm -f -- "$raw" "$raw_pair"\' EXIT',
+                    'trap : EXIT','LAB03A_HF02_RUNNER_DIAGNOSTIC_MISSING')
     def test_raw_log_not_proof(self):
         s='INSTRUMENTATION_STATUS: test=syntheticArchivePreviewDoesNotModifyLabMods\nOK (2 tests)\nINSTRUMENTATION_CODE: 0'
         r=verify(s,0,'a'*40,'123','b'*64,'c'*64)

@@ -82,6 +82,15 @@ def check(root=ROOT):
             'LAB03A_HF01_UNBOUND_KOTLIN_ARCHIVE_LOCALS')
     require(t.count('@Test fun ') == 2, 'LAB03A_HF01_UNEXPECTED_INSTRUMENTATION_ROSTER')
     print('CBNX06_LAB03A_HF01_COMPILE_CONTRACT_PASS')
+    for marker in ('#syntheticArchivePreviewDoesNotModifyLabMods',
+                   '#labPairingRequiresConsentAndRecordsOnlyExactInboxRequest',
+                   '--raw-pair', '--exit-pair', 'timeout 90s adb',
+                   'trap \'rm -f -- "$raw" "$raw_pair"\' EXIT'):
+        require(marker in texts['runner'], 'LAB03A_HF02_RUNNER_DIAGNOSTIC_MISSING:'+marker)
+    for marker in ('def case_status(', 'def verify_split(', "'TEST_ASSERTION_FAILED'",
+                   "'TEST_EVENTS_MISSING'", "'production_data_immutability_qualified':False"):
+        require(marker in texts['receipt'], 'LAB03A_HF02_RECEIPT_DIAGNOSTIC_MISSING:'+marker)
+    print('CBNX06_LAB03A_HF02_CASE_DIAGNOSTIC_SOURCE_PASS')
     print('CBNX06_LAB03A_SYNTHETIC_PAIRING_SOURCE_GATE_PASS')
 if __name__=='__main__':
     try:check()
