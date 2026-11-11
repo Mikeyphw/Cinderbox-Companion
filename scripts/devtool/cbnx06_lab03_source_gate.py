@@ -58,7 +58,7 @@ def check(root=ROOT):
             'com.sdvsync.cbnx06lab.test/androidx.test.runner.AndroidJUnitRunner' in texts['runner'] and
             'ro.kernel.qemu' in texts['runner'] and 'test -z ' in texts['runner'],
             'LAB03A_EMULATOR_RUNNER_GUARDS_MISSING')
-    require('INSTRUMENTATION_CODE: 0' in texts['receipt'] and
+    require('INSTRUMENTATION_CODE: -1' in texts['receipt'] and
             'live_nexus_qualified' in texts['receipt'] and
             'production_data_immutability_qualified' in texts['receipt'],
             'LAB03A_RECEIPT_UNQUALIFIED')

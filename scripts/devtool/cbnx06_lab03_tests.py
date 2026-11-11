@@ -49,7 +49,7 @@ class Negatives(unittest.TestCase):
             'LAB03A_HF01_INHERITED_DEBUG_SYNTHETIC_WORKER_NOT_SHARED')
     def test_hf02_case_isolation_and_redaction(self):
         from cbnx06_lab03_receipt import case_status,CASES
-        ok=lambda x:('INSTRUMENTATION_STATUS: test='+x+'\n')*2+'OK (1 test)\nINSTRUMENTATION_CODE: 0'
+        ok=lambda x:('INSTRUMENTATION_STATUS: test='+x+'\n')*2+'OK (1 test)\nINSTRUMENTATION_CODE: -1'
         self.assertEqual(case_status(ok(CASES[0]),0,CASES[0])['status'],'PASS')
         self.assertEqual(case_status(ok(CASES[1]),0,CASES[0])['failure_code'],'TEST_EVENTS_MISSING')
         redacted=case_status('INSTRUMENTATION_STATUS: stack=TOKEN_SECRET\nFAILURES!!!',1,CASES[0])
@@ -58,22 +58,57 @@ class Negatives(unittest.TestCase):
         self.assertEqual(case_status('timeout',124,CASES[0])['failure_code'],'TEST_TIMEOUT')
     def test_hf02_split_aggregate_requires_both_cases(self):
         from cbnx06_lab03_receipt import verify_split,CASES
-        ok=lambda x:('INSTRUMENTATION_STATUS: test='+x+'\n')*2+'OK (1 test)\nINSTRUMENTATION_CODE: 0'
+        ok=lambda x:('INSTRUMENTATION_STATUS: test='+x+'\n')*2+'OK (1 test)\nINSTRUMENTATION_CODE: -1'
         a=verify_split(ok(CASES[0]),0,ok(CASES[1]),0,'a'*40,'123','b'*64,'c'*64)
         self.assertEqual(a['status'],'PASS');self.assertEqual(a['tests_passed'],2)
         self.assertFalse(a['physical_qualified']);self.assertFalse(a['live_nexus_qualified'])
         b=verify_split(ok(CASES[0]),0,'FAILURES!!!',1,'a'*40,'123','b'*64,'c'*64)
         self.assertEqual(b['status'],'NOT_QUALIFIED');self.assertEqual(b['tests_passed'],1)
+    def test_hf03_android_result_ok_is_minus_one(self):
+        # Android Activity.RESULT_OK is -1; overall 0 is not a passing
+        # AndroidJUnitRunner completion. This is separate from a per-test
+        # INSTRUMENTATION_STATUS_CODE of 0 (one test passed).
+        from cbnx06_lab03_receipt import case_status, verify_split, CASES
+        def raw(name, final=-1):
+            return (f'INSTRUMENTATION_STATUS: test={name}\n'
+                    'INSTRUMENTATION_STATUS_CODE: 1\n'
+                    f'INSTRUMENTATION_STATUS: test={name}\n'
+                    'INSTRUMENTATION_STATUS_CODE: 0\n'
+                    f'OK (1 test)\nINSTRUMENTATION_CODE: {final}\n')
+        for name in CASES:
+            self.assertEqual(case_status(raw(name),0,name)['status'],'PASS')
+            self.assertEqual(case_status(raw(name,0),0,name)['status'],'NOT_QUALIFIED')
+            self.assertEqual(case_status(raw(name,0),0,name)['failure_code'],'TEST_SUMMARY_MISSING')
+            self.assertEqual(case_status(raw(name).replace('INSTRUMENTATION_STATUS_CODE: 0',
+                                                           'INSTRUMENTATION_STATUS_CODE: -2'),0,name)['status'],
+                             'NOT_QUALIFIED')
+            self.assertEqual(case_status(raw(name).replace('OK (1 test)','FAILURES!!!'),0,name)['status'],
+                             'NOT_QUALIFIED')
+        both=verify_split(raw(CASES[0]),0,raw(CASES[1]),0,'a'*40,'123','b'*64,'c'*64)
+        self.assertEqual(both['tests_passed'],2)
+        self.assertEqual(both['status'],'PASS')
+        self.assertFalse(both['physical_qualified'])
+        self.assertFalse(both['live_nexus_qualified'])
+        self.assertFalse(both['production_data_immutability_qualified'])
+        self.assertFalse(both['release_qualified'])
+        mixed=verify_split(raw(CASES[0]),0,raw(CASES[1],0),0,'a'*40,'123','b'*64,'c'*64)
+        self.assertEqual(mixed['tests_passed'],1)
+        self.assertEqual(mixed['status'],'NOT_QUALIFIED')
+    def test_hf03_receipt_source_guard_rejects_wrong_final_code(self):
+        # Explicit assertion against accidental semantic rollback: gate must
+        # require the correct AndroidJUnitRunner terminal event.
+        self.assertIn("'INSTRUMENTATION_CODE: -1' in texts['receipt']",
+                      (ROOT/'scripts/devtool/cbnx06_lab03_source_gate.py').read_text())
     def test_hf02_raw_cleanup_guard(self):
         self.mutate('runner', 'trap \'rm -f -- "$raw" "$raw_pair"\' EXIT',
                     'trap : EXIT','LAB03A_HF02_RUNNER_DIAGNOSTIC_MISSING')
     def test_raw_log_not_proof(self):
-        s='INSTRUMENTATION_STATUS: test=syntheticArchivePreviewDoesNotModifyLabMods\nOK (2 tests)\nINSTRUMENTATION_CODE: 0'
+        s='INSTRUMENTATION_STATUS: test=syntheticArchivePreviewDoesNotModifyLabMods\nOK (2 tests)\nINSTRUMENTATION_CODE: -1'
         r=verify(s,0,'a'*40,'123','b'*64,'c'*64)
         self.assertEqual(r['status'],'NOT_QUALIFIED')
         self.assertFalse(r['physical_qualified'])
     def test_success_without_production_evidence(self):
-        names='INSTRUMENTATION_STATUS: test=syntheticArchivePreviewDoesNotModifyLabMods\nINSTRUMENTATION_STATUS: test=syntheticArchivePreviewDoesNotModifyLabMods\nINSTRUMENTATION_STATUS: test=labPairingRequiresConsentAndRecordsOnlyExactInboxRequest\nINSTRUMENTATION_STATUS: test=labPairingRequiresConsentAndRecordsOnlyExactInboxRequest\nOK (2 tests)\nINSTRUMENTATION_CODE: 0'
+        names='INSTRUMENTATION_STATUS: test=syntheticArchivePreviewDoesNotModifyLabMods\nINSTRUMENTATION_STATUS: test=syntheticArchivePreviewDoesNotModifyLabMods\nINSTRUMENTATION_STATUS: test=labPairingRequiresConsentAndRecordsOnlyExactInboxRequest\nINSTRUMENTATION_STATUS: test=labPairingRequiresConsentAndRecordsOnlyExactInboxRequest\nOK (2 tests)\nINSTRUMENTATION_CODE: -1'
         r=verify(names,0,'a'*40,'123','b'*64,'c'*64)
         self.assertEqual(r['status'],'PASS')
         self.assertFalse(r['production_data_immutability_qualified'])

@@ -10,7 +10,7 @@ def verify(raw, code, source, run, apk, test_apk):
     names=re.findall(r'(?m)^INSTRUMENTATION_STATUS: test=(\w+)\r?$',raw)
     expected={'syntheticArchivePreviewDoesNotModifyLabMods','labPairingRequiresConsentAndRecordsOnlyExactInboxRequest'}
     passed=code==0 and set(names)==expected and len(names)==2*len(expected) and all(names.count(x)==2 for x in expected) and \
-        'OK (2 tests)' in raw and 'INSTRUMENTATION_CODE: 0' in raw and \
+        'OK (2 tests)' in raw and 'INSTRUMENTATION_CODE: -1' in raw and \
         'FAILURES!!!' not in raw and 'INSTRUMENTATION_FAILED' not in raw
     return {'schema':'cbnx06-lab03a-emulator-v1','status':'PASS' if passed else 'NOT_QUALIFIED',
             'source_sha':source,'run_id':run,'apk_sha256':apk,'test_apk_sha256':test_apk,
@@ -28,7 +28,7 @@ def case_status(raw, exit_code, expected):
         return {'test':expected,'status':'NOT_QUALIFIED','failure_code':'LOG_BUDGET'}
     names=re.findall(r'(?m)^INSTRUMENTATION_STATUS: test=(\w+)\r?$',raw)
     passed=(exit_code==0 and len(names)==2 and names.count(expected)==2 and
-            'OK (1 test)' in raw and 'INSTRUMENTATION_CODE: 0' in raw and
+            'OK (1 test)' in raw and 'INSTRUMENTATION_CODE: -1' in raw and
             'FAILURES!!!' not in raw and 'INSTRUMENTATION_FAILED' not in raw and
             'INSTRUMENTATION_STATUS_CODE: -2' not in raw and
             'INSTRUMENTATION_STATUS_CODE: -1' not in raw)
