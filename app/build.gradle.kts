@@ -22,6 +22,9 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // LAB03A AndroidTest targets the isolated build only on explicit hosted opt-in.
+    testBuildType = if (providers.gradleProperty("cbnxLabAndroidTest").orNull == "true") "cbnxLab" else "debug"
+
     // M16: CI must opt in explicitly; local development retains Android's debug key.
     // Never reuse release-signing secrets or permit a silent CI debug-key fallback.
     val requireStableDebugSigner =

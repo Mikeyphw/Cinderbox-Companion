@@ -11,11 +11,15 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.sdvsync.mods.NexusPairingBridge
 import com.sdvsync.mods.NexusPairingInbox
+import com.sdvsync.mods.NexusLab03Evidence
 import com.sdvsync.mods.NexusCompanionPrivacyPolicy
 import com.sdvsync.BuildConfig
 import com.sdvsync.mods.api.NexusBrowserHandoff
 import com.sdvsync.mods.api.NexusBrowserLauncher
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Explicit opt-in local pairing, deliberately unavailable when the app process is gone. */
 @Composable
@@ -25,6 +29,8 @@ internal fun NexusPairingPanel() {
     var problem by remember { mutableStateOf(false) }
     var inboxError by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var lab03Outcome by remember { mutableStateOf<String?>(null) }
+    val lab03Scope = rememberCoroutineScope()
     var diagnosticPreview by remember { mutableStateOf<String?>(null) }
     var inbox by remember { mutableStateOf<List<NexusPairingInbox.Entry>>(emptyList()) }
     fun refreshInbox() {
@@ -65,7 +71,7 @@ internal fun NexusPairingPanel() {
                 if (state.code != null) {
                     Text("Pairing code: ${state.code}", style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.testTag("cbnx03.pairing.code"))
-                    Text("Enter this code in the Stardew Nexus Queue Firefox popup.",
+                    Text(if (BuildConfig.CBNX_LAB) "Enter this code in the LAB02C Firefox popup (port 38472)." else "Enter this code in the Stardew Nexus Queue Firefox popup.",
                         style = MaterialTheme.typography.bodySmall)
                 } else {
                     Text(if (state.connected) "Paired for read-only status" else "Pairing code expired or revoked",
@@ -91,6 +97,29 @@ internal fun NexusPairingPanel() {
                         modifier = Modifier.testTag("cbnx03.pairing.stop")) { Text("Stop") }
                 }
             }
+        }
+        if (BuildConfig.CBNX_LAB) {
+            Text("LAB03A synthetic only · Not downloaded from Nexus", style = MaterialTheme.typography.titleSmall)
+            Text("Generate a deterministic test ZIP and preview it using Cinderbox's real archive reviewer. No installation or live Nexus traffic.",
+                style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(enabled = !busy, onClick = {
+                busy = true
+                lab03Scope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        runCatching { NexusLab03Evidence.previewSynthetic(context) }
+                    }
+                    lab03Outcome = result.fold(
+                        onSuccess = { "LAB03A SYNTHETIC PREVIEW: ${it.proposedChanges} proposed change · SHA-256 ${it.archiveSha256.take(16)}… · no install" },
+                        onFailure = { "LAB03A REFUSED: ${it.javaClass.simpleName}" }
+                    )
+                    busy = false
+                }
+            }, modifier = Modifier.testTag("cbnx06.lab03a.preview-synthetic")) {
+                Text("Preview synthetic ZIP (LAB only)")
+            }
+            lab03Outcome?.let { Text(it, modifier = Modifier.testTag("cbnx06.lab03a.result"),
+                style = MaterialTheme.typography.bodySmall) }
+            HorizontalDivider()
         }
         Text("Exact-file requests", style = MaterialTheme.typography.titleSmall)
         Text("Requests are private and never install or download a mod by themselves. " +
