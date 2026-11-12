@@ -52,6 +52,16 @@ internal fun NexusPairingPanel() {
             style = MaterialTheme.typography.titleMedium)
         Text("Optional read-only queue status and explicit exact-file requests. No Nexus login, tokens or mod installation access is shared.",
             style = MaterialTheme.typography.bodySmall)
+        if (BuildConfig.CBNX_LAB) {
+            Text(when {
+                state.connected && state.handoffEnabled -> "LAB paired · exact-file requests allowed."
+                state.connected -> "LAB paired · enable exact-file requests below."
+                state.listening && state.code != null -> "LAB awaiting Iceraven pairing · enter the code in the LAB extension."
+                state.listening -> "LAB waiting · pairing code expired or revoked."
+                else -> "LAB disconnected · start a pairing window."
+            }, modifier = Modifier.testTag("cbnx06.lab.pairing-status"),
+                style = MaterialTheme.typography.bodyMedium)
+        }
         when {
             !state.listening -> {
                 Text("Not connected", style = MaterialTheme.typography.bodyMedium)
@@ -77,25 +87,35 @@ internal fun NexusPairingPanel() {
                     Text(if (state.connected) "Paired for read-only status" else "Pairing code expired or revoked",
                         style = MaterialTheme.typography.bodyMedium)
                 }
-                if (state.connected) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Allow exact-file requests from Firefox", style = MaterialTheme.typography.bodyMedium)
-                            Text("Off by default. Requests enter a private inbox; opening Nexus still needs your tap.",
-                                style = MaterialTheme.typography.bodySmall)
-                        }
-                        Switch(checked = state.handoffEnabled, onCheckedChange = {
-                            NexusPairingBridge.setHandoffEnabled(it)
-                            state = NexusPairingBridge.snapshot()
-                        }, modifier = Modifier.testTag("cbnx03b.pairing.allow-handoff"))
-                    }
-                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { NexusPairingBridge.revoke(); state = NexusPairingBridge.snapshot() },
                         modifier = Modifier.testTag("cbnx03.pairing.revoke")) { Text("Revoke") }
                     OutlinedButton(onClick = { NexusPairingBridge.stop(); state = NexusPairingBridge.snapshot() },
                         modifier = Modifier.testTag("cbnx03.pairing.stop")) { Text("Stop") }
                 }
+            }
+        }
+        // LAB: always show consent, but never enable it before a real local pairing.
+        // Production preserves its historical visibility (connected only).
+        if (BuildConfig.CBNX_LAB || state.connected) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text("Allow exact-file requests from Firefox", style = MaterialTheme.typography.bodyMedium)
+                    Text(if (state.connected)
+                            "Off by default. Requests enter a private inbox; opening Nexus still needs your tap."
+                         else "Disabled until paired. Enter the code in the isolated Iceraven extension first.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                Switch(checked = state.connected && state.handoffEnabled,
+                    enabled = state.connected && state.listening,
+                    onCheckedChange = {
+                        if (state.connected && state.listening) {
+                            problem = false
+                            runCatching { NexusPairingBridge.setHandoffEnabled(it) }
+                                .onFailure { problem = true }
+                            state = NexusPairingBridge.snapshot()
+                        }
+                    }, modifier = Modifier.testTag("cbnx03b.pairing.allow-handoff"))
             }
         }
         if (BuildConfig.CBNX_LAB) {

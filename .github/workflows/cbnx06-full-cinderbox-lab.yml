@@ -43,6 +43,8 @@ jobs:
           python3 -B scripts/devtool/cbnx06_lab03_tests.py
           python3 -B scripts/devtool/cbnx06_lab03b_source_gate.py
           python3 -B scripts/devtool/cbnx06_lab03b_tests.py
+          python3 -B scripts/devtool/cbnx06_lab03b_ux09_gate.py
+          python3 -B scripts/devtool/cbnx06_lab03b_ux09_tests.py
           python3 -B scripts/devtool/cbnx06_source_gate.py
           python3 -B scripts/devtool/cbnx06_physical_acceptance_tests.py
           python3 -B scripts/devtool/cbnx06_hf01_artifact_tests.py
