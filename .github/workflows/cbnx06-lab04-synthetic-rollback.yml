@@ -1,0 +1,48 @@
+name: CB-NX06 LAB04 Isolated Synthetic Install and Rollback
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/sdvsync/mods/NexusLab04Synthetic*.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/NexusPairingPanel.kt'
+      - 'app/src/test/java/com/sdvsync/mods/NexusLab04SyntheticPolicyTest.kt'
+      - 'scripts/devtool/cbnx06_lab04_*.py'
+      - 'docs/CBNX06_LAB04_SYNTHETIC_INSTALL_ROLLBACK.md'
+      - '.github/workflows/cbnx06-lab04-synthetic-rollback.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-jvm-and-isolated-lab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Pinned LAB04 install rollback source and 24 adversarial negatives
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          python3 -B scripts/devtool/cbnx06_lab04_source_gate.py
+          python3 -B scripts/devtool/cbnx06_lab04_tests.py
+          python3 -B scripts/devtool/cbnx06_lab03d_source_gate.py
+          python3 -B scripts/devtool/cbnx06_lab03d_tests.py
+          python3 -B scripts/devtool/cbnx06_lab03c_source_gate.py
+          python3 -B scripts/devtool/cbnx06_lab03b_ux09_gate.py
+          python3 -B scripts/devtool/cbnx03b_source_gate.py
+      - name: Kotlin JVM policy and full isolated app compilation (GitHub only)
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:testDebugUnitTest :app:assembleCbnxLab
+          echo 'LAB04_HOSTED_SOURCE_AND_COMPILATION_ONLY_PHYSICAL_INSTALL_ROLLBACK_DEFERRED'

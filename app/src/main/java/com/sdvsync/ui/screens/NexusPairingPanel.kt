@@ -14,6 +14,7 @@ import com.sdvsync.mods.NexusPairingInbox
 import com.sdvsync.mods.NexusLab03CPolicy
 import com.sdvsync.mods.NexusLab03Evidence
 import com.sdvsync.mods.NexusLab03DArchiveStage
+import com.sdvsync.mods.NexusLab04SyntheticTransaction
 import com.sdvsync.mods.NexusCompanionPrivacyPolicy
 import com.sdvsync.BuildConfig
 import com.sdvsync.mods.api.NexusBrowserHandoff
@@ -33,6 +34,8 @@ internal fun NexusPairingPanel() {
     var busy by remember { mutableStateOf(false) }
     var lab03Outcome by remember { mutableStateOf<String?>(null) }
     var lab03dOutcome by remember { mutableStateOf<String?>(null) }
+    var lab04Outcome by remember { mutableStateOf<String?>(null) }
+    var lab04Action by remember { mutableStateOf<String?>(null) }
     var lab03cSelection by remember { mutableStateOf<NexusPairingInbox.Entry?>(null) }
     var lab03cFeedback by remember { mutableStateOf<String?>(null) }
     val lab03Scope = rememberCoroutineScope()
@@ -167,6 +170,64 @@ internal fun NexusPairingPanel() {
             lab03dOutcome?.let {
                 Text(it, modifier = Modifier.testTag("cbnx06.lab03d.stage-feedback"),
                     style = MaterialTheme.typography.bodySmall)
+            }
+            Text("LAB04 · Synthetic installation and rollback", style = MaterialTheme.typography.titleSmall)
+            Text("One-time install of the verified LAB03D synthetic archive into the empty private LAB Mods root. " +
+                "Rollback removes only its unmodified synthetic folder and retains a snapshot. " +
+                "Interrupted transactions refuse automatic retries. Nothing touches production Stardew Valley.",
+                style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(enabled = !busy, onClick = { lab04Action = "INSTALL" },
+                    modifier = Modifier.testTag("cbnx06.lab04.request-install")) {
+                    Text("Install synthetic mod (LAB)")
+                }
+                OutlinedButton(enabled = !busy, onClick = { lab04Action = "ROLLBACK" },
+                    modifier = Modifier.testTag("cbnx06.lab04.request-rollback")) {
+                    Text("Rollback synthetic mod (LAB)")
+                }
+            }
+            lab04Outcome?.let {
+                Text(it, modifier = Modifier.testTag("cbnx06.lab04.action-feedback"),
+                    style = MaterialTheme.typography.bodySmall)
+            }
+            lab04Action?.let { action ->
+                AlertDialog(
+                    onDismissRequest = { lab04Action = null },
+                    title = { Text(if (action == "INSTALL") "LAB04 · Confirm synthetic install"
+                        else "LAB04 · Confirm synthetic rollback") },
+                    text = { Text(if (action == "INSTALL")
+                        "Install exactly one verified synthetic test mod in the empty app-private LAB Mods root? " +
+                            "This is not a Nexus download or production game installation."
+                        else "Remove only the exact unmodified synthetic LAB04 test mod using " +
+                            "Cinderbox's snapshot-backed removal? Other contents cause refusal.") },
+                    confirmButton = {
+                        TextButton(enabled = !busy, onClick = {
+                            lab04Action = null
+                            busy = true
+                            lab03Scope.launch {
+                                val result = withContext(Dispatchers.IO) {
+                                    runCatching {
+                                        if (action == "INSTALL")
+                                            NexusLab04SyntheticTransaction.installSynthetic(context)
+                                        else NexusLab04SyntheticTransaction.rollbackSynthetic(context)
+                                    }
+                                }
+                                lab04Outcome = result.fold(
+                                    onSuccess = { "LAB04 ${it.state} · local SHA-256 ${it.sha256.take(16)}… " +
+                                        "· empty root restored: ${it.restoredEmptyRoot} · Nexus unverified" },
+                                    onFailure = { "LAB04 REFUSED: ${it.javaClass.simpleName} · no automatic recovery" }
+                                )
+                                busy = false
+                            }
+                        }, modifier = Modifier.testTag("cbnx06.lab04.confirm-action")) {
+                            Text(if (action == "INSTALL") "Confirm LAB install" else "Confirm LAB rollback")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { lab04Action = null },
+                            modifier = Modifier.testTag("cbnx06.lab04.cancel-action")) { Text("Cancel") }
+                    }
+                )
             }
             HorizontalDivider()
         }
