@@ -17,6 +17,17 @@ def validate(test,runner,receipt,workflow,full,gradle,panel,transaction):
       'exactFileCancelKeepsRequestPendingWithoutBrowserLaunch',
       'userConfirmedSyntheticInstallAndRollbackRestoresEmptyLabRoot')
     need(tuple(methods)==expected,'INSTRUMENTATION_ROSTER_DRIFT')
+    # HF01: Compose test node assertion methods do not have standalone import symbols.
+    # The failed hosted AndroidTest Kotlin compilation (run 43555864406) proves that
+    # importing either symbol is invalid for this AndroidX Compose test version.
+    for forbidden_import in (
+        'import androidx.compose.ui.test.assertDoesNotExist',
+        'import androidx.compose.ui.test.assertExists',
+    ):
+        need(forbidden_import not in test,'HF01_INVALID_COMPOSE_ASSERTION_IMPORT:'+forbidden_import)
+    need(test.count('.assertExists()') >= 4 and
+         test.count('.assertDoesNotExist()') == 2,
+         'HF01_NODE_ASSERTIONS_REMOVED')
     for marker in ('assertTrue("LAB05_DEBUG_BUILD_REFUSED", BuildConfig.CBNX_LAB)',
       'assertEquals("com.sdvsync.cbnx06lab", context.packageName)',
       'CinderboxLabBoundary.initialize(context)',

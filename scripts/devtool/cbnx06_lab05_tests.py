@@ -21,6 +21,16 @@ class Lab05Negatives(unittest.TestCase):
         self.assertIn(old,parts[index]);parts[index]=parts[index].replace(old,new,1)
         with self.assertRaisesRegex(Refused,reason):validate(*parts)
     def test_valid_source(self):self.assertTrue(validate(*self.source))
+    def test_hf01_unsupported_compose_imports_are_refused(self):
+        for symbol in ('assertExists','assertDoesNotExist'):
+            self.change(0,
+                'import androidx.compose.ui.test.assertIsNotEnabled',
+                'import androidx.compose.ui.test.' + symbol + '\n' +
+                'import androidx.compose.ui.test.assertIsNotEnabled',
+                'HF01_INVALID_COMPOSE_ASSERTION_IMPORT')
+    def test_hf01_node_assertions_cannot_be_deleted(self):
+        self.change(0,'.assertDoesNotExist()', '.assertExists()',
+                    'HF01_NODE_ASSERTIONS_REMOVED')
     def test_roster_shrunk(self):self.change(0,'@Test fun cancelSyntheticInstallDoesNotWriteModsOrJournal()',
                 '@Test fun skippedCase()', 'INSTRUMENTATION_ROSTER_DRIFT')
     def test_no_private_root(self):self.change(0,'CinderboxLabBoundary.requireModsRoot(mods())',
