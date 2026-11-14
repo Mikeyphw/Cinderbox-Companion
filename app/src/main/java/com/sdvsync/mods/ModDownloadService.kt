@@ -23,6 +23,7 @@ import java.io.IOException
 import java.util.ArrayDeque
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.update
+import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.koin.android.ext.android.inject
@@ -43,6 +44,27 @@ class ModDownloadService : Service() {
         private const val EXTRA_SOURCE = "source"
         private const val EXTRA_FILE_ID = "file_id"
         private const val EXTRA_JOB_ID = "job_id"
+        private const val ACTION_PAUSE_JOB = "com.sdvsync.mods.PAUSE_JOB"
+        private const val ACTION_RESUME_JOB = "com.sdvsync.mods.RESUME_JOB"
+        private const val ACTION_CANCEL_JOB = "com.sdvsync.mods.CANCEL_JOB"
+        private const val ACTION_CANCEL_ALL = "com.sdvsync.mods.CANCEL_ALL_TRANSFERS"
+        private const val ACTION_MOVE_UP = "com.sdvsync.mods.MOVE_UP"
+        private const val ACTION_MOVE_DOWN = "com.sdvsync.mods.MOVE_DOWN"
+
+        private fun control(context: Context, actionId: String, jobId: String) {
+            // Explicit in-app action. No bearer URLs or credentials in control intents.
+            val intent = Intent(context, ModDownloadService::class.java).apply {
+                action = actionId
+                putExtra(EXTRA_JOB_ID, jobId)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
+            else context.startService(intent)
+        }
+        fun pause(context: Context, id: String) = control(context, ACTION_PAUSE_JOB, id)
+        fun resume(context: Context, id: String) = control(context, ACTION_RESUME_JOB, id)
+        fun cancelOne(context: Context, id: String) = control(context, ACTION_CANCEL_JOB, id)
+        fun move(context: Context, id: String, delta: Int) = control(context,
+            if (delta == -1) ACTION_MOVE_UP else ACTION_MOVE_DOWN, id)
 
         fun start(context: Context, url: String, modName: String, modId: String,
                   source: String, fileId: String, jobId: String) {
@@ -58,7 +80,7 @@ class ModDownloadService : Service() {
             else context.startService(intent)
         }
 
-        fun stop(context: Context) { context.stopService(Intent(context, ModDownloadService::class.java)) }
+        fun stop(context: Context) = control(context, ACTION_CANCEL_ALL, "")
     }
 
     private data class Work(val id: String, val url: String, val name: String,
@@ -69,6 +91,12 @@ class ModDownloadService : Service() {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val workLock = Any()
     private val queue = ArrayDeque<Work>()
+    // These authorizations are process-local only; restart requires exact-file re-authorization.
+    private val paused = mutableMapOf<String, Work>()
+    private var activeCall: Call? = null
+    private var activePhase = "IDLE"
+    private var pauseRequested: String? = null
+    private var cancelRequested: String? = null
     private var worker: Job? = null
     private var lastStartId = 0
     private var activeId: String? = null
@@ -83,14 +111,43 @@ class ModDownloadService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val url = intent?.getStringExtra(EXTRA_URL) ?: return START_NOT_STICKY
-        val id = intent.getStringExtra(EXTRA_JOB_ID) ?: return START_NOT_STICKY
+        synchronized(workLock) { lastStartId = startId }
+        if (intent?.action == ACTION_CANCEL_ALL) {
+            cancelAllTransfers()
+            synchronized(workLock) {
+                if (queue.isEmpty() && activeId == null && paused.isEmpty()) stopSelfResult(startId)
+            }
+            return START_NOT_STICKY
+        }
+        if (intent?.action in setOf(ACTION_PAUSE_JOB, ACTION_RESUME_JOB,
+                ACTION_CANCEL_JOB, ACTION_MOVE_UP, ACTION_MOVE_DOWN)) {
+            val id = intent?.getStringExtra(EXTRA_JOB_ID).orEmpty()
+            if (id.isNotBlank()) handleControl(intent?.action.orEmpty(), id)
+            synchronized(workLock) {
+                if (queue.isEmpty() && activeId == null && paused.isEmpty()) stopSelfResult(startId)
+            }
+            return START_NOT_STICKY
+        }
+        val url = intent?.getStringExtra(EXTRA_URL)
+        val id = intent?.getStringExtra(EXTRA_JOB_ID)
+        if (url.isNullOrBlank() || id.isNullOrBlank()) {
+            synchronized(workLock) {
+                if (queue.isEmpty() && activeId == null && paused.isEmpty()) stopSelfResult(startId)
+            }
+            return START_NOT_STICKY
+        }
         val next = Work(id, url, intent.getStringExtra(EXTRA_MOD_NAME) ?: "Unknown mod",
             intent.getStringExtra(EXTRA_MOD_ID) ?: "", intent.getStringExtra(EXTRA_SOURCE) ?: "",
             intent.getStringExtra(EXTRA_FILE_ID) ?: "")
         synchronized(workLock) {
             lastStartId = startId
-            if (queue.size >= 24) {
+            // Replayed intents and mismatched work payloads cannot create a second transfer.
+            if (!journal.isQueuedIdentity(next.id, next.source, next.modId, next.fileId) ||
+                activeId == next.id || queue.any { it.id == next.id } || paused.containsKey(next.id)) {
+                if (queue.isEmpty() && activeId == null && paused.isEmpty()) stopSelfResult(startId)
+                return START_NOT_STICKY
+            }
+            if (queue.size + paused.size + (if (activeId != null) 1 else 0) >= 24) {
                 journal.update(id, "FAILED", detail = "Queue is full; try again later")
                 postResultNotification(id, "Download queue full", "Try again later")
                 return START_NOT_STICKY
@@ -104,25 +161,114 @@ class ModDownloadService : Service() {
     private suspend fun drain() {
         while (true) {
             val next = synchronized(workLock) {
-                if (queue.isEmpty()) { worker = null; null } else queue.removeFirst()
+                if (queue.isEmpty()) { worker = null; null }
+                else queue.removeFirst().also {
+                    activeId = it.id
+                    activePhase = "DOWNLOADING"
+                }
             } ?: break
-            activeId = next.id
             runTransfer(next)
-            activeId = null
+            synchronized(workLock) {
+                activeCall = null
+                activeId = null
+                activePhase = "IDLE"
+                pauseRequested = null
+                cancelRequested = null
+            }
         }
         // A new start command can create a new worker before this point.
         synchronized(workLock) {
-            if (worker == null && queue.isEmpty()) stopSelfResult(lastStartId)
+            if (worker == null && queue.isEmpty() && paused.isEmpty()) stopSelfResult(lastStartId)
+        }
+    }
+
+    /** Explicit user cancellation is different from Android destroying the service. */
+    private fun cancelAllTransfers() {
+        synchronized(workLock) {
+            for (job in queue) journal.cancelIfActive(job.id, "Cancelled all transfers")
+            queue.clear()
+            for ((id, _) in paused) journal.update(id, "CANCELLED",
+                detail = "Paused transfer cancelled by user")
+            paused.clear()
+            if (activeId != null && activePhase == "DOWNLOADING") {
+                cancelRequested = activeId
+                pauseRequested = null
+                activeCall?.cancel()
+            }
+        }
+    }
+
+    private fun handleControl(action: String, id: String) {
+        synchronized(workLock) {
+            val waiting = queue.toMutableList()
+            val index = waiting.indexOfFirst { it.id == id }
+            val activeTransfer = activeId == id && activePhase == "DOWNLOADING"
+            when (action) {
+                ACTION_PAUSE_JOB -> when {
+                    index >= 0 -> {
+                        val work = waiting.removeAt(index)
+                        queue.clear(); waiting.forEach(queue::addLast)
+                        paused[id] = work
+                        journal.update(id, "PAUSED", received = 0L, total = 0L,
+                            detail = "Paused. Resume restarts from byte zero")
+                    }
+                    activeTransfer -> {
+                        pauseRequested = id
+                        activeCall?.cancel()
+                    }
+                }
+                ACTION_CANCEL_JOB -> when {
+                    index >= 0 -> {
+                        waiting.removeAt(index)
+                        queue.clear(); waiting.forEach(queue::addLast)
+                        journal.cancelIfActive(id, "Cancelled individually")
+                    }
+                    paused.remove(id) != null -> journal.update(id, "CANCELLED",
+                        detail = "Paused transfer cancelled")
+                    activeTransfer -> {
+                        cancelRequested = id
+                        pauseRequested = null // Explicit cancel takes precedence over an earlier pause.
+                        activeCall?.cancel()
+                    }
+                }
+                ACTION_RESUME_JOB -> {
+                    val work = paused[id]
+                    if (work != null && journal.resumePaused(id)) {
+                        paused.remove(id)
+                        queue.addLast(work)
+                        if (worker?.isActive != true) worker = scope.launch { drain() }
+                    } else if (work == null && journal.list().any {
+                        it.id == id && it.status == "PAUSED"
+                    }) {
+                        journal.update(id, "INTERRUPTED", received = 0L, total = 0L,
+                            detail = "Session expired. Reopen the exact Nexus file to retry")
+                    }
+                }
+                ACTION_MOVE_UP, ACTION_MOVE_DOWN -> {
+                    val delta = if (action == ACTION_MOVE_UP) -1 else 1
+                    val target = index + delta
+                    if (index >= 0 && target in waiting.indices && journal.moveQueued(id, delta)) {
+                        val moved = waiting.removeAt(index)
+                        waiting.add(target, moved)
+                        queue.clear(); waiting.forEach(queue::addLast)
+                    }
+                }
+            }
         }
     }
 
     override fun onDestroy() {
+        synchronized(workLock) { activeCall?.cancel() }
         worker?.cancel()
         synchronized(workLock) {
-            for (job in queue) journal.cancelIfActive(job.id, "Download stopped")
+            for ((id, _) in paused) journal.update(id, "INTERRUPTED",
+                received = 0L, total = 0L, detail = "Session ended; fresh Nexus authorization needed")
+            paused.clear()
+            // Android shutdown is not user cancellation. Preserve exact identity for reauthorization.
+            for (job in queue) journal.markJobInterrupted(job.id)
             queue.clear()
         }
-        activeId?.let { journal.cancelIfActive(it, "Download interrupted") }
+        activeId?.let { journal.markJobInterrupted(it) }
         scope.cancel()
         super.onDestroy()
     }
@@ -133,23 +279,39 @@ class ModDownloadService : Service() {
         var retainedForReview = false
         var phase = "storage"
         try {
+            // An old/replayed service message cannot revive a cancelled or uncertain job.
+            if (!journal.isQueuedIdentity(item.id, item.source, item.modId, item.fileId)) return
             StoragePreflight.requireWritable(File(CinderboxPaths.MODS_DIR))
             StoragePreflight.requireWritable(cacheDir)
             phase = "transfer"
-            journal.update(item.id, "DOWNLOADING", detail = "Downloading archive")
+            if (!journal.update(item.id, "DOWNLOADING", detail = "Downloading archive")) return
             ModDownloadManager._progress.value = ModDownloadProgress(
                 state = ModDownloadState.DOWNLOADING, modName = item.name)
             updateProgressNotification("Downloading ${item.name.take(60)}")
             fetch(item, tmp)
+            // The control and phase transition share a lock: no pause/cancel may
+            // be accepted once validation or installation has begun.
+            synchronized(workLock) {
+                if (pauseRequested == item.id || cancelRequested == item.id) {
+                    throw IOException("User stopped transfer")
+                }
+                // Phase and journal transition are locked together: a stale worker cannot
+                // enter validation if onDestroy or another control finalized the record.
+                if (!journal.update(item.id, "VALIDATING",
+                        detail = "Checking archive and target folders")) {
+                    throw IOException("Download no longer admitted")
+                }
+                activePhase = "VALIDATING"
+            }
             downloaded = true
             phase = "validation"
-            journal.update(item.id, "VALIDATING", detail = "Checking archive and target folders")
             updateProgressNotification("Validating mod archive")
             if (ModDownloadPreferences.requiresApproval(this)) {
                 ModReviewQueue(filesDir).enqueue(tmp, item.name, item.source, item.modId,
                     item.fileId, item.id)
                 retainedForReview = true
-                journal.update(item.id, "REVIEW_REQUIRED", detail = "Open Downloads to inspect and approve")
+                check(journal.update(item.id, "REVIEW_REQUIRED",
+                    detail = "Open Downloads to inspect and approve")) { "Review state changed" }
                 ModDownloadManager._progress.value = ModDownloadProgress(
                     state = ModDownloadState.REVIEW_REQUIRED, modName = item.name)
                 postResultNotification(item.id, "Mod ready for review", "Open Downloads to approve or discard")
@@ -158,7 +320,13 @@ class ModDownloadService : Service() {
                 // atomic installer used by the manual review path remain mandatory.
                 val preview = fileManager.previewFromZip(tmp)
                 phase = "installation"
-                journal.update(item.id, "INSTALLING", detail = "Validated; installing with rollback protection")
+                synchronized(workLock) {
+                    check(journal.update(item.id, "INSTALLING",
+                        detail = "Validated; installing with rollback protection")) {
+                        "Installation state changed; manual verification required"
+                    }
+                    activePhase = "INSTALLING"
+                }
                 ModDownloadManager._progress.value = ModDownloadProgress(
                     state = ModDownloadState.INSTALLING, modName = item.name)
                 updateProgressNotification("Installing ${item.name.take(60)}")
@@ -177,7 +345,12 @@ class ModDownloadService : Service() {
                         } catch (metadataError: Exception) {
                             AppLogger.e(TAG, "Install succeeded, metadata update failed", metadataError)
                         }
-                        journal.update(item.id, "INSTALLED", detail = "Installed successfully; snapshots retained")
+                        // A shutdown racing the actual atomic installer may have set VERIFY_REQUIRED.
+                        // Never downgrade that state or claim a verified install without a receipt.
+                        check(journal.update(item.id, "INSTALLED",
+                            detail = "Installed successfully; snapshots retained")) {
+                            "Install result requires manual reconciliation"
+                        }
                         ModDownloadManager._progress.value = ModDownloadProgress(
                             state = ModDownloadState.COMPLETED, modName = item.name)
                         postResultNotification(item.id, "Mod installed", "Open Downloads for details")
@@ -186,11 +359,36 @@ class ModDownloadService : Service() {
                 }
             }
         } catch (cancelled: CancellationException) {
-            journal.update(item.id, "CANCELLED", detail = "Download cancelled")
+            val advancedPhase = synchronized(workLock) {
+                activePhase == "VALIDATING" || activePhase == "INSTALLING"
+            }
+            journal.update(item.id, if (advancedPhase) "VERIFY_REQUIRED" else "INTERRUPTED",
+                detail = if (advancedPhase) "Installation interrupted; verify Mods before retry"
+                else "Transfer interrupted; reopen the exact Nexus file")
             ModDownloadManager._progress.value = ModDownloadProgress(state = ModDownloadState.ERROR,
                 modName = item.name, errorMessage = "Download cancelled")
             throw cancelled
         } catch (e: Exception) {
+            val controlled = synchronized(workLock) {
+                when {
+                    cancelRequested == item.id -> "CANCELLED"
+                    pauseRequested == item.id -> "PAUSED"
+                    else -> null
+                }
+            }
+            if (controlled != null && !downloaded) {
+                if (controlled == "PAUSED") {
+                    synchronized(workLock) { paused[item.id] = item }
+                    journal.update(item.id, "PAUSED", received = 0L, total = 0L,
+                        detail = "Paused. Resume restarts from byte zero")
+                    updateProgressNotification("Paused ${item.name.take(60)}")
+                } else {
+                    journal.update(item.id, "CANCELLED", received = 0L, total = 0L,
+                        detail = "Transfer cancelled individually")
+                }
+                ModDownloadManager._progress.value = ModDownloadProgress()
+                return
+            }
             // A fully downloaded but unsafe/rejected archive remains private for explicit
             // inspection. Incomplete network downloads are discarded, never staged.
             if (downloaded && !retainedForReview) {
@@ -208,8 +406,14 @@ class ModDownloadService : Service() {
                 "installation" -> "Installation blocked by safety checks; inspect the archive"
                 else -> "Download failed; reopen the Nexus file to retry"
             }
-            journal.update(item.id, if (retainedForReview) "BLOCKED" else "FAILED",
-                detail = safeFailure)
+            // Once validation/installation starts, any abnormal exit can leave an
+            // uncertain outcome. Approval OFF does not override this hard gate.
+            val uncertain = synchronized(workLock) {
+                activePhase == "VALIDATING" || activePhase == "INSTALLING"
+            }
+            journal.update(item.id, if (uncertain) "VERIFY_REQUIRED"
+                else if (retainedForReview) "BLOCKED" else "FAILED",
+                detail = if (uncertain) "Outcome uncertain; inspect Mods and operations before retry" else safeFailure)
             ModDownloadManager._progress.value = ModDownloadProgress(state = ModDownloadState.ERROR,
                 modName = item.name,
                 errorMessage = if (retainedForReview) "Review downloaded archive" else "Download failed")
@@ -222,7 +426,12 @@ class ModDownloadService : Service() {
     private suspend fun fetch(item: Work, dest: File) = withContext(Dispatchers.IO) {
         // Do not log or persist item.url: it can contain time-limited Nexus credentials.
         val request = Request.Builder().url(item.url).get().build()
-        httpClient.newCall(request).execute().use { response ->
+        val call = httpClient.newCall(request)
+        synchronized(workLock) {
+            activeCall = call
+            if (pauseRequested == item.id || cancelRequested == item.id) call.cancel()
+        }
+        try { call.execute().use { response ->
             if (!response.isSuccessful) throw IOException("Provider HTTP error")
             val body = response.body ?: throw IOException("Empty response")
             val total = body.contentLength()
@@ -260,6 +469,8 @@ class ModDownloadService : Service() {
             if (received <= 0L || (total > 0 && received != total)) throw IOException("Incomplete archive")
             journal.update(item.id, "DOWNLOADING", received, total.coerceAtLeast(0L),
                 "Download transferred; checking archive")
+        } } finally {
+            synchronized(workLock) { if (activeCall === call) activeCall = null }
         }
     }
 

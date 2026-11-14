@@ -1,0 +1,36 @@
+name: CB-NX06 LAB03B Physical Read-only Evidence Contracts
+on:
+  pull_request:
+    paths:
+      - 'scripts/devtool/cbnx06_lab03b_*.py'
+      - 'docs/CBNX06_LAB03B_PHYSICAL_READ_ONLY_AND_PAIRING.md'
+      - '.github/workflows/cbnx06-lab03b-readonly.yml'
+      - '.github/workflows/cbnx06-full-cinderbox-lab.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  read-only-source-and-negative-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CBNX_LAB03B_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Exact Android HEAD, read-only commands and failure negatives
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CBNX_LAB03B_HEAD_SHA"
+          python3 -B scripts/devtool/cbnx06_lab03b_source_gate.py
+          python3 -B scripts/devtool/cbnx06_lab03b_tests.py
+          python3 -B scripts/devtool/cbnx06_lab03_source_gate.py
+          python3 -B scripts/devtool/cbnx06_lab03_tests.py
+          python3 -B scripts/devtool/cbnx06_full_lab_gate.py
+      - name: No physical installation or live Nexus claims
+        run: |
+          set -euo pipefail
+          python3 -B scripts/devtool/cbnx06_lab03b_readonly.py --help
+          echo 'CBNX06_LAB03B_HOSTED_READ_ONLY_CONTRACT_PASS_PHYSICAL_PENDING'

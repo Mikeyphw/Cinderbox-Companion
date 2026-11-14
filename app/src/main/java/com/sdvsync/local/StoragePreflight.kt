@@ -1,6 +1,8 @@
 package com.sdvsync.local
 
 import java.io.File
+import com.sdvsync.BuildConfig
+import com.sdvsync.cinderbox.CinderboxLabBoundary
 import java.nio.file.Files
 
 /** Probe the *actual filesystem destination*, not a permission flag or unrelated SAF tree. */
@@ -8,6 +10,8 @@ data class StorageCheck(val writable: Boolean, val details: String)
 
 object StoragePreflight {
     fun check(destination: File): StorageCheck {
+        if (BuildConfig.CBNX_LAB && !CinderboxLabBoundary.isPrivate(destination))
+            return StorageCheck(false, "LAB_STORAGE_OUTSIDE_APP_PRIVATE")
         if (!destination.isAbsolute) return StorageCheck(false, "An absolute destination path is required")
         val safety = PlatformStoragePaths.inspect(destination)
         if (!safety.safe) return StorageCheck(false, safety.reason)

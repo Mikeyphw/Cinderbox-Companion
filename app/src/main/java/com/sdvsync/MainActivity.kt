@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.widget.Toast
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.compose.material3.Text
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -138,7 +139,7 @@ class MainActivity : ComponentActivity() {
         handleIncomingIntent(intent)
         // Only launch a foreground service from a STARTED (visible) Activity.
         // The service remains active while the app is backgrounded and until logout/opt-out.
-        lifecycleScope.launch {
+        if (!BuildConfig.CBNX_LAB) lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 steamClientManager.connectionState.collect { state ->
                     if (state == ConnectionState.LOGGED_IN) {
@@ -155,6 +156,12 @@ class MainActivity : ComponentActivity() {
                 Box(Modifier.fillMaxSize()) {
                     SdvSyncNavGraph(navController, highlightedDownloadJobId)
                     SnackbarHost(hostState = snackbar, modifier = Modifier.align(Alignment.BottomCenter))
+                    if (BuildConfig.CBNX_LAB) Text(
+                        text = "CINDERBOX LAB - PRIVATE GAME DATA",
+                        modifier = Modifier.align(Alignment.TopCenter)
+                            .testTag("cbnx06.lab.persistent-banner"),
+                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall
+                    )
                 }
                 LaunchedEffect(openDownloadsRequested) {
                     if (openDownloadsRequested) {
@@ -176,11 +183,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        steamAuthenticator.onAppForeground()
+        if (!BuildConfig.CBNX_LAB) steamAuthenticator.onAppForeground()
     }
 
     override fun onStop() {
-        steamAuthenticator.onAppBackground()
+        if (!BuildConfig.CBNX_LAB) steamAuthenticator.onAppBackground()
         super.onStop()
     }
 
@@ -196,6 +203,11 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIncomingIntent(intent: Intent?) {
         if (intent == null) return
+        // Even explicit VIEW intents are not Nexus install authority in the lab.
+        if (BuildConfig.CBNX_LAB && intent.action == Intent.ACTION_VIEW) {
+            intent.data = null
+            return
+        }
         val uri = intent.data
         if (uri?.scheme.equals("nxm", ignoreCase = true)) {
             // Safe physical-device witness; never log uri.toString(), auth keys, or URLs.
@@ -212,6 +224,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleNxmIntent(intent: Intent?) {
+        if (BuildConfig.CBNX_LAB) { intent?.data = null; return }
         val uri = intent?.data ?: return
         if (uri.scheme != "nxm") return
 
@@ -249,8 +262,11 @@ class MainActivity : ComponentActivity() {
                     "Mod #${parsed.modId}"
                 }
                 Log.i(NXM_DIAG_TAG, "NXM_DOWNLOAD_MANAGER_REQUESTED")
-                downloadManager.startDownload(url, modName, parsed.modId, "nexus", parsed.fileId)
-                // The manager may still reject a request; this is NOT archive-staging proof.
+                val admission = downloadManager.startDownload(url, modName, parsed.modId, "nexus", parsed.fileId)
+                launch(Dispatchers.Main) {
+                    nxmNotice = admission.userMessage // Fixed, credential-free admission outcome.
+                }
+                // A successful admission is NOT archive-staging or installation proof.
                 Log.i(NXM_DIAG_TAG, "NXM_MANAGER_RETURNED_NOT_STAGED_PROOF")
             } catch (e: Exception) {
                 Log.i(NXM_DIAG_TAG, "NXM_RESOLUTION_OR_DOWNLOAD_FAILURE")
@@ -346,7 +362,9 @@ fun SdvSyncNavGraph(navController: NavHostController, highlightedDownloadJobId: 
             enterTransition = { fadeIn(tween(FADE_ANIM_DURATION)) },
             exitTransition = { fadeOut(tween(FADE_ANIM_DURATION)) }
         ) {
-            LoginScreen(
+            if (BuildConfig.CBNX_LAB) {
+                Text("LAB mode: Steam login and cloud sync disabled")
+            } else LoginScreen(
                 onLoginSuccess = {
                     // Steam is a voluntary secondary flow. Return to the local shell.
                     if (!navController.popBackStack()) navController.navigate("main")

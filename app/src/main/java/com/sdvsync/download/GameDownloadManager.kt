@@ -104,12 +104,12 @@ class GameDownloadManager(
                 "Lidgren.Network.dll"
             )
         const val CINDERBOX_CONTENT_DIR = "Content"
-        const val CINDERBOX_BASE_DIR = CinderboxPaths.DESKTOP_DIR
-        const val CINDERBOX_DEST = CinderboxPaths.GAME_FILES_DIR
+        val CINDERBOX_BASE_DIR = CinderboxPaths.DESKTOP_DIR
+        val CINDERBOX_DEST = CinderboxPaths.GAME_FILES_DIR
 
         const val SMAPI_CACHE_FILENAME = "smapi-internal.zip"
-        const val SMAPI_DEST = CinderboxPaths.SMAPI_DIR
-        const val MODS_DIR = CinderboxPaths.MODS_DIR
+        val SMAPI_DEST = CinderboxPaths.SMAPI_DIR
+        val MODS_DIR = CinderboxPaths.MODS_DIR
     }
 
     private val recovery = GameDownloadRecovery(context.filesDir)

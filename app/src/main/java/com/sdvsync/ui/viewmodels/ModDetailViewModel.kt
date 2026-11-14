@@ -110,7 +110,10 @@ class ModDetailViewModel(
                 val url = nexusSource.getDownloadUrl(modId, fileId)
                 val modName = _state.value.mod?.name ?: "Unknown"
                 // The service validates every archive; user approval is a persistent optional setting.
-                downloadManager.startDownload(url, modName, modId, source, fileId)
+                val admission = downloadManager.startDownload(url, modName, modId, source, fileId)
+                if (!admission.accepted) {
+                    _state.update { it.copy(error = admission.userMessage, downloadErrorUrl = null) }
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {

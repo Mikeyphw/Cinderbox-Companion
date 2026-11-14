@@ -10,34 +10,54 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** One visible active transfer; durable records and service's FIFO hold additional jobs. */
+/** Admission is journal-atomic; @Synchronized on this manager is NOT the concurrency boundary. */
 class ModDownloadManager(private val context: Context) {
     companion object { internal val _progress = MutableStateFlow(ModDownloadProgress()) }
     val progress: StateFlow<ModDownloadProgress> = _progress.asStateFlow()
 
-    @Synchronized
     fun startDownload(url: String, modName: String, modId: String, source: String,
-                      fileId: String = "") {
-        val journal = ModDownloadJournal(context)
-        // Different file IDs queue normally; duplicate active requests are ignored.
-        if (fileId.isNotBlank() && journal.list().any {
-            it.source == source && it.modId == modId && it.fileId == fileId &&
-                it.status in setOf("QUEUED", "DOWNLOADING", "VALIDATING", "INSTALLING")
-        }) return
-        val jobId = journal.create(modName, source, modId, fileId)
-        try {
-            // M4: check writable target and cache before scheduling work.
-            // The service rechecks when the queued job actually executes.
+                      fileId: String = ""): ModDownloadAdmission {
+        // Storage preflight precedes journal allocation. A failed preflight leaves no ghost QUEUED row.
+        val storageReady = runCatching {
             StoragePreflight.requireWritable(File(CinderboxPaths.MODS_DIR))
             StoragePreflight.requireWritable(context.cacheDir)
-            ModDownloadService.start(context, url, modName, modId, source, fileId, jobId)
+        }.isSuccess
+        if (!storageReady) return refused("STORAGE_UNAVAILABLE", modName)
+        if (source == "nexus" && !url.startsWith("https://", ignoreCase = true)) {
+            return refused("INVALID_IDENTITY", modName)
+        }
+        val journal = ModDownloadJournal(context)
+        val admission = try { journal.admit(modName, source, modId, fileId) }
+                        catch (_: Exception) { ModDownloadAdmission(reason = "JOURNAL_UNAVAILABLE") }
+        if (!admission.accepted) return refused(admission.reason, modName)
+        val id = admission.jobId ?: return refused("JOURNAL_UNAVAILABLE", modName)
+        return try {
+            ModDownloadService.start(context, url, modName, modId, source, fileId, id)
+            admission
         } catch (_: Exception) {
-            journal.update(jobId, "FAILED", detail = "Storage unavailable or Android could not start the download service")
-            _progress.value = ModDownloadProgress(state = ModDownloadState.ERROR,
-                modName = modName, errorMessage = "Cannot start download; check storage access")
+            // Do not report success if Android refused to start; this failed attempt stays auditable.
+            journal.update(id, "FAILED", detail = "Android could not start download service")
+            refused("START_FAILED", modName)
         }
     }
 
+    private fun refused(reason: String, modName: String): ModDownloadAdmission {
+        val outcome = ModDownloadAdmission(reason = reason)
+        // Never change the progress of an unrelated transfer merely because admission was refused.
+        if (reason == "STORAGE_UNAVAILABLE" || reason == "START_FAILED") {
+            _progress.value = ModDownloadProgress(state = ModDownloadState.ERROR,
+                modName = modName, errorMessage = outcome.userMessage)
+        }
+        return outcome
+    }
+
+    fun pause(id: String) { ModDownloadService.pause(context, id) }
+    fun resume(id: String) { ModDownloadService.resume(context, id) }
+    fun cancelOne(id: String) { ModDownloadService.cancelOne(context, id) }
+    fun move(id: String, delta: Int) {
+        require(delta == -1 || delta == 1)
+        ModDownloadService.move(context, id, delta)
+    }
     fun cancelDownload() { ModDownloadService.stop(context) }
     fun resetProgress() { _progress.value = ModDownloadProgress() }
 }

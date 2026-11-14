@@ -275,6 +275,15 @@ class ModManagerViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isApplyingReview = true) }
             try {
+                val reviewReceipt = pending.receipt()
+                if (reviewReceipt.jobId.isNotBlank()) {
+                    val record = ModDownloadJournal(context).list().firstOrNull { it.id == reviewReceipt.jobId }
+                    check(record != null && record.source == reviewReceipt.source &&
+                        record.modId == reviewReceipt.modId && record.fileId == reviewReceipt.fileId &&
+                        record.status in setOf("REVIEW_REQUIRED", "BLOCKED")) {
+                        "Review outcome is uncertain; inspect Mods and operation history first"
+                    }
+                }
                 val archive = requireNotNull(pending.archive()) { "No pending mod" }
                 val prior = requireNotNull(_state.value.pendingPreview) { "Cannot approve an invalid archive" }
                 val result = fileManager.installFromZip(archive, prior.approvalKey)
@@ -287,9 +296,13 @@ class ModManagerViewModel(
                                     installedAt = System.currentTimeMillis())) }
                         }
                         val receipt = pending.receipt()
+                        if (receipt.jobId.isNotBlank()) {
+                            check(ModDownloadJournal(context).update(receipt.jobId, "INSTALLED",
+                                detail = "Approved and installed")) {
+                                "Installed archive requires manual state reconciliation"
+                            }
+                        }
                         pending.clear()
-                        if (receipt.jobId.isNotBlank()) ModDownloadJournal(context).update(
-                            receipt.jobId, "INSTALLED", detail = "Approved and installed")
                         _state.update { it.copy(importMessage = "Installed: ${result.mods.joinToString { m -> m.manifest.name }}") }
                         loadInstalledMods()
                     }
@@ -310,9 +323,19 @@ class ModManagerViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
                 val receipt = pending.receipt()
+                if (receipt.jobId.isNotBlank()) {
+                    val row = ModDownloadJournal(context).list().firstOrNull { it.id == receipt.jobId }
+                    check(row != null && row.source == receipt.source &&
+                        row.modId == receipt.modId && row.fileId == receipt.fileId &&
+                        row.status in setOf("REVIEW_REQUIRED", "BLOCKED")) {
+                        "Cannot discard uncertain installation evidence"
+                    }
+                    check(ModDownloadJournal(context).update(receipt.jobId, "DISCARDED",
+                        detail = "Archive discarded without installation")) {
+                        "Review state changed; no receipt was discarded"
+                    }
+                }
                 pending.clear()
-                if (receipt.jobId.isNotBlank()) ModDownloadJournal(context).update(
-                    receipt.jobId, "DISCARDED", detail = "Archive discarded without installation")
             }.onFailure {
                 _state.update { old -> old.copy(importMessage = "Cannot discard: ${it.message}") }
             }

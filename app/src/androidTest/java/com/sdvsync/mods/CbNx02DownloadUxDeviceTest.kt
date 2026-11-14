@@ -69,7 +69,10 @@ class CbNx02DownloadUxDeviceTest {
         val journal = ModDownloadJournal(context)
         val id = journal.create("Synthetic completion", "nexus", "50535", "178239")
         try {
-            journal.update(id, "INSTALLED", detail = "Installed successfully")
+            assertTrue(journal.update(id, "DOWNLOADING"))
+            assertTrue(journal.update(id, "VALIDATING"))
+            assertTrue(journal.update(id, "INSTALLING"))
+            assertTrue(journal.update(id, "INSTALLED", detail = "Installed successfully"))
             journal.cancelIfActive(id, "Late service destruction")
             assertEquals("INSTALLED", journal.list().first { it.id == id }.status)
         } finally { journal.update(id, "DISCARDED", detail = "Test cleanup") }

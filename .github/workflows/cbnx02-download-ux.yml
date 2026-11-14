@@ -1,5 +1,20 @@
 name: CB-NX02 Native Downloads and Exact-File Receipts
 on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/sdvsync/mods/NexusCompanionPrivacyPolicy.kt'
+      - 'app/src/test/java/com/sdvsync/mods/NexusCompanionPrivacyPolicyTest.kt'
+      - 'app/src/main/java/com/sdvsync/mods/NexusPairingInbox.kt'
+      - 'app/src/main/java/com/sdvsync/ui/screens/NexusPairingPanel.kt'
+      - 'scripts/devtool/cbnx03b_source_gate.py'
+      - 'scripts/devtool/cbnx03b_negative_tests.py'
+      - 'app/src/main/java/com/sdvsync/ui/screens/ModDownloadsScreen.kt'
+      - 'app/src/main/java/com/sdvsync/mods/ModDownloadEvidencePolicy.kt'
+      - 'app/src/test/java/com/sdvsync/mods/ModDownloadEvidencePolicyTest.kt'
+      - 'app/src/androidTest/java/com/sdvsync/ui/screens/CbNx02DownloadsUiDeviceTest.kt'
+      - 'scripts/devtool/cbnx02_*'
+      - 'scripts/devtool/cbnx02b_*'
+      - '.github/workflows/cbnx02-download-ux.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -7,9 +22,12 @@ jobs:
   source-and-build:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      CBNX02_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
@@ -21,8 +39,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$CBNX02_HEAD_SHA"
           python3 -B scripts/devtool/cbnx02_source_gate.py
+          python3 -B scripts/devtool/cbnx04_sdk_image_recovery_negative_tests.py
+          python3 -B scripts/devtool/cbnx02b_hf02_negative_tests.py
           python3 -B scripts/devtool/cbnx01_gate.py
           python3 -B scripts/devtool/ux08a_gate.py
           python3 -B scripts/devtool/ux05bd_gate.py
@@ -34,9 +54,12 @@ jobs:
     needs: source-and-build
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    env:
+      CBNX02_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
@@ -47,7 +70,7 @@ jobs:
       - name: Build device-test APKs from exact source
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$CBNX02_HEAD_SHA"
           chmod +x gradlew
           ./gradlew --no-daemon --max-workers=2 :app:assembleDebug :app:assembleDebugAndroidTest
       - name: KVM and API36 provisioning
@@ -55,7 +78,7 @@ jobs:
           set -euo pipefail
           test -c /dev/kvm
           sudo chmod a+rw /dev/kvm
-          sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'system-images;android-36;google_apis;x86_64'
+          python3 -B scripts/devtool/cbnx04_sdk_image_recovery.py
       - name: Synthetic private fixtures, never live Mods or Nexus
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:

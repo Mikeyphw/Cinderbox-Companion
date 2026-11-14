@@ -18,7 +18,20 @@ import com.sdvsync.mods.ModDownloadJournal
 import com.sdvsync.mods.ModDownloadManager
 import com.sdvsync.mods.ModDownloadPreferences
 import com.sdvsync.mods.ModDownloadRecord
+import com.sdvsync.mods.ModDownloadEvidencePolicy
+import com.sdvsync.mods.NexusPairingAuthority
+import com.sdvsync.mods.NexusPairingBridge
+import com.sdvsync.mods.NexusArchiveProvenance
+import com.sdvsync.cinderbox.CinderboxPaths
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.sdvsync.mods.ModQueueControlPolicy
 import com.sdvsync.mods.ModReviewQueue
+import com.sdvsync.mods.api.NexusBrowserHandoff
+import com.sdvsync.mods.api.NexusBrowserLauncher
 import com.sdvsync.mods.models.ModDownloadState
 import com.sdvsync.ui.theme.CinderboxDarkTokens as Dark
 import org.koin.compose.koinInject
@@ -35,6 +48,13 @@ fun ModDownloadsScreen(
     selectedJobId: String? = null
 ) {
     val context = LocalContext.current
+    var companionState by remember { mutableStateOf(NexusPairingBridge.snapshot()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            companionState = NexusPairingBridge.snapshot()
+            delay(2000L)
+        }
+    }
     val journal = remember(context) { ModDownloadJournal(context) }
     val manager: ModDownloadManager = koinInject()
     val reviewModel: ModManagerViewModel = koinViewModel()
@@ -50,6 +70,59 @@ fun ModDownloadsScreen(
         reviewState.pendingFileId == reviewHead.fileId &&
         reviewState.pendingLabel == reviewHead.name
     var reviewOpen by remember { mutableStateOf(false) }
+    var inspectingEvidenceJob by remember { mutableStateOf<String?>(null) }
+    var evidenceBusy by remember { mutableStateOf(false) }
+    var evidenceDetails by remember { mutableStateOf<ModDownloadEvidencePolicy.Details?>(null) }
+    val evidenceScope = rememberCoroutineScope()
+    val inspectEvidence: (ModDownloadRecord) -> Unit = { record ->
+        if (!evidenceBusy) {
+            inspectingEvidenceJob = record.id
+            evidenceBusy = true
+            evidenceDetails = null
+            evidenceScope.launch {
+                // Hashing a retained ZIP can be expensive; never run on Compose's UI thread.
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val recordsAtScan = journal.list()
+                        val archive = NexusArchiveProvenance.inspect(recordsAtScan, context.filesDir)
+                        val report = NexusPairingAuthority.snapshot(recordsAtScan,
+                            File(CinderboxPaths.MODS_DIR), System.currentTimeMillis())
+                        val rows = report.optJSONArray("items")
+                        val matches = (0 until (rows?.length() ?: 0)).mapNotNull { index ->
+                            rows?.optJSONObject(index)
+                        }.filter { row ->
+                            row.optString("mod_id") == record.modId &&
+                                row.optString("file_id") == record.fileId
+                        }
+                        val row = matches.singleOrNull()
+                        val exactArchiveVerified = archive.available &&
+                            archive.confirmedJobIds.contains(record.id)
+                        ModDownloadEvidencePolicy.evaluate(record.id, record.source,
+                            record.modId, record.fileId, record.status, row?.let {
+                                ModDownloadEvidencePolicy.Observation(
+                                    jobId = record.id,
+                                    modId = it.optString("mod_id"),
+                                    fileId = it.optString("file_id"),
+                                    archiveState = if (!archive.available) "UNAVAILABLE"
+                                        else if (exactArchiveVerified) "VERIFIED_AT_SCAN"
+                                        else "NO_RETAINED_ARCHIVE",
+                                    archiveQualified = exactArchiveVerified,
+                                    archiveScope = "LOCAL_ZIP_VS_APP_RECEIPT",
+                                    inventoryState = report.optString("inventory_state"),
+                                    modState = it.optString("installed_mod_state"),
+                                    exactFileInstalled = it.optString("exact_file_installed")
+                                )
+                            })
+                    }.getOrElse {
+                        ModDownloadEvidencePolicy.evaluate(record.id, record.source,
+                            record.modId, record.fileId, record.status, null)
+                    }
+                }
+                if (inspectingEvidenceJob == record.id) evidenceDetails = result
+                evidenceBusy = false
+            }
+        }
+    }
     // ZIP previews can be expensive. Do not re-preview on each persisted byte update.
     LaunchedEffect(reviewHead.jobId, reviewHead.sha256, reviewCount) {
         if (reviewCount > 0) reviewModel.refreshSafetyState()
@@ -64,16 +137,44 @@ fun ModDownloadsScreen(
         approvalRequired = ModDownloadPreferences.requiresApproval(context)
     }
     var filter by remember { mutableStateOf("All") }
+    var showUpdates by remember { mutableStateOf(false) }
     var preferenceError by remember { mutableStateOf(false) }
 
-    val attention = records.count { it.status in setOf("REVIEW_REQUIRED", "BLOCKED", "FAILED") }
+    val attention = records.count { it.status in setOf("REVIEW_REQUIRED", "BLOCKED", "FAILED", "INTERRUPTED", "VERIFY_REQUIRED") }
+    val pausedCount = records.count { it.status == "PAUSED" }
     val current = records.count { it.status in setOf("QUEUED", "DOWNLOADING", "VALIDATING", "INSTALLING") }
     val visible = records.filter { record -> when (filter) {
-        "Active" -> record.status in setOf("QUEUED", "DOWNLOADING", "VALIDATING", "INSTALLING")
-        "Attention" -> record.status in setOf("REVIEW_REQUIRED", "BLOCKED", "FAILED")
+        "Active" -> record.status in setOf("QUEUED", "DOWNLOADING", "VALIDATING", "INSTALLING", "PAUSED")
+        "Attention" -> record.status in setOf("REVIEW_REQUIRED", "BLOCKED", "FAILED", "INTERRUPTED", "VERIFY_REQUIRED")
         "Finished" -> record.status in setOf("INSTALLED", "COMPLETED", "CANCELLED", "DISCARDED")
         else -> true
     } }
+
+    if (inspectingEvidenceJob != null) {
+        AlertDialog(
+            onDismissRequest = { inspectingEvidenceJob = null },
+            title = { Text("Exact-file evidence") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (evidenceBusy || evidenceDetails == null) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text("Checking app-private receipts and SMAPI manifests…")
+                    } else {
+                        Text(evidenceDetails!!.journal)
+                        Text(evidenceDetails!!.archive, modifier = Modifier.testTag("cbnx05.evidence.archive"))
+                        Text(evidenceDetails!!.mod, modifier = Modifier.testTag("cbnx05.evidence.mod"))
+                        Text(evidenceDetails!!.exactFile,
+                            modifier = Modifier.testTag("cbnx05.evidence.exact-file"))
+                    }
+                    Text("Archive proof is app-local, not a Nexus checksum. " +
+                        "Exact Nexus file installation not verified. " +
+                        "Reading evidence does not download or install mods.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = { TextButton(onClick = { inspectingEvidenceJob = null }) { Text("Close") } }
+        )
+    }
 
     if (reviewOpen) {
         AlertDialog(
@@ -131,9 +232,37 @@ fun ModDownloadsScreen(
         TextButton(onClick = onBack) { Text("‹ Back") }
         Text("Downloads", style = MaterialTheme.typography.headlineMedium,
             color = Dark.Ink, fontWeight = FontWeight.Bold)
-        Text("$current active · $attention need attention · $reviewCount awaiting review",
+        Text("$current active · $pausedCount paused · $attention need attention · $reviewCount awaiting review",
             style = MaterialTheme.typography.bodyMedium, color = Dark.Muted)
+        Surface(color = Dark.Paper, border = BorderStroke(1.dp, Dark.Line),
+            shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()
+                .testTag("cbnx05b.downloads.companion")) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Firefox companion", style = MaterialTheme.typography.titleSmall, color = Dark.Ink)
+                Text(when {
+                    !companionState.listening -> "Disconnected · browser downloads still available"
+                    companionState.connected && companionState.handoffEnabled -> "Connected · exact-file requests allowed"
+                    companionState.connected -> "Connected · handoff requests turned off"
+                    else -> "Pairing window open · not yet connected"
+                }, style = MaterialTheme.typography.bodySmall, color = Dark.Muted)
+                Text("Pair or revoke in Settings. Choose a download destination in Firefox.",
+                    style = MaterialTheme.typography.bodySmall, color = Dark.Muted)
+            }
+        }
 
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = !showUpdates, onClick = { showUpdates = false },
+                label = { Text("Download queue") }, modifier = Modifier.testTag("cbnx04d.download-tab"))
+            FilterChip(selected = showUpdates, onClick = { showUpdates = true },
+                label = { Text("Updates") }, modifier = Modifier.testTag("cbnx04d.updates-tab"))
+        }
+        if (showUpdates) {
+            Cbnx04UpdatesDashboard(reviewState,
+                onCheckNow = { reviewModel.checkForUpdates() },
+                onIgnoreVersion = { reviewModel.ignoreUpdate(it) },
+                onRestoreVersion = { reviewModel.unignoreUpdate(it) },
+                onOpenNexusMod = onOpenMod)
+        } else {
         if (reviewCount > 0) {
             Surface(color = Dark.Paper, border = BorderStroke(1.dp, Dark.Line),
                 shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
@@ -189,7 +318,18 @@ fun ModDownloadsScreen(
             DownloadRecordCard(record, progress.state, showReview, onOpenMod,
                 onCancel = { manager.cancelDownload() },
                 isReviewHead = record.id == reviewHead.jobId,
-                fromNotification = record.id == selectedJobId)
+                fromNotification = record.id == selectedJobId,
+                onPause = { manager.pause(record.id) },
+                onResume = { manager.resume(record.id) },
+                onCancelOne = { manager.cancelOne(record.id) },
+                onMoveUp = { manager.move(record.id, -1) },
+                onMoveDown = { manager.move(record.id, 1) },
+                onInspectEvidence = { inspectEvidence(record) },
+                onRetryExact = {
+                    NexusBrowserHandoff.createUrl(record.modId, record.fileId)?.let { url ->
+                        NexusBrowserLauncher.open(context, url)
+                    }
+                })
         }
         if (records.any { it.status in setOf("INSTALLED", "COMPLETED", "CANCELLED", "FAILED", "DISCARDED") }) {
             OutlinedButton(onClick = { journal.clearHistory() }, modifier = Modifier.fillMaxWidth()) {
@@ -199,13 +339,18 @@ fun ModDownloadsScreen(
         OutlinedButton(onClick = onOpenOperations, modifier = Modifier.fillMaxWidth()) {
             Text("Open operation center")
         }
+        } // Download queue is hidden while the native Updates view is selected.
     }
 }
 
 @Composable
 internal fun DownloadRecordCard(record: ModDownloadRecord, current: ModDownloadState,
     onReview: () -> Unit, onOpenMod: (String) -> Unit, onCancel: () -> Unit,
-    isReviewHead: Boolean = true, fromNotification: Boolean = false) {
+    isReviewHead: Boolean = true, fromNotification: Boolean = false,
+    onPause: () -> Unit = {}, onResume: () -> Unit = {},
+    onCancelOne: () -> Unit = {}, onMoveUp: () -> Unit = {},
+    onMoveDown: () -> Unit = {}, onRetryExact: () -> Unit = {},
+    onInspectEvidence: () -> Unit = {}) {
     val active = record.status in setOf("QUEUED", "DOWNLOADING", "VALIDATING", "INSTALLING")
     val needsReview = record.status in setOf("REVIEW_REQUIRED", "BLOCKED")
     val fraction = if (record.total > 0) (record.received.toFloat() / record.total)
@@ -227,6 +372,18 @@ internal fun DownloadRecordCard(record: ModDownloadRecord, current: ModDownloadS
                 color = Dark.Forest, style = MaterialTheme.typography.labelMedium)
             if (record.detail.isNotBlank()) Text(record.detail, color = Dark.Muted,
                 style = MaterialTheme.typography.bodySmall)
+            if (record.status == "PAUSED") {
+                Text("Resume only works during this app session, restarts from zero, and may require fresh Nexus authorization.",
+                    style = MaterialTheme.typography.bodySmall, color = Dark.Muted)
+            }
+            if (record.status == "INTERRUPTED") {
+                Text("Authorization is not retained after a restart. Reopen the exact file in Firefox.",
+                    style = MaterialTheme.typography.bodySmall, color = Dark.Muted)
+            }
+            if (record.status == "VERIFY_REQUIRED") {
+                Text("Installation outcome needs inspection. Check installed Mods and the operation center before retrying.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
             if (active && record.status == "DOWNLOADING") {
                 if (fraction != null) LinearProgressIndicator(progress = { fraction },
                     modifier = Modifier.fillMaxWidth())
@@ -235,7 +392,8 @@ internal fun DownloadRecordCard(record: ModDownloadRecord, current: ModDownloadS
                     else "${record.received / 1024} KiB received",
                     color = Dark.Muted, style = MaterialTheme.typography.labelSmall)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 if (needsReview && isReviewHead) Button(onClick = onReview,
                     modifier = Modifier.testTag("cbnx02.downloads.review-item")) {
@@ -248,8 +406,44 @@ internal fun DownloadRecordCard(record: ModDownloadRecord, current: ModDownloadS
                 if (record.modId.isNotBlank()) {
                     OutlinedButton(onClick = { onOpenMod(record.modId) }) { Text("Mod details") }
                 }
+                if (record.source == "nexus" && record.modId.isNotBlank() &&
+                    record.fileId.isNotBlank()) {
+                    OutlinedButton(onClick = onInspectEvidence,
+                        modifier = Modifier.testTag("cbnx05.evidence.open")) {
+                        Text("Evidence details")
+                    }
+                }
                 if (record.status == "DOWNLOADING" && current == ModDownloadState.DOWNLOADING) {
                     TextButton(onClick = onCancel) { Text("Cancel all transfers") }
+                }
+                if (record.status == "QUEUED") {
+                    TextButton(onClick = onMoveUp, modifier = Modifier.testTag("cbnx02b.queue.up")) {
+                        Text("Move up")
+                    }
+                    TextButton(onClick = onMoveDown, modifier = Modifier.testTag("cbnx02b.queue.down")) {
+                        Text("Move down")
+                    }
+                }
+                if (record.status in setOf("QUEUED", "DOWNLOADING")) {
+                    TextButton(onClick = onPause, modifier = Modifier.testTag("cbnx02b.queue.pause")) {
+                        Text("Pause")
+                    }
+                }
+                if (record.status == "PAUSED") {
+                    TextButton(onClick = onResume, modifier = Modifier.testTag("cbnx02b.queue.resume")) {
+                        Text("Resume from start")
+                    }
+                }
+                if (record.status in setOf("QUEUED", "DOWNLOADING", "PAUSED")) {
+                    TextButton(onClick = onCancelOne, modifier = Modifier.testTag("cbnx02b.queue.cancel-one")) {
+                        Text("Cancel this")
+                    }
+                }
+                if (record.source == "nexus" &&
+                    ModQueueControlPolicy.freshLinkAllowed(record.source, record.modId, record.fileId, record.status)) {
+                    TextButton(onClick = onRetryExact, modifier = Modifier.testTag("cbnx02b.queue.retry-exact")) {
+                        Text("Fresh link in Firefox")
+                    }
                 }
             }
         }

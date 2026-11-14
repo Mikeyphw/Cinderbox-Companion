@@ -1,6 +1,7 @@
 package com.sdvsync
 
 import android.app.Application
+import com.sdvsync.cinderbox.CinderboxLabBoundary
 import com.sdvsync.di.appModule
 import com.sdvsync.logging.AppLogger
 import com.sdvsync.mods.ModDownloadJournal
@@ -15,12 +16,16 @@ import org.koin.core.context.startKoin
 class SdvSyncApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        // Must initialize before DI, AppLogger or any game path accessor is used.
+        if (BuildConfig.CBNX_LAB) CinderboxLabBoundary.initialize(this)
         AppLogger.init(this)
         // Reconcile jobs left active by a previous killed app process.
         // Expiring Nexus links are not persisted and are never silently retried.
         runCatching { ModDownloadJournal(this).markInterrupted() }
-        AndroidSteamMachineId.initialize(this)
-        SteamDiagnostics.initialize(this)
+        if (!BuildConfig.CBNX_LAB) {
+            AndroidSteamMachineId.initialize(this)
+            SteamDiagnostics.initialize(this)
+        }
         patchVZipBufferPool()
         LogManager.addListener(JavaSteamLogBridge())
         startKoin {

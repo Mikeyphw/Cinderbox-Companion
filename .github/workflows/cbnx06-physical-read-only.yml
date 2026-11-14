@@ -1,0 +1,93 @@
+name: CB-NX06 Physical Acceptance Evidence Contract and Debug APK
+on:
+  pull_request:
+    paths:
+      - 'scripts/devtool/cbnx06_physical_acceptance.py'
+      - 'scripts/devtool/cbnx06_physical_acceptance_tests.py'
+      - 'scripts/devtool/cbnx06_source_gate.py'
+      - 'scripts/devtool/cbnx06_debug_artifact.py'
+      - 'scripts/devtool/cbnx06_hf01_artifact_tests.py'
+      - 'scripts/devtool/cbnx06_persistent_debug_signing.py'
+      - 'scripts/devtool/cbnx06_persistent_debug_signing_tests.py'
+      - 'docs/CBNX06_PHYSICAL_ACCEPTANCE.md'
+      - 'docs/CBNX06_PERSISTENT_DEBUG_SIGNING.md'
+      - '.github/workflows/cbnx06-physical-read-only.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-and-exact-debug-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      CBNX06_EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      CINDERBOX_REQUIRE_PERSISTENT_DEBUG_SIGNING: 'true'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c
+      - name: Exact head, source policy, and all synthetic signing negative cases
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CBNX06_EXPECTED_HEAD"
+          python3 -B scripts/devtool/cbnx06_source_gate.py
+          python3 -B scripts/devtool/cbnx06_physical_acceptance_tests.py
+          python3 -B scripts/devtool/cbnx06_hf01_artifact_tests.py
+          python3 -B scripts/devtool/cbnx06_persistent_debug_signing_tests.py
+          python3 -B scripts/devtool/cbnx01_gate.py
+          python3 -B scripts/devtool/cbnx03b_source_gate.py
+      - name: Load persistent CI debug key and pin certificate before Gradle
+        env:
+          CBNX06_DEBUG_KEYSTORE_B64: ${{ secrets.CINDERBOX_DEBUG_KEYSTORE_B64 }}
+          CINDERBOX_DEBUG_STORE_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_STORE_PASSWORD }}
+          CINDERBOX_DEBUG_KEY_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CBNX06_EXPECTED_HEAD"
+          test -n "$CBNX06_DEBUG_KEYSTORE_B64" || { echo 'CBNX06_SIGNING_REFUSED:KEYSTORE_SECRET_MISSING'; exit 2; }
+          test -n "$CINDERBOX_DEBUG_STORE_PASSWORD" || { echo 'CBNX06_SIGNING_REFUSED:STORE_PASSWORD_MISSING'; exit 2; }
+          test -n "$CINDERBOX_DEBUG_KEY_PASSWORD" || { echo 'CBNX06_SIGNING_REFUSED:KEY_PASSWORD_MISSING'; exit 2; }
+          umask 077
+          key_path="$RUNNER_TEMP/cbnx06-persistent-debug.p12"
+          test ! -e "$key_path" || { echo 'CBNX06_SIGNING_REFUSED:KEYSTORE_ALREADY_EXISTS'; exit 2; }
+          printf '%s' "$CBNX06_DEBUG_KEYSTORE_B64" | base64 --decode > "$key_path"
+          chmod 600 "$key_path"
+          python3 -B scripts/devtool/cbnx06_persistent_debug_signing.py preflight --keystore "$key_path"
+          printf 'CINDERBOX_DEBUG_KEYSTORE_PATH=%s\n' "$key_path" >> "$GITHUB_ENV"
+      - name: Build source-pinned APK with mandatory persistent debug signer
+        env:
+          CINDERBOX_DEBUG_STORE_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_STORE_PASSWORD }}
+          CINDERBOX_DEBUG_KEY_PASSWORD: ${{ secrets.CINDERBOX_DEBUG_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CBNX06_EXPECTED_HEAD"
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:assembleDebug
+          python3 -B scripts/devtool/cbnx06_debug_artifact.py \
+            --debug-dir app/build/outputs/apk/debug \
+            --output-dir "$RUNNER_TEMP/cbnx06-debug" \
+            --source-sha "$CBNX06_EXPECTED_HEAD"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
+          test -n "$apksigner" || { echo 'CBNX06_SIGNING_REFUSED:APKSIGNER_NOT_FOUND'; exit 2; }
+          python3 -B scripts/devtool/cbnx06_persistent_debug_signing.py attest \
+            --apk "$RUNNER_TEMP/cbnx06-debug/app-debug.apk" \
+            --output-dir "$RUNNER_TEMP/cbnx06-debug" \
+            --source-sha "$CBNX06_EXPECTED_HEAD" \
+            --apksigner "$apksigner"
+      - name: Upload only certificate-pinned debug APK for separate device inspection
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: cbnx06-exact-source-debug-apk
+          path: ${{ runner.temp }}/cbnx06-debug/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Clear ephemeral secret material
+        if: always()
+        run: rm -f -- "$RUNNER_TEMP/cbnx06-persistent-debug.p12"

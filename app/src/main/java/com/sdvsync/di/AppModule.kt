@@ -1,6 +1,8 @@
 package com.sdvsync.di
 
 import com.sdvsync.cinderbox.CinderboxPaths
+import com.sdvsync.BuildConfig
+import com.sdvsync.fileaccess.ManualFileAccess
 import com.sdvsync.download.AppUpdateManager
 import com.sdvsync.download.GameDownloadManager
 import com.sdvsync.download.GitHubReleaseChecker
@@ -80,6 +82,9 @@ val appModule = module {
     single {
         val detector = get<FileAccessDetector>()
         SaveFileManager(get()) {
+            if (BuildConfig.CBNX_LAB) {
+                SaveLocation(ManualFileAccess(), CinderboxPaths.SAVES_DIR)
+            } else {
             val strategy = detector.resolveStrategy()
             val basePath = when {
                 strategy is SAFFileAccess -> strategy.basePath
@@ -87,6 +92,7 @@ val appModule = module {
                 else -> SaveFileManager.SDV_SAVE_PATH
             }
             SaveLocation(strategy, basePath)
+            }
         }
     }
 

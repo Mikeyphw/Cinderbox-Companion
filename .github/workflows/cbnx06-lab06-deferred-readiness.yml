@@ -1,0 +1,50 @@
+name: CB-NX06 LAB06 Deferred Physical Readiness Contract
+on:
+  pull_request:
+    paths:
+      - 'scripts/devtool/cbnx06_lab06_*.py'
+      - 'app/build.gradle.kts'
+      - '.github/workflows/cbnx06-lab06-deferred-readiness.yml'
+      - 'docs/CBNX06_LAB06_DEFERRED_READINESS.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-only-deferred-readiness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Pinned source and adversarial readiness gates; no ADB
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          python3 -B scripts/devtool/cbnx06_lab06_readiness_tests.py
+          python3 -B scripts/devtool/cbnx06_lab05_source_gate.py
+          bash -n scripts/devtool/cbnx06_lab05_emulator_ci.sh
+          mkdir -p "$RUNNER_TEMP/cbnx06-lab06"
+          python3 -B scripts/devtool/cbnx06_lab06_readiness.py \
+            --source-sha "$EXPECTED_HEAD" \
+            --browser-sha 8012ec00033249566be115e226651c7407ed18c5 \
+            --output "$RUNNER_TEMP/cbnx06-lab06/READINESS.json"
+          python3 - "$RUNNER_TEMP/cbnx06-lab06/READINESS.json" "$EXPECTED_HEAD" <<'PY'
+          import json,sys
+          x=json.load(open(sys.argv[1])); assert x['android_source_sha']==sys.argv[2]
+          assert x['physical_read_only_acceptance']=='DEFERRED'
+          assert x['hosted_ui_api36_pass_source_bound'] is False
+          assert x['release_qualified'] is False
+          assert x['no_adb_or_device_actions_performed'] is True
+          print('CBNX06_LAB06_HOSTED_READINESS_ONLY_NO_DEVICE_PASS')
+          PY
+      - name: Publish only source-pinned deferred-readiness manifest
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: cbnx06-lab06-deferred-readiness
+          path: ${{ runner.temp }}/cbnx06-lab06/READINESS.json
+          if-no-files-found: error
+          retention-days: 14
