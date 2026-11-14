@@ -88,10 +88,16 @@ def validate(test,runner,receipt,workflow,full,gradle,panel,transaction):
     need('createComposeRule()' in test,
          'HF02_HOST_RULE_TEST_MISMATCH')
     for marker in ('aapt', 'dump xmltree', 'AndroidManifest.xml',
-                   'androidx.compose.ui.test.junit4.android.AndroidComposeTestActivity',
-                   'LAB05_HF02_REFUSED_COMPOSE_HOST_ACTIVITY_ABSENT',
-                   'LAB05_HF02_COMPOSE_HOST_ACTIVITY_PRESENT'):
+                   'androidx.activity.ComponentActivity',
+                   'LAB05_HF03_REFUSED_COMPONENT_ACTIVITY_ABSENT',
+                   'LAB05_HF03_COMPOSE_HOST_ACTIVITY_PRESENT'):
         need(marker in runner,'HF02_HOSTED_MANIFEST_PREFLIGHT_MISSING:'+marker)
+    # HF03: the published ui-test-manifest declares ComponentActivity, NOT a
+    # nonexistent AndroidComposeTestActivity. Enforce exact fail-closed preflight.
+    need('androidx.compose.ui.test.junit4.android.AndroidComposeTestActivity' not in runner,
+         'HF03_OBSOLETE_COMPOSE_HOST_CLASS')
+    need("if [[ \"$manifest_xml\" != *'androidx.activity.ComponentActivity'* ]]; then" in runner,
+         'HF03_REAL_HOST_PREFLIGHT_DISABLED')
     for marker in ('SAFE_DIAGNOSTIC_CATEGORIES', 'diagnostic_category',
                    "'failure_category':diagnostic_category(raw)"):
         need(marker in receipt, 'HF02_SAFE_FAILURE_CATEGORY_MISSING:'+marker)

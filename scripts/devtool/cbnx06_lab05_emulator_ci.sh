@@ -15,20 +15,21 @@ shopt -s nullglob
 app=(app/build/outputs/apk/cbnxLab/*.apk)
 test_apk=(app/build/outputs/apk/androidTest/cbnxLab/*.apk)
 test "${#app[@]}" = 1 && test "${#test_apk[@]}" = 1
-# HF02: createComposeRule() launches AndroidComposeTestActivity, which must be
-# registered inside the custom cbnxLab APK. A debug-only dependency is not enough.
+# HF03: ui-test-manifest declares androidx.activity.ComponentActivity.
+# The earlier preflight searched for an unrelated activity that is not declared.
+# This check is on the cbnxLab APK, not a debug APK or an instrumentation APK.
 aapt=$(find "${ANDROID_HOME:?}/build-tools" -type f -name aapt -print | sort -V | tail -n 1)
 if test -z "$aapt"; then
   echo LAB05_HF02_REFUSED_ANDROID_AAPT_UNAVAILABLE >&2
   exit 2
 fi
 manifest_xml=$("$aapt" dump xmltree "${app[0]}" AndroidManifest.xml)
-if [[ "$manifest_xml" != *'androidx.compose.ui.test.junit4.android.AndroidComposeTestActivity'* ]]; then
-  echo LAB05_HF02_REFUSED_COMPOSE_HOST_ACTIVITY_ABSENT >&2
+if [[ "$manifest_xml" != *'androidx.activity.ComponentActivity'* ]]; then
+  echo LAB05_HF03_REFUSED_COMPONENT_ACTIVITY_ABSENT >&2
   exit 2
 fi
 unset manifest_xml
-echo LAB05_HF02_COMPOSE_HOST_ACTIVITY_PRESENT
+echo LAB05_HF03_COMPOSE_HOST_ACTIVITY_PRESENT
 app_sha=$(sha256sum "${app[0]}" | cut -d' ' -f1)
 test_sha=$(sha256sum "${test_apk[0]}" | cut -d' ' -f1)
 adb -s "$serial" install -t "${app[0]}" >/dev/null

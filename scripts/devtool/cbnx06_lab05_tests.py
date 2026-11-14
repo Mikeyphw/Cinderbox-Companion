@@ -26,8 +26,19 @@ class Lab05Negatives(unittest.TestCase):
         self.change(5,'add("cbnxLabImplementation", "androidx.compose.ui:ui-test-manifest")',
                     '// dropped LAB-only host','HF02_LAB_COMPOSE_HOST_DEPENDENCY_MISSING')
     def test_hf02_host_not_in_runner_manifest(self):
-        self.change(1,'androidx.compose.ui.test.junit4.android.AndroidComposeTestActivity',
-                    'com.example.MissingTestActivity','HF02_HOSTED_MANIFEST_PREFLIGHT_MISSING')
+        self.change(1, "*'androidx.activity.ComponentActivity'*",
+                    "*'com.example.MissingTestActivity'*",'HF03_REAL_HOST_PREFLIGHT_DISABLED')
+    def test_hf03_stale_compose_activity_refused(self):
+        self.change(1, "*'androidx.activity.ComponentActivity'*",
+                    "*'androidx.compose.ui.test.junit4.android.AndroidComposeTestActivity'*",
+                    'HF03_OBSOLETE_COMPOSE_HOST_CLASS')
+    def test_hf03_disable_host_check_refused(self):
+        self.change(1, 'if [[ "$manifest_xml" != *\'androidx.activity.ComponentActivity\'* ]]; then',
+                    'if false; then', 'HF03_REAL_HOST_PREFLIGHT_DISABLED')
+    def test_hf03_fake_host_reference_refused(self):
+        self.change(1, '# The earlier preflight searched for an unrelated activity that is not declared.',
+                    '# androidx.compose.ui.test.junit4.android.AndroidComposeTestActivity',
+                    'HF03_OBSOLETE_COMPOSE_HOST_CLASS')
     def test_hf02_runtime_manifest_check_is_required(self):
         self.change(1,'dump xmltree','dump badging',
                     'HF02_HOSTED_MANIFEST_PREFLIGHT_MISSING')
