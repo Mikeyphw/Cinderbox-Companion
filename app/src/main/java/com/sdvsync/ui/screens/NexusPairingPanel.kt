@@ -13,6 +13,7 @@ import com.sdvsync.mods.NexusPairingBridge
 import com.sdvsync.mods.NexusPairingInbox
 import com.sdvsync.mods.NexusLab03CPolicy
 import com.sdvsync.mods.NexusLab03Evidence
+import com.sdvsync.mods.NexusLab03DArchiveStage
 import com.sdvsync.mods.NexusCompanionPrivacyPolicy
 import com.sdvsync.BuildConfig
 import com.sdvsync.mods.api.NexusBrowserHandoff
@@ -31,6 +32,7 @@ internal fun NexusPairingPanel() {
     var inboxError by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var lab03Outcome by remember { mutableStateOf<String?>(null) }
+    var lab03dOutcome by remember { mutableStateOf<String?>(null) }
     var lab03cSelection by remember { mutableStateOf<NexusPairingInbox.Entry?>(null) }
     var lab03cFeedback by remember { mutableStateOf<String?>(null) }
     val lab03Scope = rememberCoroutineScope()
@@ -142,6 +144,30 @@ internal fun NexusPairingPanel() {
             }
             lab03Outcome?.let { Text(it, modifier = Modifier.testTag("cbnx06.lab03a.result"),
                 style = MaterialTheme.typography.bodySmall) }
+            Text("LAB03D · Private synthetic archive evidence", style = MaterialTheme.typography.titleSmall)
+            Text("Stage the LAB-generated ZIP under this app's private data directory, compare SHA-256 and size, " +
+                "and verify the synthetic-only source receipt. This does not verify Nexus provenance, download or install anything.",
+                style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(enabled = !busy, onClick = {
+                busy = true
+                lab03Scope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        runCatching { NexusLab03DArchiveStage.stageSynthetic(context) }
+                    }
+                    lab03dOutcome = result.fold(
+                        onSuccess = { "LAB03D LOCAL SYNTHETIC ARCHIVE VERIFIED · SHA-256 ${it.sha256.take(16)}… " +
+                            "· ${it.archiveBytes} bytes · ${it.provenance} · Nexus provenance NOT VERIFIED · no install" },
+                        onFailure = { "LAB03D REFUSED: ${it.javaClass.simpleName} · no install" }
+                    )
+                    busy = false
+                }
+            }, modifier = Modifier.testTag("cbnx06.lab03d.stage-synthetic")) {
+                Text("Stage and verify synthetic archive (LAB only)")
+            }
+            lab03dOutcome?.let {
+                Text(it, modifier = Modifier.testTag("cbnx06.lab03d.stage-feedback"),
+                    style = MaterialTheme.typography.bodySmall)
+            }
             HorizontalDivider()
         }
         Text("Exact-file requests", style = MaterialTheme.typography.titleSmall)
