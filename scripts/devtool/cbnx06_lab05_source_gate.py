@@ -79,6 +79,22 @@ def validate(test,runner,receipt,workflow,full,gradle,panel,transaction):
     need('CinderboxLabBoundary.requireModsRoot(mods)' in transaction and
          'NexusLab03DArchiveStage.stageSynthetic(context)' in transaction,
          'PRIVATE_SYNTHETIC_TRANSACTION_LOST')
+    # HF02: createComposeRule requires the Compose test host in the *custom* LAB
+    # build type, not only in debug. The host must be present in the installed LAB APK.
+    need('add("cbnxLabImplementation", "androidx.compose.ui:ui-test-manifest")' in gradle,
+         'HF02_LAB_COMPOSE_HOST_DEPENDENCY_MISSING')
+    need('debugImplementation("androidx.compose.ui:ui-test-manifest")' in gradle,
+         'HF02_ORIGINAL_DEBUG_HOST_MISSING')
+    need('createComposeRule()' in test,
+         'HF02_HOST_RULE_TEST_MISMATCH')
+    for marker in ('aapt', 'dump xmltree', 'AndroidManifest.xml',
+                   'androidx.compose.ui.test.junit4.android.AndroidComposeTestActivity',
+                   'LAB05_HF02_REFUSED_COMPOSE_HOST_ACTIVITY_ABSENT',
+                   'LAB05_HF02_COMPOSE_HOST_ACTIVITY_PRESENT'):
+        need(marker in runner,'HF02_HOSTED_MANIFEST_PREFLIGHT_MISSING:'+marker)
+    for marker in ('SAFE_DIAGNOSTIC_CATEGORIES', 'diagnostic_category',
+                   "'failure_category':diagnostic_category(raw)"):
+        need(marker in receipt, 'HF02_SAFE_FAILURE_CATEGORY_MISSING:'+marker)
     need('"cbnxLab" else "debug"' in gradle and
          'getByName("cbnxLab").java.srcDir("src/debug/java")' in gradle,
          'LAB_ANDROID_TEST_VARIANT_MISSING')

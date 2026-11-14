@@ -205,6 +205,8 @@ dependencies {
     // Keep this test-only; production/runtime and release signing are unchanged.
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+    // LAB05 HF02: register Compose's host only in the isolated cbnxLab APK.
+    add("cbnxLabImplementation", "androidx.compose.ui:ui-test-manifest")
 }
 
 ktlint { android.set(true) }

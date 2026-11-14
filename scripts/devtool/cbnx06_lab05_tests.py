@@ -21,6 +21,30 @@ class Lab05Negatives(unittest.TestCase):
         self.assertIn(old,parts[index]);parts[index]=parts[index].replace(old,new,1)
         with self.assertRaisesRegex(Refused,reason):validate(*parts)
     def test_valid_source(self):self.assertTrue(validate(*self.source))
+    def test_hf02_custom_lab_host_dependency_guard(self):
+        # Debug is not cbnxLab; test-host manifest must be bound to the LAB variant.
+        self.change(5,'add("cbnxLabImplementation", "androidx.compose.ui:ui-test-manifest")',
+                    '// dropped LAB-only host','HF02_LAB_COMPOSE_HOST_DEPENDENCY_MISSING')
+    def test_hf02_host_not_in_runner_manifest(self):
+        self.change(1,'androidx.compose.ui.test.junit4.android.AndroidComposeTestActivity',
+                    'com.example.MissingTestActivity','HF02_HOSTED_MANIFEST_PREFLIGHT_MISSING')
+    def test_hf02_runtime_manifest_check_is_required(self):
+        self.change(1,'dump xmltree','dump badging',
+                    'HF02_HOSTED_MANIFEST_PREFLIGHT_MISSING')
+    def test_hf02_redacted_failure_category(self):
+        from cbnx06_lab05_receipt import diagnostic_category
+        self.assertEqual(diagnostic_category('AndroidComposeTestActivity /storage/secret TOKEN'),
+                         'COMPOSE_HOST_ACTIVITY')
+        self.assertEqual(diagnostic_category('NoComposeHierarchiesFoundException secret'),
+                         'COMPOSE_TREE_ABSENT')
+        self.assertEqual(diagnostic_category('No activities found to launch'),
+                         'COMPOSE_HOST_ACTIVITY')
+        self.assertEqual(diagnostic_category('some.other.Failure password'), 'UNKNOWN')
+        observed=case(CASES[0], 'INSTRUMENTATION_STATUS: stack=No activities found to launch ' +
+                      '/storage/secret TOKEN\nFAILURES!!!',1)
+        self.assertEqual(observed['failure_category'],'COMPOSE_HOST_ACTIVITY')
+        self.assertNotIn('secret',repr(observed))
+        self.assertNotIn('TOKEN',repr(observed))
     def test_hf01_unsupported_compose_imports_are_refused(self):
         for symbol in ('assertExists','assertDoesNotExist'):
             self.change(0,

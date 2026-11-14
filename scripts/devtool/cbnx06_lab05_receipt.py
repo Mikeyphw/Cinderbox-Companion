@@ -12,9 +12,31 @@ CASES = (
 )
 SAFE_FRAME = re.compile(r'\b(CbNxLab05UiJourneyTest|NexusLab04SyntheticTransaction|NexusLab03DArchiveStage|NexusPairingPanel|NexusPairingInbox)\.kt:([1-9][0-9]{0,3})\b')
 
+# HF02: map untrusted test log text to a fixed set of safe diagnostic categories.
+# Never export exception text, full stack traces, local paths, credentials, or URLs.
+SAFE_DIAGNOSTIC_CATEGORIES = (
+    ('AndroidComposeTestActivity', 'COMPOSE_HOST_ACTIVITY'),
+    ('No activities found to launch', 'COMPOSE_HOST_ACTIVITY'),
+    ('Unable to resolve activity', 'COMPOSE_HOST_ACTIVITY'),
+    ('ActivityNotFoundException', 'COMPOSE_HOST_ACTIVITY'),
+    ('NoComposeHierarchiesFoundException', 'COMPOSE_TREE_ABSENT'),
+    ('ComposeTimeoutException', 'COMPOSE_WAIT_TIMEOUT'),
+    ('ConditionStillNotSatisfiedException', 'COMPOSE_WAIT_TIMEOUT'),
+    ('AssertionFailedError', 'ASSERTION'),
+    ('AssertionError', 'ASSERTION'),
+    ('IllegalStateException', 'RUNTIME_STATE'),
+)
+
+def diagnostic_category(raw:str)->str:
+    # Limited to constant markers; ambiguous output is UNKNOWN, never a freeform echo.
+    for marker, category in SAFE_DIAGNOSTIC_CATEGORIES:
+        if marker in raw[:524288]:
+            return category
+    return 'UNKNOWN'
+
 def case(name:str, raw:str, exit_code:int)->dict:
     assert name in CASES
-    if len(raw)>524288: return {'case':name,'status':'NOT_QUALIFIED','reason':'LOG_BUDGET','site':'UNAVAILABLE'}
+    if len(raw)>524288: return {'case':name,'status':'NOT_QUALIFIED','reason':'LOG_BUDGET','site':'UNAVAILABLE','failure_category':'LOG_BUDGET'}
     events=re.findall(r'(?m)^INSTRUMENTATION_STATUS: test=(\w+)\r?$',raw)
     ok=(exit_code==0 and events.count(name)==2 and len(events)==2
         and raw.count('INSTRUMENTATION_STATUS_CODE: 1')==1
@@ -23,7 +45,7 @@ def case(name:str, raw:str, exit_code:int)->dict:
         and 'INSTRUMENTATION_STATUS_CODE: -1' not in raw
         and 'INSTRUMENTATION_STATUS_CODE: -2' not in raw
         and 'FAILURES!!!' not in raw and 'INSTRUMENTATION_FAILED' not in raw)
-    if ok: return {'case':name,'status':'PASS','reason':'NONE','site':'NONE'}
+    if ok: return {'case':name,'status':'PASS','reason':'NONE','site':'NONE','failure_category':'NONE'}
     if exit_code==124: reason='TIMEOUT'
     elif 'INSTRUMENTATION_FAILED' in raw: reason='RUNNER_FAILED'
     elif 'FAILURES!!!' in raw or 'INSTRUMENTATION_STATUS_CODE: -2' in raw: reason='ASSERTION_FAILED'
@@ -33,7 +55,7 @@ def case(name:str, raw:str, exit_code:int)->dict:
     pos=raw.find('INSTRUMENTATION_STATUS: stack=')
     match=SAFE_FRAME.search(raw[pos:pos+8192]) if pos>=0 else None
     site=match.group(1)+':'+match.group(2) if match else 'UNAVAILABLE'
-    return {'case':name,'status':'NOT_QUALIFIED','reason':reason,'site':site}
+    return {'case':name,'status':'NOT_QUALIFIED','reason':reason,'site':site,'failure_category':diagnostic_category(raw)}
 
 def verdict(raws:dict[str,tuple[str,int]],source:str,run:str,apk:str,test_apk:str)->dict:
     assert re.fullmatch('[0-9a-f]{40}',source) and re.fullmatch('[0-9]{1,24}',run)
@@ -66,7 +88,7 @@ def main()->None:
     data=verdict(raws,a.source,a.run,a.apk,a.test_apk)
     a.output.write_text(json.dumps(data,sort_keys=True,indent=2)+'\n')
     for item in data['cases']:
-        print('CBNX06_LAB05_CASE='+item['case']+' STATUS='+item['status']+' REASON='+item['reason']+' SITE='+item['site'])
+        print('CBNX06_LAB05_CASE='+item['case']+' STATUS='+item['status']+' REASON='+item['reason']+' SITE='+item['site']+' CATEGORY='+item['failure_category'])
     print('CBNX06_LAB05_ACTUAL_TESTS='+str(data['actual_test_count'])+' PASS='+str(data['tests_passed']))
     if data['status']!='PASS':sys.exit('CBNX06_LAB05_NOT_QUALIFIED')
     print('CBNX06_LAB05_SHA_BOUND_EMULATOR_ONLY_RECEIPT_PASS')
