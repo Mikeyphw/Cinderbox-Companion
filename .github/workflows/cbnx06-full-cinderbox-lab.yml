@@ -9,6 +9,7 @@ on:
       - 'scripts/devtool/cbnx06_lab02b_*.py'
       - 'scripts/devtool/cbnx06_lab03_*.py'
       - 'scripts/devtool/cbnx06_lab03b_*.py'
+      - 'scripts/devtool/cbnx06_lab03c_*.py'
       - 'docs/CBNX06_FULL_CINDERBOX_LAB.md'
       - '.github/workflows/cbnx06-full-cinderbox-lab.yml'
   workflow_dispatch:
@@ -45,6 +46,8 @@ jobs:
           python3 -B scripts/devtool/cbnx06_lab03b_tests.py
           python3 -B scripts/devtool/cbnx06_lab03b_ux09_gate.py
           python3 -B scripts/devtool/cbnx06_lab03b_ux09_tests.py
+          python3 -B scripts/devtool/cbnx06_lab03c_source_gate.py
+          python3 -B scripts/devtool/cbnx06_lab03c_tests.py
           python3 -B scripts/devtool/cbnx06_source_gate.py
           python3 -B scripts/devtool/cbnx06_physical_acceptance_tests.py
           python3 -B scripts/devtool/cbnx06_hf01_artifact_tests.py

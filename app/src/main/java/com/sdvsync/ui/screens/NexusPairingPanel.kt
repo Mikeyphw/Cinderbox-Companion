@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.sdvsync.mods.NexusPairingBridge
 import com.sdvsync.mods.NexusPairingInbox
+import com.sdvsync.mods.NexusLab03CPolicy
 import com.sdvsync.mods.NexusLab03Evidence
 import com.sdvsync.mods.NexusCompanionPrivacyPolicy
 import com.sdvsync.BuildConfig
@@ -30,6 +31,8 @@ internal fun NexusPairingPanel() {
     var inboxError by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var lab03Outcome by remember { mutableStateOf<String?>(null) }
+    var lab03cSelection by remember { mutableStateOf<NexusPairingInbox.Entry?>(null) }
+    var lab03cFeedback by remember { mutableStateOf<String?>(null) }
     val lab03Scope = rememberCoroutineScope()
     var diagnosticPreview by remember { mutableStateOf<String?>(null) }
     var inbox by remember { mutableStateOf<List<NexusPairingInbox.Entry>>(emptyList()) }
@@ -155,18 +158,31 @@ internal fun NexusPairingPanel() {
                     style = MaterialTheme.typography.bodyMedium)
                 Text("Requested only. No archive downloaded or installed.", style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // LAB03C never emits Cinderbox NXM parameters to a production-capable browser.
                     OutlinedButton(enabled = !busy, onClick = {
-                        busy = true
-                        val opened = runCatching {
-                            val url = requireNotNull(NexusBrowserHandoff.createUrl(item.modId, item.fileId))
-                            NexusBrowserLauncher.open(context, url)
-                            check(NexusPairingInbox.resolve(context, item.id, "OPENED"))
+                        if (BuildConfig.CBNX_LAB) {
+                            lab03cSelection = item // First tap only requests confirmation.
+                            lab03cFeedback = null
+                        } else {
+                            // Production keeps its original user-triggered NXM handoff behavior.
+                            busy = true
+                            val opened = runCatching {
+                                val url = requireNotNull(NexusBrowserHandoff.createUrl(item.modId, item.fileId))
+                                NexusBrowserLauncher.open(context, url)
+                                check(NexusPairingInbox.resolve(context, item.id, "OPENED"))
+                            }
+                            if (opened.isFailure) problem = true
+                            refreshInbox()
+                            busy = false
                         }
-                        if (opened.isFailure) problem = true
-                        refreshInbox()
-                        busy = false
                     }, modifier = Modifier.testTag("cbnx03b.handoff.open-exact")) {
-                        Text("Open exact Nexus file")
+                        Text(if (BuildConfig.CBNX_LAB) "Review file page (LAB)" else "Open exact Nexus file")
+                    }
+                    if (BuildConfig.CBNX_LAB &&
+                        NexusLab03CPolicy.reviewUrl(item.modId, item.fileId,
+                            item.createdAt, System.currentTimeMillis()) == null) {
+                        Text("LAB03C: This request is expired or invalid. Dismiss and request again.",
+                            style = MaterialTheme.typography.bodySmall)
                     }
                     TextButton(enabled = !busy, onClick = {
                         busy = true
@@ -178,13 +194,70 @@ internal fun NexusPairingPanel() {
                 }
             }
         }
+        // LAB03C: explicit second tap; never treat HTTP inbox admission as browser authorization.
+        if (BuildConfig.CBNX_LAB) {
+            lab03cSelection?.let { selected ->
+                AlertDialog(
+                    onDismissRequest = { lab03cSelection = null },
+                    title = { Text("LAB03C · Confirm Nexus page") },
+                    text = { Text("Open the official Nexus files page for mod ${selected.modId}, " +
+                        "file ${selected.fileId}? The file ID is only a page hint. " +
+                        "Verify the exact file and complete any Nexus login or requirements yourself. " +
+                        "No download, archive or installation is authorized by this action.") },
+                    confirmButton = {
+                        TextButton(enabled = !busy, onClick = {
+                            lab03cSelection = null
+                            busy = true
+                            val result = runCatching {
+                                // Re-read private state at the actual click; no cached/expired open.
+                                val current = NexusPairingInbox.list(context).singleOrNull {
+                                    it.id == selected.id && it.modId == selected.modId &&
+                                        it.fileId == selected.fileId && it.status == "PENDING"
+                                }
+                                check(current != null) { "LAB03C_REQUEST_NOT_PENDING" }
+                                val url = requireNotNull(NexusLab03CPolicy.reviewUrl(
+                                    current.modId, current.fileId, current.createdAt,
+                                    System.currentTimeMillis())) { "LAB03C_REQUEST_EXPIRED" }
+                                check(NexusBrowserLauncher.openLabFilePage(context, url)) {
+                                    "LAB03C_NO_SUPPORTED_BROWSER"
+                                }
+                                check(NexusPairingInbox.resolve(context, current.id, "OPENED")) {
+                                    "LAB03C_INBOX_RESOLUTION_FAILED"
+                                }
+                            }
+                            lab03cFeedback = if (result.isSuccess)
+                                "LAB03C: Browser launch requested. Nexus page, file, authorization and transfer remain unverified."
+                            else
+                                "LAB03C: Action refused or not recorded. Check the LAB inbox and browser before retrying."
+                            if (result.isFailure) problem = true
+                            refreshInbox()
+                            busy = false
+                        }, modifier = Modifier.testTag("cbnx06.lab03c.confirm-open")) {
+                            Text("Open Nexus files page")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { lab03cSelection = null },
+                            modifier = Modifier.testTag("cbnx06.lab03c.cancel-open")) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+            lab03cFeedback?.let {
+                Text(it, modifier = Modifier.testTag("cbnx06.lab03c.action-feedback"),
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        }
         if (!inboxError) {
             val resolved = inbox.filter { it.status == "OPENED" || it.status == "DISMISSED" }
                 .takeLast(8).asReversed()
             Text("Recent handoffs", style = MaterialTheme.typography.titleSmall)
             if (resolved.isEmpty()) Text("No verified recent history.", style = MaterialTheme.typography.bodySmall)
             for (item in resolved) {
-                val action = if (item.status == "OPENED") "Opened Nexus page" else "Dismissed"
+                val action = if (item.status == "OPENED")
+                    (if (BuildConfig.CBNX_LAB) "Browser launch requested (page unverified)" else "Opened Nexus page")
+                    else "Dismissed"
                 Text("$action · mod ${NexusCompanionPrivacyPolicy.redactedId(item.modId)} " +
                     "· file ${NexusCompanionPrivacyPolicy.redactedId(item.fileId)} " +
                     "· ${android.text.format.DateFormat.format("MMM d, HH:mm", item.createdAt)}",
